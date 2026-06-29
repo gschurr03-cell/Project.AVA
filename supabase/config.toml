@@ -1,0 +1,26 @@
+# Minimal local Supabase config. Run `supabase start` to boot the local stack
+# (Postgres, Auth, Storage, Studio). Bump ports here if they clash locally.
+project_id = "project-ava"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+
+[storage]
+enabled = true
+# Sprint videos can be large; allow up to 200 MiB uploads.
+file_size_limit = "200MiB"
