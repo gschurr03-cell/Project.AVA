@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { logout } from "@/app/login/actions";
 
 /**
  * Authenticated landing page. Lists the signed-in coach's athletes. Protected
@@ -20,7 +21,17 @@ export default async function DashboardPage() {
 
   return (
     <main className="mx-auto max-w-3xl p-8">
-      <h1 className="mb-6 text-2xl font-bold text-lane">Your athletes</h1>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold text-lane">Your athletes</h1>
+        <div className="flex items-center gap-3 text-sm text-gray-600">
+          <span>{user.email}</span>
+          <form action={logout}>
+            <button type="submit" className="rounded border px-3 py-1 hover:bg-gray-50">
+              Sign out
+            </button>
+          </form>
+        </div>
+      </div>
       {athletes && athletes.length > 0 ? (
         <ul className="divide-y rounded border">
           {athletes.map((a) => (
