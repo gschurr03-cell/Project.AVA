@@ -2,15 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
 import VideoUpload from "./VideoUpload";
-
-const STATUS_LABELS: Record<string, string> = {
-  uploaded: "Uploaded",
-  queued: "Queued",
-  analyzing: "Analyzing",
-  complete: "Complete",
-  failed: "Failed",
-};
 
 /**
  * Athlete detail page: shows the athlete, an upload control, and the list of
@@ -40,7 +33,7 @@ export default async function AthletePage({
 
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("id, video_path, status, created_at")
+    .select("id, name, original_filename, video_path, status, created_at")
     .eq("athlete_id", athlete.id)
     .order("created_at", { ascending: false });
 
@@ -59,18 +52,23 @@ export default async function AthletePage({
       <section>
         <h2 className="mb-3 text-lg font-semibold">Sessions</h2>
         {sessions && sessions.length > 0 ? (
-          <ul className="divide-y rounded border">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {sessions.map((s) => (
-              <li key={s.id} className="flex items-center justify-between px-4 py-3">
-                <span className="truncate text-sm">
-                  {s.video_path?.split("/").pop() ?? s.id}
-                </span>
-                <span className="flex items-center gap-3 text-xs text-gray-500">
-                  <span className="rounded bg-gray-100 px-2 py-0.5">
-                    {STATUS_LABELS[s.status] ?? s.status}
+              <li key={s.id}>
+                <Link
+                  href={`/sessions/${s.id}`}
+                  className="block rounded border p-4 hover:border-lane hover:bg-gray-50"
+                >
+                  <span className="block truncate font-medium text-lane">
+                    {sessionDisplayName(s)}
                   </span>
-                  {new Date(s.created_at).toLocaleString()}
-                </span>
+                  <span className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                    <span className="rounded bg-gray-100 px-2 py-0.5">
+                      {STATUS_LABELS[s.status] ?? s.status}
+                    </span>
+                    {new Date(s.created_at).toLocaleString()}
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>

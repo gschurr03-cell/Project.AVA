@@ -66,6 +66,7 @@ export default function VideoUpload({ athleteId }: { athleteId: string }) {
       athlete_id: athleteId,
       created_by: user.id,
       video_path: path,
+      original_filename: file.name,
       status: "uploaded",
     });
 

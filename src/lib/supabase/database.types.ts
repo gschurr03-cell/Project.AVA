@@ -123,7 +123,9 @@ export type Database = {
           distance_m: number | null
           fps: number | null
           id: string
+          name: string | null
           notes: string | null
+          original_filename: string | null
           recorded_at: string
           status: Database["public"]["Enums"]["session_status"]
           video_path: string | null
@@ -135,7 +137,9 @@ export type Database = {
           distance_m?: number | null
           fps?: number | null
           id?: string
+          name?: string | null
           notes?: string | null
+          original_filename?: string | null
           recorded_at?: string
           status?: Database["public"]["Enums"]["session_status"]
           video_path?: string | null
@@ -147,7 +151,9 @@ export type Database = {
           distance_m?: number | null
           fps?: number | null
           id?: string
+          name?: string | null
           notes?: string | null
+          original_filename?: string | null
           recorded_at?: string
           status?: Database["public"]["Enums"]["session_status"]
           video_path?: string | null
