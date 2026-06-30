@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { analysisMetricsSchema } from "@/lib/biomechanics/types";
 import { ANALYSIS_STATUS_LABELS, sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
 import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
+import MetricsPanel from "./MetricsPanel";
 
 /**
  * Session detail page. Shows the session's metadata and lets the coach rename
@@ -39,13 +41,19 @@ export default async function SessionPage({
   // Latest analysis for this session (read-only RLS access).
   const { data: analysis } = await supabase
     .from("analyses")
-    .select("id, status, error, created_at, completed_at")
+    .select("id, status, error, metrics, created_at, completed_at")
     .eq("session_id", session.id)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   const analysisInFlight = analysis?.status === "queued" || analysis?.status === "running";
+
+  // `metrics` is opaque JSONB — validate at the read boundary so the panel
+  // only ever receives a fully-typed object. A parse failure falls through to
+  // a graceful fallback rather than crashing the page.
+  const parsedMetrics =
+    analysis?.status === "complete" ? analysisMetricsSchema.safeParse(analysis.metrics) : null;
 
   return (
     <main className="mx-auto max-w-2xl p-8">
@@ -116,10 +124,19 @@ export default async function SessionPage({
         )}
 
         {analysis?.status === "complete" && (
-          <p className="mb-3 text-gray-500">
-            Completed {analysis.completed_at ? new Date(analysis.completed_at).toLocaleString() : ""}.
-            Metrics rendering coming soon.
-          </p>
+          <div className="mb-3">
+            <p className="mb-3 text-sm text-gray-500">
+              Completed{" "}
+              {analysis.completed_at ? new Date(analysis.completed_at).toLocaleString() : ""}.
+            </p>
+            {parsedMetrics?.success ? (
+              <MetricsPanel metrics={parsedMetrics.data} />
+            ) : (
+              <p className="text-sm text-gray-500">
+                Metrics are unavailable or could not be read for this analysis.
+              </p>
+            )}
+          </div>
         )}
 
         {analysis?.status === "failed" && (
