@@ -1,33 +1,67 @@
 import { NextResponse } from "next/server";
 
-import { analysisResultSchema } from "@/lib/biomechanics/types";
+import { analysisCallbackSchema } from "@/lib/biomechanics/types";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
  * Callback endpoint the AI analysis worker POSTs to when pose estimation
- * completes. Writes the derived metrics back with the service-role client
- * (bypassing RLS) and flips the parent session to `complete`.
+ * finishes (or fails). Writes the result back with the service-role client
+ * (bypassing RLS) and moves the parent session to its terminal status.
  *
- * NOTE: this stub does not yet authenticate the worker. Before shipping, gate
- * it behind a shared secret / signed request from the job runner.
+ * Authenticated by a shared secret: the worker must send
+ * `Authorization: Bearer <ANALYSIS_WORKER_SECRET>`. The endpoint fails closed
+ * if the secret is not configured, so it is never accidentally left open.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const parsed = analysisResultSchema.safeParse(await request.json());
+  const secret = process.env.ANALYSIS_WORKER_SECRET;
+  if (!secret) {
+    return NextResponse.json({ error: "worker secret not configured" }, { status: 503 });
+  }
+  if (request.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const parsed = analysisCallbackSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const supabase = createServiceClient();
+  const now = new Date().toISOString();
+
+  if (parsed.data.status === "complete") {
+    const { data: analysis, error } = await supabase
+      .from("analyses")
+      .update({
+        status: "complete",
+        model_version: parsed.data.modelVersion,
+        metrics: parsed.data.metrics,
+        keypoints_path: parsed.data.keypointsPath ?? null,
+        error: null,
+        completed_at: now,
+      })
+      .eq("id", id)
+      .select("session_id")
+      .single();
+
+    if (error || !analysis) {
+      return NextResponse.json({ error: error?.message ?? "not found" }, { status: 404 });
+    }
+
+    await supabase.from("sessions").update({ status: "complete" }).eq("id", analysis.session_id);
+    return NextResponse.json({ ok: true });
+  }
+
+  // status === "failed"
   const { data: analysis, error } = await supabase
     .from("analyses")
     .update({
-      status: "complete",
-      model_version: parsed.data.modelVersion,
-      metrics: parsed.data.metrics,
-      keypoints_path: parsed.data.keypointsPath ?? null,
-      completed_at: new Date().toISOString(),
+      status: "failed",
+      error: parsed.data.error,
+      completed_at: now,
+      ...(parsed.data.modelVersion ? { model_version: parsed.data.modelVersion } : {}),
     })
     .eq("id", id)
     .select("session_id")
@@ -37,7 +71,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: error?.message ?? "not found" }, { status: 404 });
   }
 
-  await supabase.from("sessions").update({ status: "complete" }).eq("id", analysis.session_id);
-
+  await supabase.from("sessions").update({ status: "failed" }).eq("id", analysis.session_id);
   return NextResponse.json({ ok: true });
 }

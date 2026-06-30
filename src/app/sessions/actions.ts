@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 /**
  * Rename a session (sets the editable display `name`). RLS scopes the update to
@@ -66,4 +67,49 @@ export async function deleteSession(formData: FormData) {
 
   revalidatePath(`/athletes/${session.athlete_id}`);
   redirect(`/athletes/${session.athlete_id}`);
+}
+
+/**
+ * Queue an analysis for a session. Ownership is verified with the RLS-scoped
+ * server client first; only then do we use the service-role client to insert
+ * the `analyses` row (there is deliberately no user INSERT policy on analyses).
+ * `model_version` is a placeholder the worker's result callback overwrites.
+ */
+export async function queueAnalysis(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const supabase = await createClient();
+
+  // Ownership check: RLS returns the row only if the coach owns the athlete.
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("id", id)
+    .single();
+  if (!session) redirect("/dashboard");
+
+  // Don't queue a second analysis while one is already in flight.
+  const { data: active } = await supabase
+    .from("analyses")
+    .select("id")
+    .eq("session_id", id)
+    .in("status", ["queued", "running"])
+    .limit(1);
+  if (active && active.length > 0) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("An analysis is already in progress.")}`);
+  }
+
+  const service = createServiceClient();
+  const { error: insertError } = await service
+    .from("analyses")
+    .insert({ session_id: id, status: "queued", model_version: "pending" });
+  if (insertError) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(insertError.message)}`);
+  }
+
+  await service.from("sessions").update({ status: "queued" }).eq("id", id);
+
+  revalidatePath(`/sessions/${id}`);
+  redirect(`/sessions/${id}`);
 }

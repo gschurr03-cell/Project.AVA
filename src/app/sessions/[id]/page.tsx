@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
-import { deleteSession, renameSession } from "@/app/sessions/actions";
+import { ANALYSIS_STATUS_LABELS, sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
+import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
 
 /**
  * Session detail page. Shows the session's metadata and lets the coach rename
@@ -35,6 +35,17 @@ export default async function SessionPage({
   if (!session) notFound();
 
   const displayName = sessionDisplayName(session);
+
+  // Latest analysis for this session (read-only RLS access).
+  const { data: analysis } = await supabase
+    .from("analyses")
+    .select("id, status, error, created_at, completed_at")
+    .eq("session_id", session.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const analysisInFlight = analysis?.status === "queued" || analysis?.status === "running";
 
   return (
     <main className="mx-auto max-w-2xl p-8">
@@ -85,9 +96,46 @@ export default async function SessionPage({
         </form>
       </section>
 
-      <section className="mb-8 rounded border border-dashed p-4 text-gray-500">
-        <h2 className="mb-1 text-lg font-semibold text-gray-700">Analysis</h2>
-        <p>Analysis coming soon.</p>
+      <section className="mb-8 rounded border p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-700">Analysis</h2>
+          {analysis && (
+            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+              {ANALYSIS_STATUS_LABELS[analysis.status] ?? analysis.status}
+            </span>
+          )}
+        </div>
+
+        {!analysis && <p className="mb-3 text-gray-500">No analysis has been run yet.</p>}
+
+        {analysisInFlight && (
+          <p className="mb-3 text-gray-500">
+            Analysis {ANALYSIS_STATUS_LABELS[analysis!.status].toLowerCase()} — results will appear
+            here when the worker finishes.
+          </p>
+        )}
+
+        {analysis?.status === "complete" && (
+          <p className="mb-3 text-gray-500">
+            Completed {analysis.completed_at ? new Date(analysis.completed_at).toLocaleString() : ""}.
+            Metrics rendering coming soon.
+          </p>
+        )}
+
+        {analysis?.status === "failed" && (
+          <p className="mb-3 text-sm text-red-700">
+            Analysis failed{analysis.error ? `: ${analysis.error}` : ""}.
+          </p>
+        )}
+
+        {!analysisInFlight && (
+          <form action={queueAnalysis}>
+            <input type="hidden" name="id" value={session.id} />
+            <button type="submit" className="rounded bg-lane px-4 py-2 text-white">
+              {analysis ? "Run analysis again" : "Run analysis"}
+            </button>
+          </form>
+        )}
       </section>
 
       <form action={deleteSession}>

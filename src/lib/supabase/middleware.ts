@@ -41,7 +41,15 @@ export async function updateSession(request: NextRequest) {
   // Prefix-matched public sections plus the exact-match landing page. `/` must
   // be exact — a "/" prefix would make every route public.
   const publicPrefixes = ["/login", "/signup", "/auth"];
-  const isPublic = pathname === "/" || publicPrefixes.some((p) => pathname.startsWith(p));
+
+  // The analysis worker callback authenticates itself with a shared secret
+  // (ANALYSIS_WORKER_SECRET), not a user session, so it must skip the login
+  // redirect. Scoped tightly to that one endpoint — not all of /api.
+  const isWorkerCallback =
+    pathname.startsWith("/api/analyses/") && pathname.endsWith("/result");
+
+  const isPublic =
+    pathname === "/" || isWorkerCallback || publicPrefixes.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

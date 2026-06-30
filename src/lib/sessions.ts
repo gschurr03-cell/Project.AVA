@@ -7,6 +7,14 @@ export const STATUS_LABELS: Record<string, string> = {
   failed: "Failed",
 };
 
+/** Display labels for the `analysis_status` enum. */
+export const ANALYSIS_STATUS_LABELS: Record<string, string> = {
+  queued: "Queued",
+  running: "Running",
+  complete: "Complete",
+  failed: "Failed",
+};
+
 /**
  * Human-facing label for a session: the coach's chosen name, else the original
  * uploaded filename, else the storage object's basename (the UUID), else the id.
