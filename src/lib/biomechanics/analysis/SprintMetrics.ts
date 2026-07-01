@@ -44,4 +44,15 @@ export interface SprintAnalysisOptions {
   requireAlternatingSides?: boolean;
   /** Include the raw events/steps/strides/angles arrays in the result. */
   includeRawArrays?: boolean;
+  /**
+   * Physiological outlier bounds (ms) on a *step* (one foot-contact to the
+   * opposite foot-contact) used when aggregating step time & flight time.
+   * A step outside this window is a detection artifact — either two feet
+   * detected near-simultaneously (implausibly short) or the standing/
+   * acceleration phase where both feet are grounded (implausibly long) — and
+   * is excluded so cadence & flight reflect steady-state sprinting. Ground
+   * contact is a per-foot measure and is *not* filtered by this window.
+   */
+  minPlausibleStepMs?: number;
+  maxPlausibleStepMs?: number;
 }

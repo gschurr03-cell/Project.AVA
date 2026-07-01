@@ -11,6 +11,16 @@ import type {
 
 const MIN_ANALYZED_FRAMES = 30;
 
+/**
+ * Default physiological bounds (ms) on a step's duration when aggregating
+ * cadence & flight. 150 ms ≈ a 6.7 Hz step cap (nothing human sustains faster —
+ * shorter values are near-simultaneous double-detections); 320 ms ≈ a 3.1 Hz
+ * floor (slower is the standing/acceleration phase, not steady sprinting). See
+ * `SprintAnalysisOptions.minPlausibleStepMs`.
+ */
+const DEFAULT_MIN_PLAUSIBLE_STEP_MS = 150;
+const DEFAULT_MAX_PLAUSIBLE_STEP_MS = 320;
+
 /** Aggregate metric keys that may be omitted when their inputs are missing. */
 type OptionalMetricKey =
   | "avgStepTimeMs"
@@ -60,6 +70,8 @@ export function analyzeSprint(
   const minKeypointScore = options.minKeypointScore ?? 0.4;
   const requireAlternatingSides = options.requireAlternatingSides ?? false;
   const includeRawArrays = options.includeRawArrays ?? true;
+  const minPlausibleStepMs = options.minPlausibleStepMs ?? DEFAULT_MIN_PLAUSIBLE_STEP_MS;
+  const maxPlausibleStepMs = options.maxPlausibleStepMs ?? DEFAULT_MAX_PLAUSIBLE_STEP_MS;
 
   // --- run the component modules ---
   const events = detectFootContacts(sequence, { minKeypointScore });
@@ -70,10 +82,17 @@ export function analyzeSprint(
   // --- aggregate metrics ---
   const completeSteps = steps.filter((s) => s.durationMs != null);
 
-  const avgStepTimeMs = mean(compact(steps.map((s) => s.durationMs)));
+  // Cadence & flight are inter-foot measures corrupted by double-detections and
+  // the standing/acceleration phase; restrict them to physiologically plausible
+  // steps. Ground contact is a robust per-foot measure — leave it over all steps.
+  const isPlausibleStep = (s: (typeof steps)[number]): boolean =>
+    s.durationMs != null && s.durationMs >= minPlausibleStepMs && s.durationMs <= maxPlausibleStepMs;
+  const plausibleSteps = steps.filter(isPlausibleStep);
+
+  const avgStepTimeMs = mean(compact(plausibleSteps.map((s) => s.durationMs)));
   const avgStrideTimeMs = mean(strides.map((s) => s.durationMs));
   const avgGroundContactMs = mean(compact(steps.map((s) => s.groundContactMs)));
-  const avgFlightTimeMs = mean(compact(steps.map((s) => s.flightTimeMs)));
+  const avgFlightTimeMs = mean(compact(plausibleSteps.map((s) => s.flightTimeMs)));
   const strideFrequencyHz = avgStrideTimeMs ? 1000 / avgStrideTimeMs : undefined;
   const stepFrequencyHz = avgStepTimeMs ? 1000 / avgStepTimeMs : undefined;
 
@@ -82,8 +101,8 @@ export function analyzeSprint(
   const peakRightKneeFlexionDeg = minDefined(angles.map((a) => a.rightKneeDeg));
   const avgTrunkLeanDeg = mean(compact(angles.map((a) => a.trunkLeanDeg)));
 
-  const leftStepAvg = mean(compact(steps.filter((s) => s.side === "left").map((s) => s.durationMs)));
-  const rightStepAvg = mean(compact(steps.filter((s) => s.side === "right").map((s) => s.durationMs)));
+  const leftStepAvg = mean(compact(plausibleSteps.filter((s) => s.side === "left").map((s) => s.durationMs)));
+  const rightStepAvg = mean(compact(plausibleSteps.filter((s) => s.side === "right").map((s) => s.durationMs)));
   const leftRightStepTimeAsymmetryPct = asymmetryPct(leftStepAvg, rightStepAvg);
 
   const metrics: RealSprintMetrics = {
@@ -114,6 +133,16 @@ export function analyzeSprint(
   if (angles.length === 0) warnings.push("No usable joint angles detected.");
   if (angles.length < MIN_ANALYZED_FRAMES) {
     warnings.push(`Only ${angles.length} analyzed frame(s) (< ${MIN_ANALYZED_FRAMES}); metrics may be unreliable.`);
+  }
+  const rejectedSteps = completeSteps.length - plausibleSteps.length;
+  if (completeSteps.length > 0 && plausibleSteps.length === 0) {
+    warnings.push(
+      `All ${completeSteps.length} step(s) fell outside the plausible ${minPlausibleStepMs}–${maxPlausibleStepMs} ms window; cadence & flight unavailable.`,
+    );
+  } else if (rejectedSteps > 0) {
+    warnings.push(
+      `${rejectedSteps} of ${completeSteps.length} step(s) rejected as implausible (outside ${minPlausibleStepMs}–${maxPlausibleStepMs} ms) for cadence & flight.`,
+    );
   }
   const coreMetrics = [
     avgStepTimeMs,

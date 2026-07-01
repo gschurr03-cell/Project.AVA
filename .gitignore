@@ -54,6 +54,7 @@ yarn-error.log*
 /.worker-analysis-sanity-tmp/
 /.validation-sanity-tmp/
 /.contact-calibration-tmp/
+/.step-calibration-tmp/
 /.analysis-worker-build/
 
 # python venv for the mediapipe runtime

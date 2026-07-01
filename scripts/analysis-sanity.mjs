@@ -25,8 +25,10 @@ const check = (label, cond) => {
 };
 
 // Synthetic sprint: antiphase foot oscillation (→ alternating contacts) with a
-// full set of confident joints on every frame (→ angles on every frame).
-function synth({ frames = 90, fps = 30, cadence = 1.5, footAmp = 0.08, footBase = 0.85, score = 0.9 } = {}) {
+// full set of confident joints on every frame (→ angles on every frame). The
+// 2.0 Hz per-foot cadence yields ~250 ms steps — a realistic sprint step time
+// that lands inside the analyzer's plausible-step window.
+function synth({ frames = 90, fps = 30, cadence = 2.0, footAmp = 0.08, footBase = 0.85, score = 0.9 } = {}) {
   const kp = (x, y) => ({ x, y, score, visibility: score });
   const f = [];
   for (let i = 0; i < frames; i++) {
