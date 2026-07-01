@@ -33,7 +33,10 @@ export function angleAtJointDeg(a: Point, b: Point, c: Point): number {
   const v1 = { x: a.x - b.x, y: a.y - b.y };
   const v2 = { x: c.x - b.x, y: c.y - b.y };
   const mag = Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y);
-  if (mag === 0) return 0;
+  // Degenerate (coincident points) → NaN, not 0. Returning 0 here previously
+  // injected spurious 0° angles that collapsed min-based metrics like peak knee
+  // flexion toward zero.
+  if (mag === 0) return NaN;
   const cos = Math.max(-1, Math.min(1, (v1.x * v2.x + v1.y * v2.y) / mag));
   return Math.acos(cos) * RAD_TO_DEG;
 }
@@ -97,8 +100,11 @@ function computeFrameAngles(frame: PoseFrame, opts: Required<AngleOptions>): Fra
   for (const { key, joints } of THREE_POINT_ANGLES) {
     const [a, b, c] = [usable(joints[0]), usable(joints[1]), usable(joints[2])];
     if (a && b && c) {
-      angles[key] = roundTo(angleAtJointDeg(a, b, c), opts.roundDegrees);
-      markUsed(...joints);
+      const value = angleAtJointDeg(a, b, c);
+      if (Number.isFinite(value)) {
+        angles[key] = roundTo(value, opts.roundDegrees);
+        markUsed(...joints);
+      }
     }
   }
 

@@ -43,10 +43,17 @@ yarn-error.log*
 !/samples/videos/README.md
 /artifacts/
 
-# scratch build dirs used by the pose/mediapipe sanity + video scripts
+# scratch build dirs used by the pose/mediapipe sanity + video/worker scripts
 /.pose-sanity-tmp/
 /.mediapipe-sanity-tmp/
 /.mediapipe-video-tmp/
+/.events-sanity-tmp/
+/.strides-sanity-tmp/
+/.angles-sanity-tmp/
+/.analysis-sanity-tmp/
+/.worker-analysis-sanity-tmp/
+/.validation-sanity-tmp/
+/.analysis-worker-build/
 
 # python venv for the mediapipe runtime
 /.venv/
