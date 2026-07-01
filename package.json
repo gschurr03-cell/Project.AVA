@@ -5,6 +5,7 @@
   "description": "AI-powered sprint biomechanics web platform",
   "scripts": {
     "dev": "next dev",
+    "worker:mock": "node --env-file=.env.local scripts/mock-worker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

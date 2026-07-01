@@ -26,4 +26,21 @@ You need the [Supabase CLI](https://supabase.com/docs/guides/cli) and Docker for
 local development. `supabase start` prints the local URL and anon/service keys
 to paste into `.env.local`.
 
+## Local analysis worker (dev)
+
+There is no real pose-estimation worker yet. For development, a mock worker
+completes queued analyses automatically so you can see the full flow end to end.
+Run it in a second terminal alongside the dev server:
+
+```bash
+npm run dev          # terminal 1 — http://localhost:3000
+npm run worker:mock  # terminal 2 — polls for queued analyses
+```
+
+With both running, click **Run analysis** on a session: the worker claims the
+job (session → *analyzing*), waits briefly, then POSTs realistic mock metrics to
+the secured callback, completing the analysis. It reads `.env.local` for the
+Supabase service-role key and `ANALYSIS_WORKER_SECRET`. Dev-only — never
+deployed.
+
 See [CLAUDE.md](./CLAUDE.md) for architecture and conventions.
