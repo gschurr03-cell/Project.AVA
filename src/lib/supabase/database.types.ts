@@ -118,45 +118,60 @@ export type Database = {
       sessions: {
         Row: {
           athlete_id: string
+          codec: string | null
           created_at: string
           created_by: string
           distance_m: number | null
+          duration_s: number | null
           fps: number | null
+          height: number | null
           id: string
           name: string | null
           notes: string | null
           original_filename: string | null
           recorded_at: string
+          size_bytes: number | null
           status: Database["public"]["Enums"]["session_status"]
           video_path: string | null
+          width: number | null
         }
         Insert: {
           athlete_id: string
+          codec?: string | null
           created_at?: string
           created_by: string
           distance_m?: number | null
+          duration_s?: number | null
           fps?: number | null
+          height?: number | null
           id?: string
           name?: string | null
           notes?: string | null
           original_filename?: string | null
           recorded_at?: string
+          size_bytes?: number | null
           status?: Database["public"]["Enums"]["session_status"]
           video_path?: string | null
+          width?: number | null
         }
         Update: {
           athlete_id?: string
+          codec?: string | null
           created_at?: string
           created_by?: string
           distance_m?: number | null
+          duration_s?: number | null
           fps?: number | null
+          height?: number | null
           id?: string
           name?: string | null
           notes?: string | null
           original_filename?: string | null
           recorded_at?: string
+          size_bytes?: number | null
           status?: Database["public"]["Enums"]["session_status"]
           video_path?: string | null
+          width?: number | null
         }
         Relationships: [
           {

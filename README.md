@@ -38,9 +38,11 @@ npm run worker:mock  # terminal 2 — polls for queued analyses
 ```
 
 With both running, click **Run analysis** on a session: the worker claims the
-job (session → *analyzing*), waits briefly, then POSTs realistic mock metrics to
-the secured callback, completing the analysis. It reads `.env.local` for the
-Supabase service-role key and `ANALYSIS_WORKER_SECRET`. Dev-only — never
-deployed.
+job (session → *analyzing*), inspects the uploaded video, extracts intrinsic
+metadata (duration, resolution, fps, codec, size) with a bundled `ffprobe`
+(`@ffprobe-installer/ffprobe`) run against a short-lived signed URL, writes that
+metadata to the session, then POSTs realistic mock metrics to the secured
+callback. It reads `.env.local` for the Supabase service-role key and
+`ANALYSIS_WORKER_SECRET`. Dev-only — never deployed.
 
 See [CLAUDE.md](./CLAUDE.md) for architecture and conventions.

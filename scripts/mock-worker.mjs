@@ -12,7 +12,13 @@
 //
 // NEVER deploy this: it uses the service-role key and is a dev convenience.
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+import ffprobe from "@ffprobe-installer/ffprobe";
 import { createClient } from "@supabase/supabase-js";
+
+const execFileAsync = promisify(execFile);
 
 const {
   NEXT_PUBLIC_SUPABASE_URL: SUPABASE_URL,
@@ -105,6 +111,9 @@ function sniffContainer(bytes) {
  * signed URL (the handle a real worker would stream from), and a container
  * guess from a 12-byte ranged read. Never throws — on any failure it returns a
  * context with a `warning`, so the mock still completes.
+ *
+ * Returns `{ ctx, signedUrl }`: `ctx` is safe to log; `signedUrl` is the raw,
+ * token-bearing URL kept OUT of `ctx` so it can never be logged accidentally.
  */
 async function inspectVideo(videoPath, originalFilename) {
   const ctx = {
@@ -151,10 +160,54 @@ async function inspectVideo(videoPath, originalFilename) {
         ctx.warning = `range fetch HTTP ${res.status}`;
       }
     }
+    return { ctx, signedUrl: signed?.signedUrl ?? null };
   } catch (err) {
     ctx.warning = err.message;
   }
-  return ctx;
+  return { ctx, signedUrl: null };
+}
+
+/**
+ * Extract intrinsic video metadata by running ffprobe against the signed URL
+ * (ffprobe range-reads only what it needs; no full download). The URL is passed
+ * as a single argv element via execFile — no shell, so no injection — and is
+ * never logged. Returns null on any failure so the mock still completes.
+ */
+async function probeMetadata(signedUrl) {
+  try {
+    const { stdout } = await execFileAsync(
+      ffprobe.path,
+      [
+        "-v", "error",
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        signedUrl,
+      ],
+      { timeout: 20000, maxBuffer: 8 * 1024 * 1024 },
+    );
+    const probe = JSON.parse(stdout);
+    const video = probe.streams?.find((s) => s.codec_type === "video");
+    if (!video) return null;
+
+    // avg_frame_rate is a rational like "30000/1001"; guard divide-by-zero.
+    let fps = null;
+    const [num, den] = String(video.avg_frame_rate ?? "").split("/").map(Number);
+    if (num > 0 && den > 0) fps = Number((num / den).toFixed(3));
+
+    const duration = Number(video.duration ?? probe.format?.duration);
+    const size = Number(probe.format?.size);
+    return {
+      duration_s: Number.isFinite(duration) ? Number(duration.toFixed(3)) : null,
+      width: video.width ?? null,
+      height: video.height ?? null,
+      fps,
+      codec: video.codec_name ?? null,
+      size_bytes: Number.isFinite(size) ? size : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Deliver the result through the real, secured callback endpoint. */
@@ -190,13 +243,28 @@ async function processJob(job) {
     .single();
 
   if (session?.video_path) {
-    const v = await inspectVideo(session.video_path, session.original_filename);
+    const { ctx: v, signedUrl } = await inspectVideo(session.video_path, session.original_filename);
     log(
       `video ${v.path} | file=${v.filename ?? "—"} ext=${v.ext ?? "—"} ` +
         `size=${v.sizeBytes ?? "?"}B type=${v.contentType ?? "?"} container=${v.container ?? "?"} ` +
         `signedUrl=${v.signedUrl ? `minted (${SIGNED_URL_TTL_S}s)` : "no"}`,
     );
     if (v.warning) log(`video WARNING for ${claimed.session_id}: ${v.warning} — continuing with mock metrics`);
+
+    // Intrinsic metadata via ffprobe, persisted to the session.
+    if (signedUrl) {
+      const meta = await probeMetadata(signedUrl);
+      if (meta) {
+        await supabase.from("sessions").update(meta).eq("id", claimed.session_id);
+        log(
+          `metadata ${claimed.session_id} → duration=${meta.duration_s ?? "?"}s ` +
+            `res=${meta.width ?? "?"}x${meta.height ?? "?"} fps=${meta.fps ?? "?"} ` +
+            `codec=${meta.codec ?? "?"} size=${meta.size_bytes ?? "?"}B`,
+        );
+      } else {
+        log(`metadata WARNING for ${claimed.session_id}: ffprobe extraction failed — continuing`);
+      }
+    }
   } else {
     log(`video WARNING: session ${claimed.session_id} has no video_path — continuing with mock metrics`);
   }

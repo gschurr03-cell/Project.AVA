@@ -3,7 +3,13 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { analysisMetricsSchema } from "@/lib/biomechanics/types";
-import { ANALYSIS_STATUS_LABELS, sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
+import {
+  ANALYSIS_STATUS_LABELS,
+  formatBytes,
+  formatDuration,
+  sessionDisplayName,
+  STATUS_LABELS,
+} from "@/lib/sessions";
 import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
 import MetricsPanel from "./MetricsPanel";
 
@@ -30,7 +36,9 @@ export default async function SessionPage({
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("id, name, original_filename, video_path, status, created_at, athlete_id, athletes(full_name)")
+    .select(
+      "id, name, original_filename, video_path, status, created_at, athlete_id, duration_s, width, height, fps, codec, size_bytes, athletes(full_name)",
+    )
     .eq("id", id)
     .single();
 
@@ -83,6 +91,23 @@ export default async function SessionPage({
 
         <dt className="font-medium text-gray-500">Original file</dt>
         <dd className="col-span-2 break-all">{session.original_filename ?? "—"}</dd>
+
+        <dt className="font-medium text-gray-500">Duration</dt>
+        <dd className="col-span-2">{formatDuration(session.duration_s)}</dd>
+
+        <dt className="font-medium text-gray-500">Resolution</dt>
+        <dd className="col-span-2">
+          {session.width && session.height ? `${session.width}×${session.height}` : "—"}
+        </dd>
+
+        <dt className="font-medium text-gray-500">FPS</dt>
+        <dd className="col-span-2">{session.fps ?? "—"}</dd>
+
+        <dt className="font-medium text-gray-500">Codec</dt>
+        <dd className="col-span-2">{session.codec ?? "—"}</dd>
+
+        <dt className="font-medium text-gray-500">File size</dt>
+        <dd className="col-span-2">{formatBytes(session.size_bytes)}</dd>
 
         <dt className="font-medium text-gray-500">Storage path</dt>
         <dd className="col-span-2 break-all font-mono text-xs">{session.video_path ?? "—"}</dd>
