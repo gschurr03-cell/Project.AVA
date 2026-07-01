@@ -12,6 +12,7 @@
     "mediapipe:video": "node scripts/run-mediapipe-video.mjs",
     "events:sanity": "node scripts/events-sanity.mjs",
     "strides:sanity": "node scripts/strides-sanity.mjs",
+    "angles:sanity": "node scripts/angles-sanity.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
