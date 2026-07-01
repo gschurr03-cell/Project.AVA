@@ -1,0 +1,108 @@
+
+> project-ava@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.72:3000
+   - Environments: .env.local
+   - Experiments (use with caution):
+     · serverActions
+
+ ✓ Starting...
+ ✓ Ready in 1381ms
+ ✓ Compiled /middleware in 476ms (171 modules)
+ ○ Compiling / ...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (102kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (250kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled / in 1697ms (596 modules)
+ GET / 200 in 1942ms
+ ✓ Compiled /login in 425ms (684 modules)
+ GET /login 200 in 553ms
+ GET /login 200 in 17ms
+ ✓ Compiled /dashboard in 147ms (674 modules)
+ GET /dashboard 200 in 321ms
+ POST /login 303 in 526ms
+ ✓ Compiled /athletes/[id] in 454ms (802 modules)
+ GET /athletes/61936700-9a8a-47d2-a8a8-dd87111068a5 200 in 1119ms
+ ✓ Compiled /sessions/[id] in 310ms (819 modules)
+ GET /sessions/e82c0273-3297-4461-8ef2-3bcfec8b581c 200 in 780ms
+ GET /sessions/e82c0273-3297-4461-8ef2-3bcfec8b581c 200 in 76ms
+ POST /sessions/e82c0273-3297-4461-8ef2-3bcfec8b581c 303 in 204ms
+ ○ Compiling /api/analyses/[id]/result ...
+ ✓ Compiled /api/analyses/[id]/result in 640ms (836 modules)
+ POST /api/analyses/82f2de7c-d487-43f8-a6dd-0ee037e979b1/result 200 in 1603ms
+ GET /sessions/e82c0273-3297-4461-8ef2-3bcfec8b581c 200 in 475ms
+ GET /athletes/61936700-9a8a-47d2-a8a8-dd87111068a5 200 in 111ms
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 200 in 135ms
+ GET /sessions/10045852-4179-4929-a30a-582ae85e8d8e 200 in 108ms
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 200 in 152ms
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 200 in 63ms
+ POST /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 303 in 155ms
+ POST /api/analyses/0c272fe8-823c-4a08-8f46-f646aa190b16/result 200 in 164ms
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 200 in 156ms
+ GET /athletes/61936700-9a8a-47d2-a8a8-dd87111068a5 200 in 138ms
+ GET /sessions/e82c0273-3297-4461-8ef2-3bcfec8b581c 200 in 102ms
+ GET /sessions/e82c0273-3297-4461-8ef2-3bcfec8b581c 200 in 59ms
+ POST /sessions/e82c0273-3297-4461-8ef2-3bcfec8b581c 303 in 184ms
+ POST /api/analyses/ab35743b-08b7-4e02-816e-b80b295cd672/result 200 in 72ms
+ GET /sessions/e82c0273-3297-4461-8ef2-3bcfec8b581c 200 in 149ms
+ GET /athletes/61936700-9a8a-47d2-a8a8-dd87111068a5 200 in 105ms
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 200 in 68ms
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 200 in 53ms
+ POST /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 303 in 133ms
+ POST /api/analyses/349c2516-dc27-4487-953f-ce9feec329a2/result 200 in 71ms
+ ⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 404 in 401ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 576ms (835 modules)
+ ⨯ [Error: ENOENT: no such file or directory, open '/Users/gavinschurr/Project.AVA/.next/server/app/sessions/[id]/page.js'] {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/gavinschurr/Project.AVA/.next/server/app/sessions/[id]/page.js',
+  page: '/sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e'
+}
+ ○ Compiling /_error ...
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 500 in 1246ms
+ ✓ Compiled /_error in 1170ms (1182 modules)
+ ⨯ Failed to generate static paths for /sessions/[id]:
+[Error: Cannot find module './vendor-chunks/@supabase.js'
+Require stack:
+- /Users/gavinschurr/Project.AVA/.next/server/webpack-runtime.js
+- /Users/gavinschurr/Project.AVA/.next/server/app/sessions/[id]/page.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/server/require.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/server/load-components.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/build/utils.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/server/dev/static-paths-worker.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/compiled/jest-worker/processChild.js] {
+  type: 'Error',
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array]
+}
+ GET /sessions/b4a8eab6-a75e-49df-8788-864c19cb0f0e 200 in 948ms
+ ⨯ Failed to generate static paths for /athletes/[id]:
+[Error: Cannot find module './vendor-chunks/@supabase.js'
+Require stack:
+- /Users/gavinschurr/Project.AVA/.next/server/webpack-runtime.js
+- /Users/gavinschurr/Project.AVA/.next/server/app/athletes/[id]/page.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/server/require.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/server/load-components.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/build/utils.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/server/dev/static-paths-worker.js
+- /Users/gavinschurr/Project.AVA/node_modules/next/dist/compiled/jest-worker/processChild.js] {
+  type: 'Error',
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [Array]
+}
+ GET /athletes/61936700-9a8a-47d2-a8a8-dd87111068a5 200 in 278ms
+ ✓ Compiled / in 326ms (726 modules)
+ GET / 200 in 614ms
+ GET / 200 in 29ms
+ ✓ Compiled /dashboard in 349ms (730 modules)
+ GET /dashboard 200 in 657ms
+ ○ Compiling /api/analyses/[id]/result ...
+ ✓ Compiled /api/analyses/[id]/result in 744ms (645 modules)
+ POST /api/analyses/c371c5ba-a8db-4795-97f1-94f950997707/result 200 in 1268ms
+ POST /api/analyses/e2c26d71-c950-413a-bca5-04b3d3ba9f69/result 200 in 86ms
+[?25h
