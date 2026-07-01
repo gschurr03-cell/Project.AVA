@@ -47,3 +47,9 @@ yarn-error.log*
 /.pose-sanity-tmp/
 /.mediapipe-sanity-tmp/
 /.mediapipe-video-tmp/
+
+# python venv for the mediapipe runtime
+/.venv/
+
+# auto-downloaded mediapipe pose model
+/src/lib/biomechanics/mediapipe/runtime/models/
