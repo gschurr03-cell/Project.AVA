@@ -1,0 +1,8 @@
+# Python dependencies for the MediaPipe pose runtime (dev/worker only).
+# Install into a Python 3 environment:
+#
+#   pip install -r requirements-mediapipe.txt
+#
+# Then verify with:  npm run mediapipe:install-check
+mediapipe
+opencv-python

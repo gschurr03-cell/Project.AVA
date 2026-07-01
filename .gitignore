@@ -37,3 +37,13 @@ yarn-error.log*
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# local test media (never commit large videos) + generated pose artifacts
+/samples/videos/*
+!/samples/videos/README.md
+/artifacts/
+
+# scratch build dirs used by the pose/mediapipe sanity + video scripts
+/.pose-sanity-tmp/
+/.mediapipe-sanity-tmp/
+/.mediapipe-video-tmp/
