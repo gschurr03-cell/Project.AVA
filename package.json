@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "worker:mock": "node --env-file=.env.local scripts/mock-worker.mjs",
+    "pose:sanity": "node scripts/pose-sanity.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

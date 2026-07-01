@@ -5,6 +5,7 @@ import {
   type Keypoint,
   type PoseSequence,
 } from "./pose";
+import { MediaPipePoseBackend } from "./mediapipe/MediaPipePoseBackend";
 
 /**
  * Pose backend abstraction. The analysis worker depends only on this contract;
@@ -130,13 +131,14 @@ export class MockPoseBackend implements PoseBackend {
 }
 
 /**
- * Select a pose backend by name. Only the mock exists today; the real backends
- * plug in here without touching the worker or metrics.
+ * Select a pose backend by name.
  *
- * - `mediapipe` (Day 11+): a TS wrapper that spawns a Python MediaPipe
- *   PoseLandmarker service, maps its 33 landmarks (incl. heel/foot_index and
- *   world landmarks) onto {@link CANONICAL_JOINTS}, and returns a validated
- *   {@link PoseSequence}.
+ * - `mock` — fabricates valid pose data; the dev fallback.
+ * - `mediapipe` — maps MediaPipe PoseLandmarker output onto
+ *   {@link CANONICAL_JOINTS} and returns a validated {@link PoseSequence}. The
+ *   object is constructed fine; actual inference requires a real
+ *   `MediaPipePoseService` to be injected (the default stub throws only when
+ *   `estimate()` is called).
  * - `rtmpose` (future): the same wrapper shape around RTMDet + RTMPose-Halpe26,
  *   normalizing pixel coordinates and leaving `world` undefined.
  */
@@ -145,6 +147,7 @@ export function createPoseBackend(name: PoseBackendName): PoseBackend {
     case "mock":
       return new MockPoseBackend();
     case "mediapipe":
+      return new MediaPipePoseBackend();
     case "rtmpose":
       throw new Error(`pose backend "${name}" is not implemented yet — use "mock"`);
     default:
