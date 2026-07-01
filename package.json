@@ -10,6 +10,7 @@
     "mediapipe:sanity": "node scripts/mediapipe-sanity.mjs",
     "mediapipe:install-check": "python3 -c 'import cv2, mediapipe; print(\"opencv\", cv2.__version__); print(\"mediapipe\", mediapipe.__version__)'",
     "mediapipe:video": "node scripts/run-mediapipe-video.mjs",
+    "events:sanity": "node scripts/events-sanity.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
