@@ -7,6 +7,8 @@
     "dev": "next dev",
     "worker:mock": "node --env-file=.env.local scripts/mock-worker.mjs",
     "pose:sanity": "node scripts/pose-sanity.mjs",
+    "mediapipe:sanity": "node scripts/mediapipe-sanity.mjs",
+    "mediapipe:install-check": "python3 -c 'import cv2, mediapipe; print(\"opencv\", cv2.__version__); print(\"mediapipe\", mediapipe.__version__)'",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

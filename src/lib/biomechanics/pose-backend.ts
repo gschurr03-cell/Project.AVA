@@ -135,10 +135,10 @@ export class MockPoseBackend implements PoseBackend {
  *
  * - `mock` — fabricates valid pose data; the dev fallback.
  * - `mediapipe` — maps MediaPipe PoseLandmarker output onto
- *   {@link CANONICAL_JOINTS} and returns a validated {@link PoseSequence}. The
- *   object is constructed fine; actual inference requires a real
- *   `MediaPipePoseService` to be injected (the default stub throws only when
- *   `estimate()` is called).
+ *   {@link CANONICAL_JOINTS} and returns a validated {@link PoseSequence}. Set
+ *   `MEDIAPIPE_RUNTIME=python` to use the real Python runtime; otherwise the
+ *   default stub throws only when `estimate()` is called. Construction is always
+ *   safe.
  * - `rtmpose` (future): the same wrapper shape around RTMDet + RTMPose-Halpe26,
  *   normalizing pixel coordinates and leaving `world` undefined.
  */
@@ -147,7 +147,9 @@ export function createPoseBackend(name: PoseBackendName): PoseBackend {
     case "mock":
       return new MockPoseBackend();
     case "mediapipe":
-      return new MediaPipePoseBackend();
+      return process.env.MEDIAPIPE_RUNTIME === "python"
+        ? MediaPipePoseBackend.withPythonRuntime()
+        : new MediaPipePoseBackend();
     case "rtmpose":
       throw new Error(`pose backend "${name}" is not implemented yet — use "mock"`);
     default:

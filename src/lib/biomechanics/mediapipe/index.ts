@@ -10,3 +10,4 @@
 export * from "./MediaPipeTypes";
 export * from "./MediaPipeLandmarkMap";
 export * from "./MediaPipePoseBackend";
+export * from "./PythonMediaPipePoseService";

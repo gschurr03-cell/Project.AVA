@@ -3,6 +3,10 @@ import type { PoseBackend, PoseEstimateOptions, VideoRef } from "../pose-backend
 
 import { mapFrameToKeypoints } from "./MediaPipeLandmarkMap";
 import { mediaPipeResultSchema, type MediaPipePoseResult } from "./MediaPipeTypes";
+import {
+  PythonMediaPipePoseService,
+  type PythonMediaPipeOptions,
+} from "./PythonMediaPipePoseService";
 
 const BACKEND_NAME = "mediapipe" as const;
 const MODEL_VERSION = "mediapipe-pose-0.1";
@@ -68,6 +72,16 @@ export class MediaPipePoseBackend implements PoseBackend {
   readonly modelVersion = MODEL_VERSION;
 
   constructor(private readonly service: MediaPipePoseService = new UnavailableMediaPipeService()) {}
+
+  /**
+   * Build a backend backed by the real Python MediaPipe runtime. Construction is
+   * always safe; if the Python deps are missing, `estimate()` fails cleanly with
+   * an actionable error rather than at construction — so this stays a safe
+   * opt-in with the stub as the default fallback.
+   */
+  static withPythonRuntime(options?: PythonMediaPipeOptions): MediaPipePoseBackend {
+    return new MediaPipePoseBackend(new PythonMediaPipePoseService(options));
+  }
 
   async estimate(video: VideoRef, opts: PoseEstimateOptions = {}): Promise<PoseSequence> {
     const raw = await this.service.run(video, opts);
