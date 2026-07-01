@@ -7,28 +7,11 @@
  * every displayed number from these functions rather than re-implementing them.
  */
 
-/** A single body keypoint in normalized image coordinates (0..1) plus depth. */
-export interface Keypoint {
-  x: number;
-  y: number;
-  z?: number;
-  /** Model confidence for this point, 0..1. */
-  score: number;
-}
+import type { Keypoint } from "./pose";
 
-/** One frame of a pose: a map of joint name -> keypoint. */
-export type PoseFrame = Record<JointName, Keypoint>;
-
-export type JointName =
-  | "nose"
-  | "left_hip"
-  | "right_hip"
-  | "left_knee"
-  | "right_knee"
-  | "left_ankle"
-  | "right_ankle"
-  | "left_shoulder"
-  | "right_shoulder";
+// `Keypoint`, `JointName`, `PoseFrame`, and `PoseSequence` are the canonical,
+// backend-agnostic pose vocabulary and now live in `pose.ts`. This module keeps
+// the sprint math and its derived shapes (`GaitEvent`, `SprintMetrics`).
 
 /** A detected foot-strike or toe-off event, keyed to a frame index. */
 export interface GaitEvent {
