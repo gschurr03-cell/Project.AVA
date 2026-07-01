@@ -20,6 +20,17 @@ export interface FootContactOptions {
   minContactSpacingMs?: number;
   /** How far after a contact to look for the matching toe-off. */
   toeOffSearchWindowMs?: number;
+  // --- calibration knobs (Milestone 3 benchmark tuning) ---
+  /** Fraction of the foot's y-range it must rise past a contact to register toe-off. */
+  contactReleaseThreshold?: number;
+  /** Minimum upward velocity (normalized y per frame) confirming the foot is rising. */
+  minToeOffVelocity?: number;
+  /** Hard cap on ground-contact duration; toe-off is forced by here. */
+  maxGroundContactMs?: number;
+  /** Advisory minimum plausible flight time (enforced by downstream flight metrics). */
+  minFlightTimeMs?: number;
+  /** Minimum ground-contact floor / event debounce, so toe-off can't fire instantly. */
+  eventDebounceMs?: number;
 }
 
 const DEFAULT_OPTIONS: Required<FootContactOptions> = {
@@ -27,15 +38,19 @@ const DEFAULT_OPTIONS: Required<FootContactOptions> = {
   smoothingWindowFrames: 3,
   minContactSpacingMs: 120,
   toeOffSearchWindowMs: 250,
+  contactReleaseThreshold: 0.05,
+  minToeOffVelocity: 0.001,
+  maxGroundContactMs: 110,
+  minFlightTimeMs: 60,
+  eventDebounceMs: 45,
 };
 
 /** Minimum usable frames on a side before we attempt detection. */
 const MIN_VALID_FRAMES = 3;
 /** Below this normalized y range the foot barely moves — no reliable events. */
 const MIN_AMPLITUDE = 0.01;
-/** Toe-off fires once the foot has risen this fraction of its range past a contact. */
-const TOEOFF_RELEASE_FRACTION = 0.15;
-const TOEOFF_RELEASE_FLOOR = 0.005;
+/** Absolute floor on the release displacement (guards tiny-amplitude noise). */
+const TOEOFF_RELEASE_FLOOR = 0.004;
 
 const SIDE_FOOT_JOINTS: Record<GaitSide, JointName[]> = {
   left: ["left_toe", "left_heel", "left_ankle"],
@@ -96,29 +111,52 @@ function footSample(
   return { y: ySum / count, conf: confSum / count };
 }
 
+function makeToeOff(frame: number, tMs: number, side: GaitSide, confs: number[]): GaitEvent {
+  return { frame, tMs, side, type: "toe_off", confidence: round3(confs[frame]), source: "pose_heuristic" };
+}
+
+/**
+ * Toe-off = the onset of upward foot movement after a contact, not a large
+ * displacement later. The foot must (a) be past the debounce/min-GC floor,
+ * (b) be clearly rising (velocity + a small release displacement), and it is
+ * capped at `maxGroundContactMs`. This fires much earlier than the old 15%-rise
+ * rule, shrinking exaggerated ground-contact times and lengthening flight.
+ */
 function findToeOff(
   smoothed: number[],
   confs: number[],
   frames: PoseFrame[],
   contactIdx: number,
   side: GaitSide,
-  releaseDelta: number,
+  amplitude: number,
   opts: Required<FootContactOptions>,
 ): GaitEvent | null {
   const peakY = smoothed[contactIdx];
   const startMs = frames[contactIdx].tMs;
+  const releaseThreshold = Math.max(opts.contactReleaseThreshold * amplitude, TOEOFF_RELEASE_FLOOR);
+  const windowMs = Math.min(opts.toeOffSearchWindowMs, opts.maxGroundContactMs);
+  let capFrame = -1; // latest in-window frame, used to cap GC if no clear lift-off
+
   for (let f = contactIdx + 1; f < smoothed.length; f++) {
-    const tMs = frames[f].tMs;
-    if (tMs - startMs > opts.toeOffSearchWindowMs) break;
+    const dt = frames[f].tMs - startMs;
+    if (dt > windowMs) break;
     const y = smoothed[f];
     const prev = smoothed[f - 1];
     if (!Number.isFinite(y) || !Number.isFinite(prev)) continue;
-    const movingUp = y < prev; // image y decreasing = foot rising
-    if (movingUp && peakY - y >= releaseDelta && confs[f] >= opts.minKeypointScore) {
-      return { frame: f, tMs, side, type: "toe_off", confidence: round3(confs[f]), source: "pose_heuristic" };
+    if (dt < opts.eventDebounceMs) continue; // enforce a minimum ground-contact floor
+    capFrame = f;
+    const velocityUp = prev - y; // > 0 when the foot rises (image y decreasing)
+    if (
+      velocityUp >= opts.minToeOffVelocity &&
+      peakY - y >= releaseThreshold &&
+      confs[f] >= opts.minKeypointScore
+    ) {
+      return makeToeOff(f, frames[f].tMs, side, confs);
     }
   }
-  return null;
+
+  // No decisive lift-off within the window → cap ground contact at the window.
+  return capFrame >= 0 ? makeToeOff(capFrame, frames[capFrame].tMs, side, confs) : null;
 }
 
 function detectSide(
@@ -146,7 +184,6 @@ function detectSide(
   const amplitude = Math.max(...finite) - Math.min(...finite);
   if (amplitude < MIN_AMPLITUDE) return [];
 
-  const releaseDelta = Math.max(TOEOFF_RELEASE_FRACTION * amplitude, TOEOFF_RELEASE_FLOOR);
   const events: GaitEvent[] = [];
   let lastContactMs = -Infinity;
   for (const idx of findLocalMaxima(smoothed)) {
@@ -154,7 +191,7 @@ function detectSide(
     if (tMs - lastContactMs < opts.minContactSpacingMs) continue;
     lastContactMs = tMs;
     events.push({ frame: idx, tMs, side, type: "contact", confidence: round3(confs[idx]), source: "pose_heuristic" });
-    const toeOff = findToeOff(smoothed, confs, frames, idx, side, releaseDelta, opts);
+    const toeOff = findToeOff(smoothed, confs, frames, idx, side, amplitude, opts);
     if (toeOff) events.push(toeOff);
   }
   return events;
@@ -173,6 +210,11 @@ export function detectFootContacts(
     smoothingWindowFrames: options.smoothingWindowFrames ?? DEFAULT_OPTIONS.smoothingWindowFrames,
     minContactSpacingMs: options.minContactSpacingMs ?? DEFAULT_OPTIONS.minContactSpacingMs,
     toeOffSearchWindowMs: options.toeOffSearchWindowMs ?? DEFAULT_OPTIONS.toeOffSearchWindowMs,
+    contactReleaseThreshold: options.contactReleaseThreshold ?? DEFAULT_OPTIONS.contactReleaseThreshold,
+    minToeOffVelocity: options.minToeOffVelocity ?? DEFAULT_OPTIONS.minToeOffVelocity,
+    maxGroundContactMs: options.maxGroundContactMs ?? DEFAULT_OPTIONS.maxGroundContactMs,
+    minFlightTimeMs: options.minFlightTimeMs ?? DEFAULT_OPTIONS.minFlightTimeMs,
+    eventDebounceMs: options.eventDebounceMs ?? DEFAULT_OPTIONS.eventDebounceMs,
   };
 
   if (!sequence?.frames || sequence.frames.length < MIN_VALID_FRAMES) return [];

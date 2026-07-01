@@ -9,6 +9,7 @@
     "worker:analysis": "node --env-file=.env.local scripts/analysis-worker.mjs",
     "worker:analysis:sanity": "node scripts/worker-analysis-sanity.mjs",
     "validation:sanity": "node scripts/validation-sanity.mjs",
+    "contact:calibration": "node scripts/contact-calibration-sanity.mjs",
     "pose:sanity": "node scripts/pose-sanity.mjs",
     "mediapipe:sanity": "node scripts/mediapipe-sanity.mjs",
     "mediapipe:install-check": "python3 -c 'import cv2, mediapipe; print(\"opencv\", cv2.__version__); print(\"mediapipe\", mediapipe.__version__)'",
