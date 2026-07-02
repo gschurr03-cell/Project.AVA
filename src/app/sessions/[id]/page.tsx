@@ -14,6 +14,7 @@ import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/acti
 import { generateCoachingReport } from "@/lib/coaching/report";
 import { compareCoachingReports } from "@/lib/coaching/comparison";
 import type { CoachingComparisonReport } from "@/lib/coaching/types";
+import VideoPlayer from "@/components/VideoPlayer";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
 
@@ -59,6 +60,11 @@ export default async function SessionPage({
   if (!session) notFound();
 
   const displayName = sessionDisplayName(session);
+
+  // Signed URL for the uploaded sprint video (1-hour expiry), if one exists.
+  const { data: signedVideo } = session.video_path
+    ? await supabase.storage.from("sprint-videos").createSignedUrl(session.video_path, 60 * 60)
+    : { data: null };
 
   // Latest analysis for this session (read-only RLS access).
   const { data: analysis } = await supabase
@@ -157,6 +163,15 @@ export default async function SessionPage({
         <dt className="font-medium text-gray-500">Storage path</dt>
         <dd className="col-span-2 break-all font-mono text-xs">{session.video_path ?? "—"}</dd>
       </dl>
+
+      <section className="mb-8 rounded border p-4">
+        <h2 className="mb-3 text-lg font-semibold">Video</h2>
+        {signedVideo?.signedUrl ? (
+          <VideoPlayer videoUrl={signedVideo?.signedUrl ?? ""} />
+        ) : (
+          <p className="text-sm text-gray-500">No uploaded video available.</p>
+        )}
+      </section>
 
       <section className="mb-8 rounded border p-4">
         <h2 className="mb-3 text-lg font-semibold">Rename</h2>
