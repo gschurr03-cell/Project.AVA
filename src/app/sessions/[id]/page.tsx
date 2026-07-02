@@ -13,10 +13,12 @@ import {
 import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
 import { generateCoachingReport } from "@/lib/coaching/report";
 import { compareCoachingReports } from "@/lib/coaching/comparison";
+import { buildRecommendations } from "@/lib/coaching/recommendations";
 import type { CoachingComparisonReport } from "@/lib/coaching/types";
 import VideoPlayer from "@/components/VideoPlayer";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
+import RecommendationsPanel from "./RecommendationsPanel";
 
 /** Map validated analysis metrics onto the coaching engine's metric keys. */
 function toCoachingMetrics(data: AnalysisMetrics) {
@@ -86,6 +88,11 @@ export default async function SessionPage({
   // Coaching insights now come from the reusable engine, not the panel.
   const coachingReport = parsedMetrics?.success
     ? generateCoachingReport(toCoachingMetrics(parsedMetrics.data), analysis?.id)
+    : null;
+
+  // Deterministic training recommendations derived from the same metrics.
+  const recommendations = parsedMetrics?.success
+    ? buildRecommendations(toCoachingMetrics(parsedMetrics.data))
     : null;
 
   // Progress tracking: compare against this athlete's previous completed
@@ -219,6 +226,9 @@ export default async function SessionPage({
                 <MetricsPanel metrics={parsedMetrics.data} />
                 {coachingReport && (
                   <InsightPanel report={coachingReport} comparison={comparisonReport} />
+                )}
+                {recommendations && (
+                  <RecommendationsPanel recommendations={recommendations} />
                 )}
               </>
             ) : (
