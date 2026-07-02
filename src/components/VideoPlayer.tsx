@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 
+import VideoTimeline from "./VideoTimeline";
+
 /** Format a number of seconds as m:ss. */
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -141,6 +143,20 @@ export default function VideoPlayer({ videoUrl }: { videoUrl: string }) {
             {formatTime(currentTime)} / {formatTime(duration)}
           </div>
         </div>
+      </div>
+
+      <div className="bg-gray-900 px-4 pb-4">
+        <VideoTimeline
+          duration={duration}
+          markers={[
+            duration * 0.12,
+            duration * 0.27,
+            duration * 0.43,
+            duration * 0.59,
+            duration * 0.76,
+            duration * 0.91,
+          ]}
+        />
       </div>
     </div>
   );
