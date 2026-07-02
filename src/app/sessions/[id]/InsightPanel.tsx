@@ -2,85 +2,174 @@ import type {
   CoachingReport,
   CoachingInsight,
   CoachingPriority,
+  MetricEvaluation,
 } from "@/lib/coaching/types";
 
 /**
  * Presentation only: renders a {@link CoachingReport} produced by the coaching
  * engine. All coaching logic lives in `@/lib/coaching`; this component performs
- * no metric analysis of its own.
+ * no metric analysis of its own and holds no client-side state.
  */
+
+/** Qualitative label for the headline technique score. */
+function techniqueLabel(score: number): string {
+  if (score >= 90) return "Excellent";
+  if (score >= 80) return "Strong";
+  if (score >= 70) return "Developing";
+  return "Needs Work";
+}
+
+/** Badge colour by metric status (elite/good/watch/poor). */
+const STATUS_BADGE: Record<string, string> = {
+  elite: "bg-green-100 text-green-700",
+  good: "bg-emerald-100 text-emerald-700",
+  watch: "bg-amber-100 text-amber-700",
+  poor: "bg-red-100 text-red-700",
+};
+
+/** Badge colour by insight severity (excellent/good/watch/poor). */
+const SEVERITY_BADGE: Record<string, string> = {
+  excellent: "bg-green-100 text-green-700",
+  good: "bg-emerald-100 text-emerald-700",
+  watch: "bg-amber-100 text-amber-700",
+  poor: "bg-red-100 text-red-700",
+};
+
+/** Badge colour by priority impact (high/medium/low). */
+const IMPACT_BADGE: Record<string, string> = {
+  high: "bg-red-100 text-red-700",
+  medium: "bg-amber-100 text-amber-700",
+  low: "bg-gray-100 text-gray-600",
+};
+
+const BADGE_BASE = "rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide";
+const NEUTRAL_BADGE = "bg-gray-100 text-gray-600";
+
+function EvidenceList({ evidence }: { evidence: string[] }) {
+  if (evidence.length === 0) return null;
+  return (
+    <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-gray-400">
+      {evidence.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
 export default function InsightPanel({ report }: { report: CoachingReport }) {
   return (
-    <section className="mt-6 rounded border bg-gray-50 p-4">
-      <h2 className="mb-4 text-lg font-semibold text-lane">AVA Coaching Report</h2>
+    <section className="mt-6 space-y-6 rounded-lg border bg-gray-50 p-5">
+      <h2 className="text-xl font-bold text-lane">AVA Coaching Report</h2>
 
-      <div className="mb-6 rounded border bg-white p-4">
-        <p className="text-sm font-medium text-gray-500">Technique Score</p>
-        <p className="mt-1 text-3xl font-bold text-lane">{report.techniqueScore}</p>
+      {/* Technique score */}
+      <div className="rounded-lg border bg-white p-5 text-center shadow-sm">
+        <p className="text-sm font-medium uppercase tracking-wide text-gray-500">
+          Technique Score
+        </p>
+        <p className="mt-2 text-5xl font-bold text-lane">
+          {report.techniqueScore}
+          <span className="text-2xl font-semibold text-gray-400"> / 100</span>
+        </p>
+        <p className="mt-1 text-sm font-semibold text-gray-700">
+          {techniqueLabel(report.techniqueScore)}
+        </p>
       </div>
 
-      <div className="mb-6">
+      {/* Coach summary */}
+      <div className="rounded-lg border bg-white p-4 shadow-sm">
         <h3 className="mb-2 text-base font-semibold text-gray-800">Coach Summary</h3>
-        <p className="text-sm text-gray-600">{report.summary}</p>
+        <p className="text-sm leading-relaxed text-gray-600">{report.summary}</p>
       </div>
 
-      <div className="mb-6">
+      {/* Top priorities */}
+      <div>
         <h3 className="mb-2 text-base font-semibold text-gray-800">Top Priorities</h3>
         {report.priorities.length === 0 ? (
           <p className="text-sm text-gray-500">No urgent priorities found.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {report.priorities.map((priority: CoachingPriority) => (
-              <div key={priority.id} className="rounded border bg-white p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-gray-800">{priority.title}</p>
-                  <span className="rounded bg-gray-100 px-2 py-0.5 text-xs uppercase text-gray-600">
-                    {priority.priority}
+              <div key={priority.id} className="rounded-lg border bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-semibold text-gray-800">
+                    <span className="mr-2 text-gray-400">#{priority.priority}</span>
+                    {priority.title}
+                  </p>
+                  <span className={`${BADGE_BASE} ${IMPACT_BADGE[priority.impact] ?? NEUTRAL_BADGE}`}>
+                    {priority.impact} impact
                   </span>
                 </div>
                 <p className="mt-2 text-sm text-gray-600">
                   <span className="font-medium">Recommendation:</span> {priority.recommendation}
                 </p>
-                <p className="mt-1 text-sm text-gray-500">
-                  <span className="font-medium">Impact:</span> {priority.impact}
-                </p>
-                <ul className="mt-1 list-disc pl-5 text-xs text-gray-400">
-                  {priority.evidence.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
+                <EvidenceList evidence={priority.evidence} />
               </div>
             ))}
           </div>
         )}
       </div>
 
+      {/* Detailed coaching */}
       <div>
-        <h3 className="mb-2 text-base font-semibold text-gray-800">Detailed Insights</h3>
+        <h3 className="mb-2 text-base font-semibold text-gray-800">Detailed Coaching</h3>
         {report.insights.length === 0 ? (
           <p className="text-sm text-gray-500">No detailed insights were generated.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {report.insights.map((insight: CoachingInsight) => (
-              <div key={insight.id} className="rounded border bg-white p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-gray-800">{insight.title}</p>
-                  <span className="rounded bg-gray-100 px-2 py-0.5 text-xs uppercase text-gray-600">
+              <div key={insight.id} className="rounded-lg border bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-semibold text-gray-800">{insight.title}</p>
+                  <span className={`${BADGE_BASE} ${SEVERITY_BADGE[insight.severity] ?? NEUTRAL_BADGE}`}>
                     {insight.severity}
                   </span>
                 </div>
-                <p className="mt-1 text-xs uppercase tracking-wide text-gray-400">
+                <span className={`${BADGE_BASE} mt-2 inline-block ${NEUTRAL_BADGE}`}>
                   {insight.category}
-                </p>
-                <p className="mt-1 text-sm text-gray-500">{insight.explanation}</p>
+                </span>
+                <p className="mt-2 text-sm text-gray-600">{insight.explanation}</p>
                 <p className="mt-2 text-sm text-gray-600">
                   <span className="font-medium">Recommendation:</span> {insight.recommendation}
                 </p>
-                <ul className="mt-1 list-disc pl-5 text-xs text-gray-400">
-                  {insight.evidence.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
+                <EvidenceList evidence={insight.evidence} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Raw metric evaluations */}
+      <div>
+        <h3 className="mb-2 text-base font-semibold text-gray-800">Raw Metric Evaluations</h3>
+        {report.metricEvaluations.length === 0 ? (
+          <p className="text-sm text-gray-500">No metric evaluations available.</p>
+        ) : (
+          <div className="space-y-3">
+            {report.metricEvaluations.map((metric: MetricEvaluation) => (
+              <div key={metric.id} className="rounded-lg border bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-semibold text-gray-800">{metric.label}</p>
+                  <span className={`${BADGE_BASE} ${STATUS_BADGE[metric.status] ?? NEUTRAL_BADGE}`}>
+                    {metric.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-2xl font-bold text-lane">
+                  {metric.value}
+                  <span className="ml-1 text-sm font-medium text-gray-400">{metric.unit}</span>
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  <span className="font-medium">Target:</span> {metric.targetRange}
+                </p>
+                <p className="mt-2 text-sm text-gray-600">{metric.meaning}</p>
+                {metric.usedIn.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {metric.usedIn.map((use) => (
+                      <span key={use} className={`${BADGE_BASE} ${NEUTRAL_BADGE} normal-case`}>
+                        {use}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
