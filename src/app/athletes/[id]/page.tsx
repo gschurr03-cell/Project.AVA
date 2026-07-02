@@ -1,15 +1,21 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { buildAthleteHistory } from "@/lib/coaching/athlete";
 import { createClient } from "@/lib/supabase/server";
 import { sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
 import VideoUpload from "./VideoUpload";
 
-/**
- * Athlete detail page: shows the athlete, an upload control, and the list of
- * sprint sessions recorded for them. All reads are RLS-scoped to the signed-in
- * coach, so an athlete the coach doesn't own simply isn't found.
- */
+function formatScore(value: number | null) {
+  return value == null ? "—" : String(value);
+}
+
+function formatChange(value: number | null) {
+  if (value == null) return "No previous session";
+  if (value === 0) return "No change";
+  return `${value > 0 ? "+" : ""}${value} since last`;
+}
+
 export default async function AthletePage({
   params,
 }: {
@@ -37,12 +43,86 @@ export default async function AthletePage({
     .eq("athlete_id", athlete.id)
     .order("created_at", { ascending: false });
 
+  const { data: completedAnalyses } = await supabase
+    .from("analyses")
+    .select("id, metrics, created_at, sessions!inner(athlete_id)")
+    .eq("status", "complete")
+    .eq("sessions.athlete_id", athlete.id)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  const { summary: history } = buildAthleteHistory(
+    completedAnalyses ?? [],
+  );
+
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="mx-auto max-w-5xl p-8">
       <Link href="/dashboard" className="text-sm text-gray-500 hover:underline">
         ← Back to athletes
       </Link>
-      <h1 className="mb-6 mt-2 text-2xl font-bold text-lane">{athlete.full_name}</h1>
+
+      <div className="mb-6 mt-2">
+        <h1 className="text-3xl font-bold text-lane">{athlete.full_name}</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Athlete dashboard, session history, and progress tracking.
+        </p>
+      </div>
+
+      <section className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="rounded border bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Latest Score
+          </p>
+          <p className="mt-2 text-3xl font-bold text-lane">
+            {formatScore(history.latestTechniqueScore)}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">{formatChange(history.techniqueChange)}</p>
+        </div>
+
+        <div className="rounded border bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Average Score
+          </p>
+          <p className="mt-2 text-3xl font-bold text-gray-800">
+            {formatScore(history.averageTechniqueScore)}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">Last {history.totalSessions} analyzed</p>
+        </div>
+
+        <div className="rounded border bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Best Score
+          </p>
+          <p className="mt-2 text-3xl font-bold text-gray-800">
+            {formatScore(history.bestTechniqueScore)}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">Personal best analysis</p>
+        </div>
+
+        <div className="rounded border bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Sessions
+          </p>
+          <p className="mt-2 text-3xl font-bold text-gray-800">{sessions?.length ?? 0}</p>
+          <p className="mt-1 text-xs text-gray-500">Total uploaded</p>
+        </div>
+
+        <div className="rounded border bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Trend
+          </p>
+          <p className="mt-2 text-2xl font-bold text-gray-800">
+            {history.techniqueChange == null
+              ? "—"
+              : history.improving
+                ? "Improving"
+                : history.techniqueChange < 0
+                  ? "Declining"
+                  : "Stable"}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">Latest vs previous</p>
+        </div>
+      </section>
 
       <section className="mb-8 rounded border p-4">
         <h2 className="mb-3 text-lg font-semibold">Upload a sprint video</h2>
