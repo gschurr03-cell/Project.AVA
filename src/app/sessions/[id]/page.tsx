@@ -19,6 +19,7 @@ import VideoPlayer from "@/components/VideoPlayer";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
 import RecommendationsPanel from "./RecommendationsPanel";
+import CoachNotesForm from "./CoachNotesForm";
 
 /** Map validated analysis metrics onto the coaching engine's metric keys. */
 function toCoachingMetrics(data: AnalysisMetrics) {
@@ -54,7 +55,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, original_filename, video_path, status, created_at, athlete_id, duration_s, width, height, fps, codec, size_bytes, athletes(full_name)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, duration_s, width, height, fps, codec, size_bytes, athletes(full_name)",
     )
     .eq("id", id)
     .single();
@@ -230,6 +231,7 @@ export default async function SessionPage({
                 {recommendations && (
                   <RecommendationsPanel recommendations={recommendations} />
                 )}
+                <CoachNotesForm sessionId={session.id} defaultNotes={session.notes} />
               </>
             ) : (
               <p className="text-sm text-gray-500">

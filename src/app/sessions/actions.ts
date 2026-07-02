@@ -31,6 +31,30 @@ export async function renameSession(formData: FormData) {
 }
 
 /**
+ * Save the coach's freeform note for a session. RLS scopes the update to
+ * sessions whose athlete the signed-in coach owns; an empty note is stored as
+ * null. Mirrors renameSession.
+ */
+export async function updateSessionNotes(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const notes = String(formData.get("notes") ?? "").trim();
+  if (!id) redirect("/dashboard");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sessions")
+    .update({ notes: notes.slice(0, 1000) || null })
+    .eq("id", id);
+
+  if (error) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath(`/sessions/${id}`);
+  redirect(`/sessions/${id}`);
+}
+
+/**
  * Delete a session and its uploaded video. We fetch the session first (RLS-
  * scoped) to learn its storage path and athlete, remove the storage object,
  * then delete the row. Both the storage and row operations are independently
