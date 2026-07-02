@@ -11,6 +11,7 @@ import {
   STATUS_LABELS,
 } from "@/lib/sessions";
 import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
+import { generateCoachingReport } from "@/lib/coaching/report";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
 
@@ -63,6 +64,21 @@ export default async function SessionPage({
   // a graceful fallback rather than crashing the page.
   const parsedMetrics =
     analysis?.status === "complete" ? analysisMetricsSchema.safeParse(analysis.metrics) : null;
+
+  // Coaching insights now come from the reusable engine, not the panel. Map the
+  // validated analysis metrics onto the coaching engine's metric keys.
+  const coachingReport = parsedMetrics?.success
+    ? generateCoachingReport(
+        {
+          stepFrequency: parsedMetrics.data.strideFrequencyHz,
+          groundContactTime: parsedMetrics.data.groundContactTimeMs,
+          flightTime: parsedMetrics.data.flightTimeMs,
+          strideLength: parsedMetrics.data.avgStrideLengthM,
+        },
+        92, // temporary technique score until the scoring model lands
+        analysis?.id,
+      )
+    : null;
 
   return (
     <main className="mx-auto max-w-2xl p-8">
@@ -157,9 +173,9 @@ export default async function SessionPage({
             </p>
             {parsedMetrics?.success ? (
               <>
-  <MetricsPanel metrics={parsedMetrics.data} />
-  <InsightPanel metrics={parsedMetrics.data} />
-  </>
+                <MetricsPanel metrics={parsedMetrics.data} />
+                {coachingReport && <InsightPanel report={coachingReport} />}
+              </>
             ) : (
               <p className="text-sm text-gray-500">
                 Metrics are unavailable or could not be read for this analysis.
