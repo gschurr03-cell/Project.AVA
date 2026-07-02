@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { analysisMetricsSchema } from "@/lib/biomechanics/types";
+import { analysisMetricsSchema, type AnalysisMetrics } from "@/lib/biomechanics/types";
 import {
   ANALYSIS_STATUS_LABELS,
   formatBytes,
@@ -12,8 +12,20 @@ import {
 } from "@/lib/sessions";
 import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
 import { generateCoachingReport } from "@/lib/coaching/report";
+import { compareCoachingReports } from "@/lib/coaching/comparison";
+import type { CoachingComparisonReport } from "@/lib/coaching/types";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
+
+/** Map validated analysis metrics onto the coaching engine's metric keys. */
+function toCoachingMetrics(data: AnalysisMetrics) {
+  return {
+    stepFrequency: data.strideFrequencyHz,
+    groundContactTime: data.groundContactTimeMs,
+    flightTime: data.flightTimeMs,
+    strideLength: data.avgStrideLengthM,
+  };
+}
 
 /**
  * Session detail page. Shows the session's metadata and lets the coach rename
@@ -65,20 +77,36 @@ export default async function SessionPage({
   const parsedMetrics =
     analysis?.status === "complete" ? analysisMetricsSchema.safeParse(analysis.metrics) : null;
 
-  // Coaching insights now come from the reusable engine, not the panel. Map the
-  // validated analysis metrics onto the coaching engine's metric keys.
+  // Coaching insights now come from the reusable engine, not the panel.
   const coachingReport = parsedMetrics?.success
-    ? generateCoachingReport(
-        {
-          stepFrequency: parsedMetrics.data.strideFrequencyHz,
-          groundContactTime: parsedMetrics.data.groundContactTimeMs,
-          flightTime: parsedMetrics.data.flightTimeMs,
-          strideLength: parsedMetrics.data.avgStrideLengthM,
-        },
-        92, // temporary technique score until the scoring model lands
-        analysis?.id,
-      )
+    ? generateCoachingReport(toCoachingMetrics(parsedMetrics.data), analysis?.id)
     : null;
+
+  // Progress tracking: compare against this athlete's previous completed
+  // analysis (any earlier session). Read-only, non-mutating, RLS-scoped.
+  let comparisonReport: CoachingComparisonReport | null = null;
+  if (coachingReport && analysis) {
+    const { data: previousAnalysis } = await supabase
+      .from("analyses")
+      .select("id, metrics, created_at, sessions!inner(athlete_id)")
+      .eq("sessions.athlete_id", session.athlete_id)
+      .eq("status", "complete")
+      .lt("created_at", analysis.created_at)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (previousAnalysis) {
+      const parsedPrevious = analysisMetricsSchema.safeParse(previousAnalysis.metrics);
+      if (parsedPrevious.success) {
+        const previousReport = generateCoachingReport(
+          toCoachingMetrics(parsedPrevious.data),
+          previousAnalysis.id,
+        );
+        comparisonReport = compareCoachingReports(coachingReport, previousReport);
+      }
+    }
+  }
 
   return (
     <main className="mx-auto max-w-2xl p-8">
@@ -174,7 +202,9 @@ export default async function SessionPage({
             {parsedMetrics?.success ? (
               <>
                 <MetricsPanel metrics={parsedMetrics.data} />
-                {coachingReport && <InsightPanel report={coachingReport} />}
+                {coachingReport && (
+                  <InsightPanel report={coachingReport} comparison={comparisonReport} />
+                )}
               </>
             ) : (
               <p className="text-sm text-gray-500">

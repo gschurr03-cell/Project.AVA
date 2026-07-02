@@ -1,8 +1,11 @@
 import type {
   CoachingReport,
+  CoachingComparisonReport,
   CoachingInsight,
   CoachingPriority,
+  MetricComparison,
   MetricEvaluation,
+  TechniqueScoreBreakdownItem,
 } from "@/lib/coaching/types";
 
 /**
@@ -10,14 +13,6 @@ import type {
  * engine. All coaching logic lives in `@/lib/coaching`; this component performs
  * no metric analysis of its own and holds no client-side state.
  */
-
-/** Qualitative label for the headline technique score. */
-function techniqueLabel(score: number): string {
-  if (score >= 90) return "Excellent";
-  if (score >= 80) return "Strong";
-  if (score >= 70) return "Developing";
-  return "Needs Work";
-}
 
 /** Badge colour by metric status (elite/good/watch/poor). */
 const STATUS_BADGE: Record<string, string> = {
@@ -42,8 +37,26 @@ const IMPACT_BADGE: Record<string, string> = {
   low: "bg-gray-100 text-gray-600",
 };
 
+/** Badge colour by comparison direction (improved/declined/unchanged). */
+const DIRECTION_BADGE: Record<string, string> = {
+  improved: "bg-green-100 text-green-700",
+  declined: "bg-red-100 text-red-700",
+  unchanged: "bg-gray-100 text-gray-600",
+};
+
+/** Human status text for a technique-score trend. */
+const SCORE_STATUS_TEXT: Record<string, string> = {
+  improved: "Improving",
+  declined: "Needs attention",
+  unchanged: "Stable",
+};
+
 const BADGE_BASE = "rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide";
 const NEUTRAL_BADGE = "bg-gray-100 text-gray-600";
+
+const formatNum = (n: number): string =>
+  Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+const formatDelta = (n: number): string => `${n > 0 ? "+" : ""}${formatNum(n)}`;
 
 function EvidenceList({ evidence }: { evidence: string[] }) {
   if (evidence.length === 0) return null;
@@ -56,7 +69,13 @@ function EvidenceList({ evidence }: { evidence: string[] }) {
   );
 }
 
-export default function InsightPanel({ report }: { report: CoachingReport }) {
+export default function InsightPanel({
+  report,
+  comparison,
+}: {
+  report: CoachingReport;
+  comparison?: CoachingComparisonReport | null;
+}) {
   return (
     <section className="mt-6 space-y-6 rounded-lg border bg-gray-50 p-5">
       <h2 className="text-xl font-bold text-lane">AVA Coaching Report</h2>
@@ -70,10 +89,85 @@ export default function InsightPanel({ report }: { report: CoachingReport }) {
           {report.techniqueScore}
           <span className="text-2xl font-semibold text-gray-400"> / 100</span>
         </p>
-        <p className="mt-1 text-sm font-semibold text-gray-700">
-          {techniqueLabel(report.techniqueScore)}
-        </p>
+        <p className="mt-1 text-sm font-semibold text-gray-700">{report.techniqueLabel}</p>
       </div>
+
+      {/* Score breakdown */}
+      {report.techniqueBreakdown.length > 0 && (
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <h3 className="mb-2 text-base font-semibold text-gray-800">Score Breakdown</h3>
+          <div className="space-y-2">
+            {report.techniqueBreakdown.map((item: TechniqueScoreBreakdownItem) => (
+              <div key={item.metricId} className="rounded border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium text-gray-800">{item.label}</p>
+                  <div className="flex items-center gap-2">
+                    <span className={`${BADGE_BASE} ${STATUS_BADGE[item.status] ?? NEUTRAL_BADGE}`}>
+                      {item.status}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-700">
+                      {item.points} / {item.maxPoints}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{item.explanation}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Progress since last session */}
+      {comparison && (
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <h3 className="mb-3 text-base font-semibold text-gray-800">
+            Progress Since Last Session
+          </h3>
+
+          <div className="rounded border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">Technique Score:</span>{" "}
+                {comparison.techniqueScore.previousScore} →{" "}
+                {comparison.techniqueScore.currentScore}{" "}
+                <span className="text-gray-500">
+                  ({formatDelta(comparison.techniqueScore.delta)})
+                </span>
+              </p>
+              <span
+                className={`${BADGE_BASE} ${DIRECTION_BADGE[comparison.techniqueScore.direction] ?? NEUTRAL_BADGE}`}
+              >
+                {SCORE_STATUS_TEXT[comparison.techniqueScore.direction] ??
+                  comparison.techniqueScore.direction}
+              </span>
+            </div>
+          </div>
+
+          {comparison.metrics.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {comparison.metrics.map((metric: MetricComparison) => (
+                <div key={metric.metricId} className="rounded border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-medium">{metric.label}:</span>{" "}
+                      {formatNum(metric.previousValue)} → {formatNum(metric.currentValue)}{" "}
+                      {metric.unit}{" "}
+                      <span className="text-gray-500">
+                        ({formatDelta(metric.delta)} {metric.unit})
+                      </span>
+                    </p>
+                    <span
+                      className={`${BADGE_BASE} ${DIRECTION_BADGE[metric.direction] ?? NEUTRAL_BADGE}`}
+                    >
+                      {metric.direction}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Coach summary */}
       <div className="rounded-lg border bg-white p-4 shadow-sm">
