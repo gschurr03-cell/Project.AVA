@@ -62,3 +62,6 @@ yarn-error.log*
 
 # auto-downloaded mediapipe pose model
 /src/lib/biomechanics/mediapipe/runtime/models/
+
+# Local runtime logs
+worker.log

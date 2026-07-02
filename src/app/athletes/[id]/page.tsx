@@ -55,6 +55,15 @@ export default async function AthletePage({
     completedAnalyses ?? [],
   );
 
+  const trend =
+    history.techniqueChange == null
+      ? "—"
+      : history.improving
+        ? "Improving"
+        : history.techniqueChange < 0
+          ? "Declining"
+          : "Stable";
+
   return (
     <main className="mx-auto max-w-5xl p-8">
       <Link href="/dashboard" className="text-sm text-gray-500 hover:underline">
@@ -122,6 +131,59 @@ export default async function AthletePage({
           </p>
           <p className="mt-1 text-xs text-gray-500">Latest vs previous</p>
         </div>
+      </section>
+
+      <section className="mb-8 rounded border bg-white p-4 shadow-sm">
+        <h2 className="mb-3 text-lg font-semibold">Recent Progress</h2>
+        {history.totalSessions > 0 ? (
+          <ul className="divide-y">
+            <li className="flex items-center justify-between py-2">
+              <span className="flex items-center gap-2 text-sm text-gray-700">
+                <span className="text-green-600">✓</span>
+                Latest technique score
+              </span>
+              <span className="text-sm font-semibold text-gray-800">
+                {formatScore(history.latestTechniqueScore)}
+              </span>
+            </li>
+            <li className="flex items-center justify-between py-2">
+              <span className="flex items-center gap-2 text-sm text-gray-700">
+                <span className="text-green-600">✓</span>
+                Average technique score
+              </span>
+              <span className="text-sm font-semibold text-gray-800">
+                {formatScore(history.averageTechniqueScore)}
+              </span>
+            </li>
+            <li className="flex items-center justify-between py-2">
+              <span className="flex items-center gap-2 text-sm text-gray-700">
+                <span className="text-green-600">✓</span>
+                Best technique score
+              </span>
+              <span className="text-sm font-semibold text-gray-800">
+                {formatScore(history.bestTechniqueScore)}
+              </span>
+            </li>
+            <li className="flex items-center justify-between py-2">
+              <span className="flex items-center gap-2 text-sm text-gray-700">
+                <span className="text-green-600">✓</span>
+                Sessions analyzed
+              </span>
+              <span className="text-sm font-semibold text-gray-800">{history.totalSessions}</span>
+            </li>
+            <li className="flex items-center justify-between py-2">
+              <span className="flex items-center gap-2 text-sm text-gray-700">
+                <span className="text-green-600">✓</span>
+                Current trend
+              </span>
+              <span className="text-sm font-semibold text-gray-800">{trend}</span>
+            </li>
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-500">
+            No analyzed sessions yet. Upload and analyze a sprint to start tracking progress.
+          </p>
+        )}
       </section>
 
       <section className="mb-8 rounded border p-4">
