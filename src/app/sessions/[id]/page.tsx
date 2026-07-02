@@ -12,6 +12,7 @@ import {
 } from "@/lib/sessions";
 import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
 import MetricsPanel from "./MetricsPanel";
+import InsightPanel from "./InsightPanel";
 
 /**
  * Session detail page. Shows the session's metadata and lets the coach rename
@@ -155,7 +156,10 @@ export default async function SessionPage({
               {analysis.completed_at ? new Date(analysis.completed_at).toLocaleString() : ""}.
             </p>
             {parsedMetrics?.success ? (
-              <MetricsPanel metrics={parsedMetrics.data} />
+              <>
+  <MetricsPanel metrics={parsedMetrics.data} />
+  <InsightPanel metrics={parsedMetrics.data} />
+  </>
             ) : (
               <p className="text-sm text-gray-500">
                 Metrics are unavailable or could not be read for this analysis.
