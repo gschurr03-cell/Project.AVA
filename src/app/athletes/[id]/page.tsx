@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { buildAthleteHistory } from "@/lib/coaching/athlete";
+import { buildAthleteTrends } from "@/lib/coaching/trends";
 import { createClient } from "@/lib/supabase/server";
 import { sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
 import VideoUpload from "./VideoUpload";
@@ -14,6 +15,30 @@ function formatChange(value: number | null) {
   if (value == null) return "No previous session";
   if (value === 0) return "No change";
   return `${value > 0 ? "+" : ""}${value} since last`;
+}
+
+function formatTrendNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+}
+
+/** Text-only trend card: latest value, change first→latest, and point count. */
+function TrendCard({ title, values, unit }: { title: string; values: number[]; unit?: string }) {
+  const latest = values[values.length - 1];
+  const change = latest - values[0];
+  const changeText = `${change > 0 ? "+" : ""}${formatTrendNumber(change)}`;
+
+  return (
+    <div className="rounded border bg-white p-4 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+      <p className="mt-2 text-3xl font-bold text-gray-800">
+        {formatTrendNumber(latest)}
+        {unit ? <span className="ml-1 text-base font-medium text-gray-400">{unit}</span> : null}
+      </p>
+      <p className="mt-1 text-xs text-gray-500">
+        {changeText} from first · {values.length} points
+      </p>
+    </div>
+  );
 }
 
 export default async function AthletePage({
@@ -54,6 +79,8 @@ export default async function AthletePage({
   const { summary: history } = buildAthleteHistory(
     completedAnalyses ?? [],
   );
+
+  const trends = buildAthleteTrends(completedAnalyses ?? []);
 
   const trend =
     history.techniqueChange == null
@@ -182,6 +209,22 @@ export default async function AthletePage({
         ) : (
           <p className="text-sm text-gray-500">
             No analyzed sessions yet. Upload and analyze a sprint to start tracking progress.
+          </p>
+        )}
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-3 text-lg font-semibold">Performance Trends</h2>
+        {trends.techniqueScores.length >= 2 ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <TrendCard title="Technique Score" values={trends.techniqueScores} />
+            <TrendCard title="Ground Contact" values={trends.groundContactTimes} unit="ms" />
+            <TrendCard title="Flight Time" values={trends.flightTimes} unit="ms" />
+            <TrendCard title="Stride Frequency" values={trends.strideFrequencies} unit="Hz" />
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">
+            Analyze at least two sessions to unlock trend tracking.
           </p>
         )}
       </section>
