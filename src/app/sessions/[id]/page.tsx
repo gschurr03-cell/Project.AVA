@@ -16,6 +16,7 @@ import { compareCoachingReports } from "@/lib/coaching/comparison";
 import { buildRecommendations } from "@/lib/coaching/recommendations";
 import type { CoachingComparisonReport } from "@/lib/coaching/types";
 import VideoPlayer from "@/components/VideoPlayer";
+import { buildTimelineMarkersFromMetrics } from "@/lib/biomechanics/video/timelineMarkers";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
 import RecommendationsPanel from "./RecommendationsPanel";
@@ -96,6 +97,12 @@ export default async function SessionPage({
     ? buildRecommendations(toCoachingMetrics(parsedMetrics.data))
     : null;
 
+  // Step/contact markers for the video timeline. Empty until metrics carry
+  // per-event timestamps; built here so the prop path is ready.
+  const timelineMarkers = parsedMetrics?.success
+    ? buildTimelineMarkersFromMetrics(parsedMetrics.data)
+    : [];
+
   // Progress tracking: compare against this athlete's previous completed
   // analysis (any earlier session). Read-only, non-mutating, RLS-scoped.
   let comparisonReport: CoachingComparisonReport | null = null;
@@ -175,7 +182,7 @@ export default async function SessionPage({
       <section className="mb-8 rounded border p-4">
         <h2 className="mb-3 text-lg font-semibold">Video</h2>
         {signedVideo?.signedUrl ? (
-          <VideoPlayer videoUrl={signedVideo?.signedUrl ?? ""} />
+          <VideoPlayer videoUrl={signedVideo?.signedUrl ?? ""} markers={timelineMarkers} />
         ) : (
           <p className="text-sm text-gray-500">No uploaded video available.</p>
         )}

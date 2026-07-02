@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 
-import VideoTimeline from "./VideoTimeline";
+import VideoTimeline, { type VideoTimelineMarker } from "./VideoTimeline";
 
 /** Format a number of seconds as m:ss. */
 function formatTime(seconds: number): string {
@@ -41,7 +41,13 @@ const MutedIcon = (
  * no data fetching, coaching logic, metrics, or overlays — a foundation to build
  * synchronized biomechanics playback on later.
  */
-export default function VideoPlayer({ videoUrl }: { videoUrl: string }) {
+export default function VideoPlayer({
+  videoUrl,
+  markers = [],
+}: {
+  videoUrl: string;
+  markers?: VideoTimelineMarker[];
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -146,17 +152,7 @@ export default function VideoPlayer({ videoUrl }: { videoUrl: string }) {
       </div>
 
       <div className="bg-gray-900 px-4 pb-4">
-        <VideoTimeline
-          duration={duration}
-          markers={[
-            duration * 0.12,
-            duration * 0.27,
-            duration * 0.43,
-            duration * 0.59,
-            duration * 0.76,
-            duration * 0.91,
-          ]}
-        />
+        <VideoTimeline duration={duration} markers={markers} />
       </div>
     </div>
   );
