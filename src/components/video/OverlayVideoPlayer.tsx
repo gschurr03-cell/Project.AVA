@@ -10,6 +10,7 @@ import OverlaySurface, {
   type SurfaceState,
 } from "./OverlaySurface";
 import PlayerControls from "./PlayerControls";
+import TelestrationCanvas from "./TelestrationCanvas";
 
 type Props = {
   videoUrl: string;
@@ -61,6 +62,7 @@ export default function OverlayVideoPlayer({ videoUrl, frames }: Props) {
       videoUrl={videoUrl}
       frames={frames}
       onState={setState}
+      overlaySlot={<TelestrationCanvas />}
       controlsSlot={
         <PlayerControls
           hasFrames={hasFrames}

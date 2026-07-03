@@ -92,6 +92,9 @@ type Props = {
   label?: string;
   /** Rendered between the video and the overlay toggles (single-player controls). */
   controlsSlot?: ReactNode;
+  /** Extra layer(s) rendered inside the video container, above the pose overlay
+   * (e.g. the telestration canvas). Absolutely positioned by the child. */
+  overlaySlot?: ReactNode;
   /** Called whenever the underlying video clock/state changes. */
   onState?: (state: SurfaceState) => void;
 };
@@ -103,7 +106,7 @@ type Props = {
  * player can share one set of transport controls across one or two surfaces.
  */
 const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlaySurface(
-  { videoUrl, frames, label, controlsSlot, onState },
+  { videoUrl, frames, label, controlsSlot, overlaySlot, onState },
   ref,
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -269,6 +272,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           hoveredJoint={hoveredJoint}
           selectedJoint={selectedJoint}
         />
+        {overlaySlot}
       </div>
 
       {controlsSlot}
