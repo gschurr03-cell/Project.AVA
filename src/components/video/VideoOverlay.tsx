@@ -13,10 +13,17 @@ import {
 export type OverlayToggles = {
   skeleton: boolean;
   angles: boolean;
+  arms: boolean;
   comTrail: boolean;
   velocity: boolean;
   footLabels: boolean;
 };
+
+/** Arm chains highlighted by the arm layer: [shoulder, elbow, wrist] per side. */
+const armChains = [
+  ["leftShoulder", "leftElbow", "leftWrist"],
+  ["rightShoulder", "rightElbow", "rightWrist"],
+] as const;
 
 type Props = {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -58,8 +65,59 @@ const COLORS = {
   flight: "#cbd5e1", // slate-300
   hover: "#fbbf24", // amber-400
   selected: "#22d3ee", // cyan-400
+  arm: "#a78bfa", // violet-400 — upper-arm/forearm segments
+  armAngle: "#c4b5fd", // violet-300 — arm angle labels
   labelBg: "rgba(15, 23, 42, 0.72)",
 } as const;
+
+/** Axis-aligned box a pill label occupies, used to keep labels from overlapping. */
+type LabelBox = { x: number; y: number; w: number; h: number };
+
+/** The box {@link drawLabel} paints for `text` anchored at (x, y). */
+function labelBox(ctx: CanvasRenderingContext2D, text: string, x: number, y: number): LabelBox {
+  const padX = 5;
+  const padY = 3;
+  const h = 16;
+  const w = ctx.measureText(text).width;
+  return { x: x - padX, y: y - h / 2 - padY, w: w + padX * 2, h: h + padY * 2 };
+}
+
+function boxesOverlap(a: LabelBox, b: LabelBox): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/**
+ * Draw a label near (x, y), nudging it vertically until it clears every box in
+ * `placed`, then record its box. Keeps live angle labels readable and
+ * non-overlapping while staying attached to their joint. Mutates `placed`.
+ */
+function placeLabel(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  color: string,
+  placed: LabelBox[],
+) {
+  let box = labelBox(ctx, text, x, y);
+  if (placed.some((p) => boxesOverlap(box, p))) {
+    const step = box.h + 2;
+    const y0 = y;
+    // Try growing offsets, alternating down/up (1,-1,2,-2,…) so a crowded label
+    // settles as close to its anchor as possible instead of drifting one way.
+    for (let i = 1; i <= 8; i++) {
+      const offset = Math.ceil(i / 2) * step * (i % 2 === 1 ? 1 : -1);
+      const candidate = labelBox(ctx, text, x, y0 + offset);
+      if (i === 8 || !placed.some((p) => boxesOverlap(candidate, p))) {
+        y = y0 + offset;
+        box = candidate;
+        break;
+      }
+    }
+  }
+  drawLabel(ctx, text, x, y, color);
+  placed.push(box);
+}
 
 /** Draw a small pill-backed label so text stays readable over any footage. */
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string) {
@@ -192,6 +250,48 @@ export default function VideoOverlay({
         }
       }
 
+      // --- Arm & shoulder layer (Day 54): emphasize upper-arm + forearm
+      // segments and the shoulder line in a distinct colour, on top of the base
+      // skeleton, so arm drive reads clearly during playback. Angle labels for
+      // the arms are drawn later, alongside the other angle labels. ---
+      if (show.arms) {
+        // Shoulder line, then each arm's upper-arm + forearm segments.
+        const armSegments: [string, string][] = [["leftShoulder", "rightShoulder"]];
+        for (const [shoulder, elbow, wrist] of armChains) {
+          armSegments.push([shoulder, elbow], [elbow, wrist]);
+        }
+
+        ctx.strokeStyle = COLORS.arm;
+        ctx.lineWidth = 4;
+        for (const [aName, bName] of armSegments) {
+          const a = frame.landmarks[aName];
+          const b = frame.landmarks[bName];
+          if (!a || !b) continue;
+          const ap = project(a);
+          const bp = project(b);
+          ctx.beginPath();
+          ctx.moveTo(ap.x, ap.y);
+          ctx.lineTo(bp.x, bp.y);
+          ctx.stroke();
+        }
+
+        // Emphasized joints at shoulders, elbows, and wrists.
+        ctx.lineWidth = 2;
+        for (const [shoulder, elbow, wrist] of armChains) {
+          for (const name of [shoulder, elbow, wrist]) {
+            const pt = frame.landmarks[name];
+            if (!pt) continue;
+            const p = project(pt);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = COLORS.jointFill;
+            ctx.fill();
+            ctx.strokeStyle = COLORS.arm;
+            ctx.stroke();
+          }
+        }
+      }
+
       // --- Hover / selection markers (drawn regardless of the skeleton toggle
       // so the inspected joint stays visible even with the skeleton hidden). ---
       const drawMarker = (name: string, color: string, radius: number) => {
@@ -278,7 +378,12 @@ export default function VideoOverlay({
         }
       }
 
-      // --- Joint angle labels ---
+      // --- Angle labels (lower body + arms) ---
+      // Shared registry so arm labels can avoid overlapping the lower-body ones.
+      // Lower-body labels keep their original fixed positions; only the newer arm
+      // labels are nudged to stay readable.
+      const placedLabels: LabelBox[] = [];
+
       if (show.angles) {
         const angleLabels = [
           ["leftKnee", frame.angles.leftKnee],
@@ -293,7 +398,27 @@ export default function VideoOverlay({
           const point = frame.landmarks[joint];
           if (!point || value == null) continue;
           const p = project(point);
-          drawLabel(ctx, `${value}°`, p.x + 10, p.y - 10, COLORS.angle);
+          const text = `${value}°`;
+          drawLabel(ctx, text, p.x + 10, p.y - 10, COLORS.angle);
+          placedLabels.push(labelBox(ctx, text, p.x + 10, p.y - 10));
+        }
+      }
+
+      // Elbow + shoulder angles, part of the arm layer. Placed with overlap
+      // avoidance so both arms' labels stay legible even when they cross.
+      if (show.arms) {
+        const armAngleLabels = [
+          ["leftElbow", frame.angles.leftElbow],
+          ["rightElbow", frame.angles.rightElbow],
+          ["leftShoulder", frame.angles.leftShoulder],
+          ["rightShoulder", frame.angles.rightShoulder],
+        ] as const;
+
+        for (const [joint, value] of armAngleLabels) {
+          const point = frame.landmarks[joint];
+          if (!point || value == null) continue;
+          const p = project(point);
+          placeLabel(ctx, `${value}°`, p.x + 10, p.y - 10, COLORS.armAngle, placedLabels);
         }
       }
 

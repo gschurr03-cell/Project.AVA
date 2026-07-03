@@ -29,6 +29,11 @@ const MP_INDEX_TO_JOINT: ReadonlyArray<readonly [number, JointName]> = [
   [0, "nose"],
   [11, "left_shoulder"],
   [12, "right_shoulder"],
+  // Upper limbs (Day 54) — powers the arm/shoulder overlay layer.
+  [13, "left_elbow"],
+  [14, "right_elbow"],
+  [15, "left_wrist"],
+  [16, "right_wrist"],
   [23, "left_hip"],
   [24, "right_hip"],
   [25, "left_knee"],

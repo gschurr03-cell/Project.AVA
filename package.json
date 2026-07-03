@@ -19,6 +19,7 @@
     "strides:sanity": "node scripts/strides-sanity.mjs",
     "angles:sanity": "node scripts/angles-sanity.mjs",
     "analysis:sanity": "node scripts/analysis-sanity.mjs",
+    "focus:sanity": "node scripts/focus-sanity.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

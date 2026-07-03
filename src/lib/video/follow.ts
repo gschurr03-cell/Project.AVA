@@ -1,0 +1,131 @@
+/**
+ * Athlete Focus Zoom (Day 55) — the math for keeping the athlete centered.
+ *
+ * Given a frame's pose landmarks, we derive a "follow box": a normalized centre
+ * (cx, cy) ∈ [0,1] in source-video space and a uniform on-screen `scale`. The
+ * overlay surface applies this as a CSS transform to a wrapper holding *both* the
+ * video and the pose canvas, so the picture zooms/pans while the overlay stays
+ * perfectly aligned (they share one transformed coordinate space).
+ *
+ * Pure and framework-free: no I/O, no DOM. This is a presentation concern only —
+ * nothing here touches biomechanics. Landmarks are consumed read-only.
+ */
+
+import type { OverlayFrame, OverlayPoint } from "./overlay";
+
+/** A camera state: where to centre (normalized) and how far to zoom. */
+export interface FollowBox {
+  /** Normalized horizontal centre in source space, 0 = left … 1 = right. */
+  cx: number;
+  /** Normalized vertical centre in source space, 0 = top … 1 = bottom. */
+  cy: number;
+  /** Uniform zoom; 1 = whole frame, higher = tighter. Never below 1. */
+  scale: number;
+}
+
+/** Tunables for how tightly and how far the camera follows the athlete. */
+export interface FollowConfig {
+  /** Extra margin added around the athlete, as a fraction of the bbox per side. */
+  padding: number;
+  /** Hard cap on zoom so a distant athlete never balloons to pixels. */
+  maxScale: number;
+  /** Minimum landmark visibility to include a point in the bounding box. */
+  minVisibility: number;
+  /** Require at least this many visible landmarks before trusting the box. */
+  minLandmarks: number;
+}
+
+export const DEFAULT_FOLLOW_CONFIG: FollowConfig = {
+  padding: 0.25,
+  maxScale: 2.5,
+  minVisibility: 0.3,
+  minLandmarks: 4,
+};
+
+/** The neutral camera: whole frame, centred, no zoom. */
+export const IDENTITY_FOLLOW: FollowBox = { cx: 0.5, cy: 0.5, scale: 1 };
+
+const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/**
+ * Clamp the centre so the zoomed viewport never extends past the video edges
+ * (no black bars from over-panning). At scale 1 the centre is pinned to 0.5.
+ */
+export function clampFollow(box: FollowBox): FollowBox {
+  const scale = Math.max(1, box.scale);
+  const half = 0.5 / scale; // half the visible window, in normalized units
+  return {
+    scale,
+    cx: Math.min(1 - half, Math.max(half, box.cx)),
+    cy: Math.min(1 - half, Math.max(half, box.cy)),
+  };
+}
+
+/**
+ * Compute the target follow box for a frame, or `null` when too few landmarks
+ * are tracked to trust the athlete's position (caller should coast on its last
+ * box). The box is padded, zoom-capped, and edge-clamped.
+ */
+export function computeFollowTarget(
+  frame: OverlayFrame,
+  config: FollowConfig = DEFAULT_FOLLOW_CONFIG,
+): FollowBox | null {
+  const points = Object.values(frame.landmarks).filter(
+    (p): p is OverlayPoint => !!p && (p.visibility ?? 1) >= config.minVisibility,
+  );
+  if (points.length < config.minLandmarks) return null;
+
+  let minX = 1;
+  let minY = 1;
+  let maxX = 0;
+  let maxY = 0;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+
+  // Pad the box by `padding` of its size on every side.
+  const grow = 1 + config.padding * 2;
+  const boxW = Math.max((maxX - minX) * grow, 1e-3);
+  const boxH = Math.max((maxY - minY) * grow, 1e-3);
+
+  // Uniform scale that fits the padded box inside the frame (contain), so the
+  // athlete is never cropped; capped and floored to [1, maxScale].
+  const scale = Math.max(1, Math.min(config.maxScale, Math.min(1 / boxW, 1 / boxH)));
+
+  return clampFollow({ cx, cy, scale });
+}
+
+/** Exponentially ease `current` toward `target` (per-frame smoothing, alpha ∈ (0,1]). */
+export function smoothFollow(current: FollowBox, target: FollowBox, alpha: number): FollowBox {
+  return {
+    cx: lerp(current.cx, target.cx, alpha),
+    cy: lerp(current.cy, target.cy, alpha),
+    scale: lerp(current.scale, target.scale, alpha),
+  };
+}
+
+/**
+ * CSS `transform` value that zooms into the follow box. Pairs with
+ * `transform-origin: 0 0`; the `translate` percentages are relative to the
+ * wrapper's own (untransformed) size, so no pixel dimensions are needed.
+ */
+export function followTransform(box: FollowBox): string {
+  const tx = (0.5 - box.scale * box.cx) * 100;
+  const ty = (0.5 - box.scale * box.cy) * 100;
+  return `translate(${tx}%, ${ty}%) scale(${box.scale})`;
+}
+
+/** True when two boxes are close enough that re-rendering the transform is moot. */
+export function followsDiffer(a: FollowBox, b: FollowBox, epsilon = 1e-4): boolean {
+  return (
+    Math.abs(a.cx - b.cx) > epsilon ||
+    Math.abs(a.cy - b.cy) > epsilon ||
+    Math.abs(a.scale - b.scale) > epsilon
+  );
+}

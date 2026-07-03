@@ -59,30 +59,51 @@ export type Database = {
           created_at: string
           date_of_birth: string | null
           full_name: string
+          goal_100m: number | null
+          goal_200m: number | null
+          goal_60m: number | null
           height_cm: number | null
           id: string
-          mass_kg: number | null
+          leg_length_cm: number | null
+          personal_best_100m: number | null
+          personal_best_200m: number | null
+          personal_best_60m: number | null
           sex: string | null
+          weight_kg: number | null
         }
         Insert: {
           coach_id: string
           created_at?: string
           date_of_birth?: string | null
           full_name: string
+          goal_100m?: number | null
+          goal_200m?: number | null
+          goal_60m?: number | null
           height_cm?: number | null
           id?: string
-          mass_kg?: number | null
+          leg_length_cm?: number | null
+          personal_best_100m?: number | null
+          personal_best_200m?: number | null
+          personal_best_60m?: number | null
           sex?: string | null
+          weight_kg?: number | null
         }
         Update: {
           coach_id?: string
           created_at?: string
           date_of_birth?: string | null
           full_name?: string
+          goal_100m?: number | null
+          goal_200m?: number | null
+          goal_60m?: number | null
           height_cm?: number | null
           id?: string
-          mass_kg?: number | null
+          leg_length_cm?: number | null
+          personal_best_100m?: number | null
+          personal_best_200m?: number | null
+          personal_best_60m?: number | null
           sex?: string | null
+          weight_kg?: number | null
         }
         Relationships: [
           {

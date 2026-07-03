@@ -11,6 +11,14 @@ import {
 } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import { getDisplayedVideoRect, projectLandmark } from "@/lib/video/coordinates";
+import {
+  IDENTITY_FOLLOW,
+  computeFollowTarget,
+  followTransform,
+  followsDiffer,
+  smoothFollow,
+  type FollowBox,
+} from "@/lib/video/follow";
 import VideoOverlay, { type OverlayToggles } from "./VideoOverlay";
 
 /** Playback rates offered by the shared controls. */
@@ -19,6 +27,7 @@ export const SPEEDS = [0.25, 0.5, 1, 2] as const;
 const DEFAULT_TOGGLES: OverlayToggles = {
   skeleton: true,
   angles: true,
+  arms: true,
   comTrail: true,
   velocity: true,
   footLabels: true,
@@ -27,6 +36,7 @@ const DEFAULT_TOGGLES: OverlayToggles = {
 const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
   { key: "skeleton", label: "Skeleton" },
   { key: "angles", label: "Joint angles" },
+  { key: "arms", label: "Arms" },
   { key: "comTrail", label: "COM trail" },
   { key: "velocity", label: "Velocity" },
   { key: "footLabels", label: "Foot labels" },
@@ -34,6 +44,9 @@ const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
 
 /** Pointer-to-joint hit radius, in CSS pixels. */
 const HIT_RADIUS = 16;
+
+/** Per-frame easing for Auto Follow: higher = snappier, lower = smoother. */
+const FOLLOW_ALPHA = 0.12;
 
 /** "leftFootIndex" → "Left Foot Index" for the inspector label. */
 function prettyJoint(name: string) {
@@ -112,10 +125,18 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const followWrapperRef = useRef<HTMLDivElement | null>(null);
   const [toggles, setToggles] = useState<OverlayToggles>(DEFAULT_TOGGLES);
   const [currentTime, setCurrentTime] = useState(0);
   const [hoveredJoint, setHoveredJoint] = useState<string | null>(null);
   const [selectedJoint, setSelectedJoint] = useState<string | null>(null);
+  const [autoFollow, setAutoFollow] = useState(false);
+
+  // Live copies for the rAF follow loop, so toggling/replaying doesn't restart it.
+  const autoFollowRef = useRef(autoFollow);
+  autoFollowRef.current = autoFollow;
+  // The current (smoothed) camera state; eased toward the per-frame target.
+  const followRef = useRef<FollowBox>(IDENTITY_FOLLOW);
 
   const onStateRef = useRef(onState);
   onStateRef.current = onState;
@@ -148,6 +169,38 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
       video.removeEventListener("ratechange", handler);
     };
   }, [syncFromVideo]);
+
+  // Auto Follow: a continuous rAF loop that keeps the athlete centred. It reads
+  // the live video clock (so it stays smooth mid-playback, not just on timeupdate),
+  // derives a per-frame target from the pose bbox, eases toward it, and applies a
+  // CSS transform to the wrapper holding BOTH the video and the pose canvas — so
+  // the picture zooms/pans while the overlay stays aligned. When Auto Follow is
+  // off it eases back to the identity transform. No effect on frames without pose.
+  useEffect(() => {
+    if (!frames.length) return;
+    let raf = 0;
+    const tick = () => {
+      const wrapper = followWrapperRef.current;
+      const video = videoRef.current;
+      if (wrapper && video) {
+        let target: FollowBox = IDENTITY_FOLLOW;
+        if (autoFollowRef.current) {
+          const frame = frames[frameIndexForTime(frames, video.currentTime)];
+          // Coast on the last camera state when the frame is untrusted (too few
+          // visible landmarks), avoiding a snap back to centre.
+          target = (frame && computeFollowTarget(frame)) ?? followRef.current;
+        }
+        const next = smoothFollow(followRef.current, target, FOLLOW_ALPHA);
+        if (followsDiffer(followRef.current, next)) {
+          followRef.current = next;
+          wrapper.style.transform = followTransform(next);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [frames]);
 
   useImperativeHandle(
     ref,
@@ -211,10 +264,14 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
 
     const videoRect = video.getBoundingClientRect();
     const picture = getDisplayedVideoRect(video);
-    // Pointer position in picture-local CSS pixels (same space as projectLandmark
-    // with a zero-origin rect below).
-    const px = clientX - videoRect.left - picture.x;
-    const py = clientY - videoRect.top - picture.y;
+    // `getBoundingClientRect` reflects the Auto-Follow transform (scale/pan) while
+    // `getDisplayedVideoRect` (clientWidth-based) does not. Normalizing the pointer
+    // across the on-screen rect, then mapping into the untransformed picture, keeps
+    // hit-testing correct at any zoom — with no transform the two rects coincide.
+    const fx = videoRect.width ? (clientX - videoRect.left) / videoRect.width : 0;
+    const fy = videoRect.height ? (clientY - videoRect.top) / videoRect.height : 0;
+    const px = fx * video.clientWidth - picture.x;
+    const py = fy * video.clientHeight - picture.y;
 
     const rect = { x: 0, y: 0, width: picture.width, height: picture.height };
 
@@ -270,24 +327,53 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           hoveredJoint ? "cursor-pointer" : ""
         }`}
       >
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          controls
-          playsInline
-          className="block h-auto w-full"
-        />
-        <VideoOverlay
-          videoRef={videoRef}
-          frames={frames}
-          toggles={toggles}
-          hoveredJoint={hoveredJoint}
-          selectedJoint={selectedJoint}
-        />
-        {overlaySlot}
+        {/* Auto-Follow transform target: the video and the pose overlay share this
+            wrapper, so zoom/pan moves them together and the overlay stays aligned.
+            The container's overflow-hidden clips whatever pans out of frame. */}
+        <div ref={followWrapperRef} className="relative origin-top-left will-change-transform">
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            // Native controls would pan out of reach while following; the shared
+            // PlayerControls transport (rendered outside this wrapper) drives
+            // playback in that mode.
+            controls={!autoFollow}
+            playsInline
+            className="block h-auto w-full"
+          />
+          <VideoOverlay
+            videoRef={videoRef}
+            frames={frames}
+            toggles={toggles}
+            hoveredJoint={hoveredJoint}
+            selectedJoint={selectedJoint}
+          />
+          {overlaySlot}
+        </div>
       </div>
 
       {controlsSlot}
+
+      {/* View controls (camera behaviour) */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3">
+        <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">View</span>
+        <button
+          type="button"
+          onClick={() => setAutoFollow((prev) => !prev)}
+          aria-pressed={autoFollow}
+          title="Keep the athlete centered and zoomed during playback"
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            autoFollow
+              ? "border-lane bg-lane text-white"
+              : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
+          }`}
+        >
+          {autoFollow ? "◉" : "○"} Auto Follow
+        </button>
+        <span className="text-xs text-gray-400">
+          {autoFollow ? "Following athlete" : "Off"}
+        </span>
+      </div>
 
       {/* Layer toggles */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3">

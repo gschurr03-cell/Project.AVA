@@ -3,8 +3,16 @@ import { notFound, redirect } from "next/navigation";
 
 import { buildAthleteHistory } from "@/lib/coaching/athlete";
 import { buildAthleteTrends } from "@/lib/coaching/trends";
+import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { createClient } from "@/lib/supabase/server";
 import { sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
+import {
+  PROFILE_FIELDS,
+  formatProfileValue,
+  type AthleteProfileValues,
+} from "@/lib/athletes/profile";
+import AthleteProfileForm from "./AthleteProfileForm";
+import TrainingFocusPanel from "./TrainingFocusPanel";
 import VideoUpload from "./VideoUpload";
 
 function formatScore(value: number | null) {
@@ -43,10 +51,13 @@ function TrendCard({ title, values, unit }: { title: string; values: number[]; u
 
 export default async function AthletePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string; saved?: string }>;
 }) {
   const { id } = await params;
+  const { error: profileError, saved } = await searchParams;
 
   const supabase = await createClient();
   const {
@@ -56,11 +67,19 @@ export default async function AthletePage({
 
   const { data: athlete } = await supabase
     .from("athletes")
-    .select("id, full_name")
+    .select(
+      "id, full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m",
+    )
     .eq("id", id)
     .single();
 
   if (!athlete) notFound();
+
+  // Narrow the athlete row to just the profile fields for the form + display.
+  const profileValues = Object.fromEntries(
+    PROFILE_FIELDS.map((def) => [def.key, athlete[def.key] ?? null]),
+  ) as AthleteProfileValues;
+  const hasAnyProfile = PROFILE_FIELDS.some((def) => profileValues[def.key] != null);
 
   const { data: sessions } = await supabase
     .from("sessions")
@@ -81,6 +100,8 @@ export default async function AthletePage({
   );
 
   const trends = buildAthleteTrends(completedAnalyses ?? []);
+
+  const trainingFocus = buildTrainingFocus(completedAnalyses ?? []);
 
   const trend =
     history.techniqueChange == null
@@ -103,6 +124,20 @@ export default async function AthletePage({
           Athlete dashboard, session history, and progress tracking.
         </p>
       </div>
+
+      {profileError && (
+        <p
+          role="alert"
+          className="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
+          {profileError}
+        </p>
+      )}
+      {saved && (
+        <p className="mb-4 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Profile saved.
+        </p>
+      )}
 
       <section className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div className="rounded border bg-white p-4 shadow-sm">
@@ -158,6 +193,34 @@ export default async function AthletePage({
           </p>
           <p className="mt-1 text-xs text-gray-500">Latest vs previous</p>
         </div>
+      </section>
+
+      <section className="mb-8 rounded border bg-white p-4 shadow-sm">
+        <h2 className="mb-1 text-lg font-semibold">Physical &amp; Performance Profile</h2>
+        <p className="mb-4 text-xs text-gray-500">
+          Reference measurements and target times. Stored for future calibration and personal-best
+          prediction — not yet used in any metric calculation.
+        </p>
+
+        {hasAnyProfile ? (
+          <dl className="mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-3">
+            {PROFILE_FIELDS.map((def) => (
+              <div key={def.key} className="flex justify-between gap-2 border-b py-1">
+                <dt className="text-gray-500">{def.label}</dt>
+                <dd className="font-medium text-gray-800">
+                  {formatProfileValue(profileValues[def.key], def.unit)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="mb-6 text-sm text-gray-500">
+            No profile details yet. Add them below to have them on hand for upcoming calibration and
+            PB-prediction features.
+          </p>
+        )}
+
+        <AthleteProfileForm athleteId={athlete.id} values={profileValues} />
       </section>
 
       <section className="mb-8 rounded border bg-white p-4 shadow-sm">
@@ -227,6 +290,10 @@ export default async function AthletePage({
             Analyze at least two sessions to unlock trend tracking.
           </p>
         )}
+      </section>
+
+      <section className="mb-8">
+        <TrainingFocusPanel focus={trainingFocus} />
       </section>
 
       <section className="mb-8 rounded border p-4">

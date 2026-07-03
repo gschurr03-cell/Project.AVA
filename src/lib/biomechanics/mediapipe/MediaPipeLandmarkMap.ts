@@ -20,6 +20,11 @@ export const MEDIAPIPE_LANDMARK_INDEX: Record<JointName, number> = {
   right_heel: 30,
   left_toe: 31, // MediaPipe "foot index" (big toe)
   right_toe: 32,
+  // Upper limbs (Day 54) — MediaPipe emits these natively; used by the overlay.
+  left_elbow: 13,
+  right_elbow: 14,
+  left_wrist: 15,
+  right_wrist: 16,
 };
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));

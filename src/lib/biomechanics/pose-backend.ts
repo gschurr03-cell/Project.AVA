@@ -80,6 +80,11 @@ export class MockPoseBackend implements PoseBackend {
       right_heel: 0.92,
       left_toe: 0.94,
       right_toe: 0.94,
+      // Upper limbs (Day 54): elbows between shoulder and hip, wrists lower.
+      left_elbow: 0.38,
+      right_elbow: 0.38,
+      left_wrist: 0.48,
+      right_wrist: 0.48,
     };
     const sideDx: Record<JointName, number> = {
       nose: 0,
@@ -95,6 +100,11 @@ export class MockPoseBackend implements PoseBackend {
       right_heel: 0.03,
       left_toe: -0.03,
       right_toe: 0.05,
+      // Upper limbs (Day 54): elbows just wider than shoulders, wrists inboard.
+      left_elbow: -0.08,
+      right_elbow: 0.08,
+      left_wrist: -0.06,
+      right_wrist: 0.06,
     };
 
     const frames = Array.from({ length: frameCount }, (_, index) => {

@@ -27,6 +27,13 @@ export const CANONICAL_JOINTS = [
   "right_heel",
   "left_toe",
   "right_toe",
+  // Upper limbs — added Day 54 for arm/shoulder tracking. MediaPipe already
+  // emits these; they are consumed by the interactive overlay (arm segments and
+  // elbow/shoulder angles). No existing lower-body metric reads them.
+  "left_elbow",
+  "right_elbow",
+  "left_wrist",
+  "right_wrist",
 ] as const;
 
 export const jointNameSchema = z.enum(CANONICAL_JOINTS);

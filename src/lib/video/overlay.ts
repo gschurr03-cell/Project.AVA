@@ -139,6 +139,13 @@ export function buildOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
         rightHip: angle(landmarks.rightShoulder, landmarks.rightHip, landmarks.rightKnee),
         leftAnkle: angle(landmarks.leftKnee, landmarks.leftAnkle, landmarks.leftFootIndex),
         rightAnkle: angle(landmarks.rightKnee, landmarks.rightAnkle, landmarks.rightFootIndex),
+        // Upper body (Day 54). Elbow = shoulder→elbow→wrist flexion; shoulder =
+        // hip→shoulder→elbow, i.e. how far the upper arm has driven from the
+        // trunk. Both reuse the same vertex-angle helper as the lower body.
+        leftElbow: angle(landmarks.leftShoulder, landmarks.leftElbow, landmarks.leftWrist),
+        rightElbow: angle(landmarks.rightShoulder, landmarks.rightElbow, landmarks.rightWrist),
+        leftShoulder: angle(landmarks.leftHip, landmarks.leftShoulder, landmarks.leftElbow),
+        rightShoulder: angle(landmarks.rightHip, landmarks.rightShoulder, landmarks.rightElbow),
       },
       centerOfMass,
       velocity,
