@@ -17,6 +17,9 @@ import { buildRecommendations } from "@/lib/coaching/recommendations";
 import type { CoachingComparisonReport } from "@/lib/coaching/types";
 import VideoPlayer from "@/components/VideoPlayer";
 import { buildTimelineMarkersFromMetrics } from "@/lib/biomechanics/video/timelineMarkers";
+import OverlayVideoPlayer from "@/components/video/OverlayVideoPlayer";
+import type { OverlayFrame } from "@/lib/video/overlay";
+import { loadOverlayFrames } from "@/lib/video/loadOverlayFrames";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
 import RecommendationsPanel from "./RecommendationsPanel";
@@ -73,7 +76,7 @@ export default async function SessionPage({
   // Latest analysis for this session (read-only RLS access).
   const { data: analysis } = await supabase
     .from("analyses")
-    .select("id, status, error, metrics, created_at, completed_at")
+    .select("id, status, error, metrics, keypoints_path, created_at, completed_at")
     .eq("session_id", session.id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -101,6 +104,13 @@ export default async function SessionPage({
   // per-event timestamps; built here so the prop path is ready.
   const timelineMarkers = parsedMetrics?.success
     ? buildTimelineMarkersFromMetrics(parsedMetrics.data)
+    : [];
+
+  // Interactive-overlay frames come from the analysis's stored pose artifact
+  // (analyses.keypoints_path). The loader is fully defensive: a missing path,
+  // bucket, object, or malformed artifact resolves to [] (placeholder shown).
+  const overlayFrames: OverlayFrame[] = parsedMetrics?.success
+    ? await loadOverlayFrames(supabase, analysis?.keypoints_path)
     : [];
 
   // Progress tracking: compare against this athlete's previous completed
@@ -231,6 +241,17 @@ export default async function SessionPage({
             </p>
             {parsedMetrics?.success ? (
               <>
+                <section className="mt-6 rounded-lg border bg-gray-50 p-5">
+                  <h2 className="mb-3 text-xl font-bold text-lane">Interactive Overlay</h2>
+                  {signedVideo?.signedUrl && overlayFrames.length > 0 ? (
+                    <OverlayVideoPlayer videoUrl={signedVideo.signedUrl} frames={overlayFrames} />
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      The pose overlay (skeleton, joint angles, COM trail, and foot-contact labels)
+                      will appear here once per-frame pose data is available for this analysis.
+                    </p>
+                  )}
+                </section>
                 <MetricsPanel metrics={parsedMetrics.data} />
                 {coachingReport && (
                   <InsightPanel report={coachingReport} comparison={comparisonReport} />

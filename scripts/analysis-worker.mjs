@@ -34,6 +34,7 @@ const {
 
 const TARGET_URL = WORKER_TARGET_URL ?? "http://localhost:3000";
 const VIDEO_BUCKET = "sprint-videos";
+const POSE_BUCKET = process.env.POSE_ARTIFACTS_BUCKET ?? "pose-artifacts";
 const SIGNED_URL_TTL_S = 3600;
 const POLL_INTERVAL_MS = 3000;
 const MODEL_VERSION = "mediapipe-sprint-0.1";
@@ -137,6 +138,31 @@ function writeArtifacts(analysisId, sequence, analysis, warnings) {
   }
 }
 
+// Upload the PoseSequence JSON to the private pose-artifacts bucket so the app
+// can render the overlay. Path is `<athlete_id>/<session_id>/<analysis_id>.pose.json`
+// so the storage RLS policy (first path segment = an athlete the coach owns)
+// authorizes the coach's read. Never throws: an upload failure just means no
+// overlay for this analysis, so the analysis still completes normally.
+async function uploadPoseArtifact(athleteId, sessionId, analysisId, sequence) {
+  if (!athleteId) {
+    log(`no athlete_id for session ${sessionId} — skipping pose artifact upload`);
+    return null;
+  }
+  const objectPath = `${athleteId}/${sessionId}/${analysisId}.pose.json`;
+  const { error } = await supabase.storage
+    .from(POSE_BUCKET)
+    .upload(objectPath, JSON.stringify(sequence), {
+      contentType: "application/json",
+      upsert: true,
+    });
+  if (error) {
+    log(`pose artifact upload failed: ${error.message}`);
+    return null;
+  }
+  log(`uploaded pose artifact → ${POSE_BUCKET}/${objectPath}`);
+  return objectPath;
+}
+
 async function processJob(job) {
   const claimed = await claim(job);
   if (!claimed) return; // lost the race
@@ -145,7 +171,7 @@ async function processJob(job) {
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("video_path")
+    .select("video_path, athlete_id")
     .eq("id", claimed.session_id)
     .single();
 
@@ -183,8 +209,19 @@ async function processJob(job) {
     if (mapped.warnings.length) log(`warnings: ${mapped.warnings.join(" | ")}`);
 
     writeArtifacts(claimed.id, sequence, analysis, mapped.warnings);
+    const keypointsPath = await uploadPoseArtifact(
+      session.athlete_id,
+      claimed.session_id,
+      claimed.id,
+      sequence,
+    );
 
-    await callback(claimed.id, { status: "complete", modelVersion: MODEL_VERSION, metrics: mm });
+    await callback(claimed.id, {
+      status: "complete",
+      modelVersion: MODEL_VERSION,
+      metrics: mm,
+      ...(keypointsPath ? { keypointsPath } : {}),
+    });
     log(`delivered ${claimed.id} → complete`);
   } catch (err) {
     // A processing failure marks the analysis failed. If the callback itself is
