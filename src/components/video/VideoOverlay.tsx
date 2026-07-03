@@ -16,6 +16,10 @@ type Props = {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   frames: OverlayFrame[];
   toggles: OverlayToggles;
+  /** Landmark key currently under the cursor (transient highlight). */
+  hoveredJoint: string | null;
+  /** Landmark key pinned by a click (persistent highlight). */
+  selectedJoint: string | null;
 };
 
 const bones = [
@@ -46,6 +50,8 @@ const COLORS = {
   velocity: "#f43f5e", // rose-500
   contact: "#4ade80", // green-400
   flight: "#cbd5e1", // slate-300
+  hover: "#fbbf24", // amber-400
+  selected: "#22d3ee", // cyan-400
   labelBg: "rgba(15, 23, 42, 0.72)",
 } as const;
 
@@ -76,14 +82,25 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
   ctx.fillText(text, x, y);
 }
 
-export default function VideoOverlay({ videoRef, frames, toggles }: Props) {
+export default function VideoOverlay({
+  videoRef,
+  frames,
+  toggles,
+  hoveredJoint,
+  selectedJoint,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
-  // Read toggles from a ref so flipping a layer doesn't tear down and restart
-  // the animation loop — the next frame simply picks up the new value.
+  // Read toggles/selection from refs so flipping a layer or moving the cursor
+  // doesn't tear down and restart the animation loop — the next frame simply
+  // picks up the new value.
   const togglesRef = useRef(toggles);
   togglesRef.current = toggles;
+  const hoveredRef = useRef(hoveredJoint);
+  hoveredRef.current = hoveredJoint;
+  const selectedRef = useRef(selectedJoint);
+  selectedRef.current = selectedJoint;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -99,6 +116,8 @@ export default function VideoOverlay({ videoRef, frames, toggles }: Props) {
       if (!ctx) return;
 
       const show = togglesRef.current;
+      const hovered = hoveredRef.current;
+      const selected = selectedRef.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const currentTime = video.currentTime;
@@ -118,7 +137,6 @@ export default function VideoOverlay({ videoRef, frames, toggles }: Props) {
 
       // --- Skeleton (bones + joints) ---
       if (show.skeleton) {
-        ctx.strokeStyle = COLORS.bone;
         for (const [aName, bName] of bones) {
           const a = frame.landmarks[aName];
           const b = frame.landmarks[bName];
@@ -126,6 +144,12 @@ export default function VideoOverlay({ videoRef, frames, toggles }: Props) {
 
           const ap = scalePoint(a, canvas.width, canvas.height);
           const bp = scalePoint(b, canvas.width, canvas.height);
+
+          // A bone lights up when either endpoint is the hovered/selected joint.
+          const onSelected = aName === selected || bName === selected;
+          const onHovered = aName === hovered || bName === hovered;
+          ctx.strokeStyle = onSelected ? COLORS.selected : onHovered ? COLORS.hover : COLORS.bone;
+          ctx.lineWidth = onSelected || onHovered ? 5 : 3;
 
           ctx.beginPath();
           ctx.moveTo(ap.x, ap.y);
@@ -142,6 +166,34 @@ export default function VideoOverlay({ videoRef, frames, toggles }: Props) {
           ctx.fillStyle = COLORS.jointFill;
           ctx.fill();
           ctx.strokeStyle = COLORS.jointStroke;
+          ctx.stroke();
+        }
+      }
+
+      // --- Hover / selection markers (drawn regardless of the skeleton toggle
+      // so the inspected joint stays visible even with the skeleton hidden). ---
+      const drawMarker = (name: string, color: string, radius: number) => {
+        const pt = frame.landmarks[name];
+        if (!pt) return null;
+        const p = scalePoint(pt, canvas.width, canvas.height);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = COLORS.jointStroke;
+        ctx.stroke();
+        return p;
+      };
+
+      if (hovered && hovered !== selected) drawMarker(hovered, COLORS.hover, 7);
+      if (selected) {
+        const p = drawMarker(selected, COLORS.selected, 8);
+        if (p) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
+          ctx.strokeStyle = COLORS.selected;
+          ctx.lineWidth = 2;
           ctx.stroke();
         }
       }
