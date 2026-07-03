@@ -2,6 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
+import {
+  getDisplayedVideoRect,
+  projectLandmark,
+  type DisplayRect,
+  type Point2D,
+} from "@/lib/video/coordinates";
 
 /** Which overlay layers are drawn. Owned by {@link OverlayVideoPlayer}. */
 export type OverlayToggles = {
@@ -55,13 +61,6 @@ const COLORS = {
   labelBg: "rgba(15, 23, 42, 0.72)",
 } as const;
 
-function scalePoint(point: { x: number; y: number }, width: number, height: number) {
-  return {
-    x: point.x <= 1 ? point.x * width : point.x,
-    y: point.y <= 1 ? point.y * height : point.y,
-  };
-}
-
 /** Draw a small pill-backed label so text stays readable over any footage. */
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string) {
   const padX = 5;
@@ -91,6 +90,9 @@ export default function VideoOverlay({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
+  // Last applied canvas geometry ("x:y:w:h:dpr"), so we only touch the bitmap /
+  // style when the displayed picture actually changes size or position.
+  const geometryRef = useRef<string>("");
 
   // Read toggles/selection from refs so flipping a layer or moving the cursor
   // doesn't tear down and restart the animation loop — the next frame simply
@@ -108,17 +110,37 @@ export default function VideoOverlay({
     if (!canvas || !video || !frames.length) return;
 
     const draw = () => {
-      const rect = video.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
-
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+
+      // Map to the rectangle the picture actually occupies inside the <video>
+      // (letterbox-aware), and back the canvas with device pixels so lines stay
+      // crisp. The canvas is positioned to cover exactly that rectangle, so all
+      // drawing happens in picture-local CSS pixels.
+      const dpr = window.devicePixelRatio || 1;
+      const picture = getDisplayedVideoRect(video);
+      const geometry = `${picture.x}:${picture.y}:${picture.width}:${picture.height}:${dpr}`;
+      if (geometry !== geometryRef.current) {
+        geometryRef.current = geometry;
+        canvas.style.left = `${picture.x}px`;
+        canvas.style.top = `${picture.y}px`;
+        canvas.style.width = `${picture.width}px`;
+        canvas.style.height = `${picture.height}px`;
+        canvas.width = Math.max(1, Math.round(picture.width * dpr));
+        canvas.height = Math.max(1, Math.round(picture.height * dpr));
+      }
+
+      const rect: DisplayRect = { x: 0, y: 0, width: picture.width, height: picture.height };
+      const project = (point: Point2D) =>
+        projectLandmark(point, rect, video.videoWidth, video.videoHeight);
 
       const show = togglesRef.current;
       const hovered = hoveredRef.current;
       const selected = selectedRef.current;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw in CSS pixels; the DPR scale keeps the backing store sharp.
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, picture.width, picture.height);
 
       const currentTime = video.currentTime;
       let frame = frames[0];
@@ -142,8 +164,8 @@ export default function VideoOverlay({
           const b = frame.landmarks[bName];
           if (!a || !b) continue;
 
-          const ap = scalePoint(a, canvas.width, canvas.height);
-          const bp = scalePoint(b, canvas.width, canvas.height);
+          const ap = project(a);
+          const bp = project(b);
 
           // A bone lights up when either endpoint is the hovered/selected joint.
           const onSelected = aName === selected || bName === selected;
@@ -160,7 +182,7 @@ export default function VideoOverlay({
         ctx.lineWidth = 2;
         for (const point of Object.values(frame.landmarks)) {
           if (!point) continue;
-          const p = scalePoint(point, canvas.width, canvas.height);
+          const p = project(point);
           ctx.beginPath();
           ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
           ctx.fillStyle = COLORS.jointFill;
@@ -175,7 +197,7 @@ export default function VideoOverlay({
       const drawMarker = (name: string, color: string, radius: number) => {
         const pt = frame.landmarks[name];
         if (!pt) return null;
-        const p = scalePoint(pt, canvas.width, canvas.height);
+        const p = project(pt);
         ctx.beginPath();
         ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = color;
@@ -200,7 +222,7 @@ export default function VideoOverlay({
 
       // --- Center of mass, trail, and velocity all key off the COM point ---
       if (frame.centerOfMass) {
-        const com = scalePoint(frame.centerOfMass, canvas.width, canvas.height);
+        const com = project(frame.centerOfMass);
 
         if (show.comTrail) {
           const trail = frames
@@ -212,7 +234,7 @@ export default function VideoOverlay({
           ctx.lineWidth = 3;
           ctx.beginPath();
           trail.forEach((p, i) => {
-            const point = scalePoint(p!, canvas.width, canvas.height);
+            const point = project(p!);
             if (i === 0) ctx.moveTo(point.x, point.y);
             else ctx.lineTo(point.x, point.y);
           });
@@ -270,7 +292,7 @@ export default function VideoOverlay({
         for (const [joint, value] of angleLabels) {
           const point = frame.landmarks[joint];
           if (!point || value == null) continue;
-          const p = scalePoint(point, canvas.width, canvas.height);
+          const p = project(point);
           drawLabel(ctx, `${value}°`, p.x + 10, p.y - 10, COLORS.angle);
         }
       }
@@ -282,7 +304,7 @@ export default function VideoOverlay({
           const foot = frame.landmarks[key];
           if (!foot) continue;
 
-          const p = scalePoint(foot, canvas.width, canvas.height);
+          const p = project(foot);
           const inContact = frame.footContact[side];
 
           ctx.strokeStyle = inContact ? COLORS.contact : COLORS.flight;
@@ -311,5 +333,7 @@ export default function VideoOverlay({
     };
   }, [videoRef, frames]);
 
-  return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />;
+  // Position/size are driven imperatively in the draw loop so the canvas covers
+  // exactly the displayed picture (letterbox-aware); left/top default to 0.
+  return <canvas ref={canvasRef} className="pointer-events-none absolute left-0 top-0" />;
 }

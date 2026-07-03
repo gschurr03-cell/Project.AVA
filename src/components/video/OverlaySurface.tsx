@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
+import { getDisplayedVideoRect, projectLandmark } from "@/lib/video/coordinates";
 import VideoOverlay, { type OverlayToggles } from "./VideoOverlay";
 
 /** Playback rates offered by the shared controls. */
@@ -201,23 +202,28 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   const currentIndex = hasFrames ? frameIndexForTime(frames, currentTime) : 0;
   const currentFrame = frames[currentIndex];
 
-  // Nearest joint within HIT_RADIUS of the pointer, mapping container pixels to
-  // the current frame's normalized landmark coordinates.
+  // Nearest joint within HIT_RADIUS of the pointer. Uses the same picture-rect
+  // projection as the overlay renderer so hovering and drawing stay in lockstep,
+  // including when the video letterboxes.
   const jointAtPointer = (clientX: number, clientY: number): string | null => {
-    const container = containerRef.current;
-    if (!container || !currentFrame) return null;
+    const video = videoRef.current;
+    if (!video || !currentFrame) return null;
 
-    const rect = container.getBoundingClientRect();
-    const px = clientX - rect.left;
-    const py = clientY - rect.top;
+    const videoRect = video.getBoundingClientRect();
+    const picture = getDisplayedVideoRect(video);
+    // Pointer position in picture-local CSS pixels (same space as projectLandmark
+    // with a zero-origin rect below).
+    const px = clientX - videoRect.left - picture.x;
+    const py = clientY - videoRect.top - picture.y;
+
+    const rect = { x: 0, y: 0, width: picture.width, height: picture.height };
 
     let best: string | null = null;
     let bestDist = HIT_RADIUS;
     for (const [name, point] of Object.entries(currentFrame.landmarks)) {
       if (!point) continue;
-      const x = point.x <= 1 ? point.x * rect.width : point.x;
-      const y = point.y <= 1 ? point.y * rect.height : point.y;
-      const dist = Math.hypot(px - x, py - y);
+      const projected = projectLandmark(point, rect, video.videoWidth, video.videoHeight);
+      const dist = Math.hypot(px - projected.x, py - projected.y);
       if (dist <= bestDist) {
         bestDist = dist;
         best = name;
@@ -264,7 +270,13 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           hoveredJoint ? "cursor-pointer" : ""
         }`}
       >
-        <video ref={videoRef} src={videoUrl} controls playsInline className="h-auto w-full" />
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          controls
+          playsInline
+          className="block h-auto w-full"
+        />
         <VideoOverlay
           videoRef={videoRef}
           frames={frames}
