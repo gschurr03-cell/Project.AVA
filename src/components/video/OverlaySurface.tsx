@@ -31,6 +31,7 @@ const DEFAULT_TOGGLES: OverlayToggles = {
   comTrail: true,
   velocity: true,
   footLabels: true,
+  stepMarks: true,
 };
 
 const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
@@ -40,6 +41,7 @@ const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
   { key: "comTrail", label: "COM trail" },
   { key: "velocity", label: "Velocity" },
   { key: "footLabels", label: "Foot labels" },
+  { key: "stepMarks", label: "Step marks" },
 ];
 
 /** Pointer-to-joint hit radius, in CSS pixels. */
@@ -398,6 +400,17 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             </button>
           );
         })}
+        {toggles.stepMarks && (
+          <span className="ml-1 flex items-center gap-2 text-xs text-gray-400">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-teal-400" /> Left
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-rose-400" /> Right
+            </span>
+            <span>· step distance is uncalibrated (relative image units)</span>
+          </span>
+        )}
       </div>
 
       {/* Inspector */}

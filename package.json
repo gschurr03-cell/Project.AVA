@@ -20,6 +20,8 @@
     "angles:sanity": "node scripts/angles-sanity.mjs",
     "analysis:sanity": "node scripts/analysis-sanity.mjs",
     "focus:sanity": "node scripts/focus-sanity.mjs",
+    "steps:sanity": "node scripts/steps-sanity.mjs",
+    "calibration:sanity": "node scripts/calibration-sanity.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
+import { detectStepMarks } from "@/lib/video/steps";
 import {
   getDisplayedVideoRect,
   projectLandmark,
@@ -17,6 +18,7 @@ export type OverlayToggles = {
   comTrail: boolean;
   velocity: boolean;
   footLabels: boolean;
+  stepMarks: boolean;
 };
 
 /** Arm chains highlighted by the arm layer: [shoulder, elbow, wrist] per side. */
@@ -24,6 +26,9 @@ const armChains = [
   ["leftShoulder", "leftElbow", "leftWrist"],
   ["rightShoulder", "rightElbow", "rightWrist"],
 ] as const;
+
+/** Most recent step contacts to draw at once (rolling window, keeps it legible). */
+const MAX_VISIBLE_STEP_MARKS = 6;
 
 type Props = {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -67,6 +72,10 @@ const COLORS = {
   selected: "#22d3ee", // cyan-400
   arm: "#a78bfa", // violet-400 — upper-arm/forearm segments
   armAngle: "#c4b5fd", // violet-300 — arm angle labels
+  stepLeft: "#2dd4bf", // teal-400 — left-foot step marks
+  stepRight: "#fb7185", // rose-400 — right-foot step marks
+  stepPath: "rgba(226, 232, 240, 0.75)", // slate-200 — connecting step path
+  stepDist: "#e2e8f0", // slate-200 — uncalibrated distance labels
   labelBg: "rgba(15, 23, 42, 0.72)",
 } as const;
 
@@ -166,6 +175,10 @@ export default function VideoOverlay({
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video || !frames.length) return;
+
+    // Detect step marks once per clip (cheap, O(frames)); the draw loop only
+    // reveals the ones reached by the current playback time.
+    const stepMarks = detectStepMarks(frames);
 
     const draw = () => {
       const ctx = canvas.getContext("2d");
@@ -445,6 +458,57 @@ export default function VideoOverlay({
             p.y,
             inContact ? COLORS.contact : COLORS.flight,
           );
+        }
+      }
+
+      // --- Step marks (Day 56): accumulated ground-contact footprints up to the
+      // current time — L/R colour, chronological index, and an UNCALIBRATED
+      // step-distance estimate (normalized image units, not real-world metres). ---
+      if (show.stepMarks && stepMarks.length) {
+        // Show a rolling window of the most recent contacts, not the whole run —
+        // early strides (athlete far from camera) compress into a tiny region and
+        // would pile up. Recent steps stay readable and sit near the athlete, so
+        // they compose well with Auto Follow.
+        const reached = stepMarks
+          .filter((m) => m.time <= currentTime + 1e-3)
+          .slice(-MAX_VISIBLE_STEP_MARKS);
+
+        // Dashed path linking consecutive contacts (the step-to-step trail).
+        if (reached.length > 1) {
+          ctx.strokeStyle = COLORS.stepPath;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          reached.forEach((m, i) => {
+            const p = project(m);
+            if (i === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          });
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Uncalibrated distance at each segment midpoint (≈ signals estimate).
+          for (let i = 1; i < reached.length; i++) {
+            const d = reached[i].distanceFromPrev;
+            if (d == null) continue;
+            const a = project(reached[i - 1]);
+            const b = project(reached[i]);
+            drawLabel(ctx, `≈${d.toFixed(2)}`, (a.x + b.x) / 2, (a.y + b.y) / 2, COLORS.stepDist);
+          }
+        }
+
+        // The contact marks themselves, with side + index labels.
+        for (const mark of reached) {
+          const p = project(mark);
+          const color = mark.side === "left" ? COLORS.stepLeft : COLORS.stepRight;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = COLORS.jointStroke;
+          ctx.stroke();
+          drawLabel(ctx, `${mark.side === "left" ? "L" : "R"}${mark.index}`, p.x + 9, p.y + 11, color);
         }
       }
 
