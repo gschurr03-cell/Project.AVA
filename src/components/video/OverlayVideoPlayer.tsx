@@ -25,6 +25,18 @@ const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
   { key: "footLabels", label: "Foot labels" },
 ];
 
+const SPEEDS = [0.25, 0.5, 1, 2] as const;
+
+/** True when focus is on an element that should own these keys itself. */
+function isInteractiveTarget(target: EventTarget | null) {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  return (
+    ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "VIDEO"].includes(el.tagName) ||
+    el.isContentEditable
+  );
+}
+
 /**
  * Index of the last frame at or before `time` (matches the overlay's picker).
  * Binary search over the ascending `frame.time` values; times before the first
@@ -51,6 +63,7 @@ export default function OverlayVideoPlayer({ videoUrl, frames }: Props) {
   const [toggles, setToggles] = useState<OverlayToggles>(DEFAULT_TOGGLES);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
 
   // Mirror the video element's clock/state into React for the readout + buttons.
   useEffect(() => {
@@ -60,20 +73,25 @@ export default function OverlayVideoPlayer({ videoUrl, frames }: Props) {
     const onTime = () => setCurrentTime(video.currentTime);
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+    const onRate = () => setSpeed(video.playbackRate);
 
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
+    video.addEventListener("ratechange", onRate);
     return () => {
       video.removeEventListener("timeupdate", onTime);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
+      video.removeEventListener("ratechange", onRate);
     };
   }, []);
 
   const hasFrames = frames.length > 0;
   const currentIndex = hasFrames ? frameIndexForTime(frames, currentTime) : 0;
   const currentFrame = frames[currentIndex];
+  const firstTime = hasFrames ? frames[0].time : 0;
+  const lastTime = hasFrames ? frames[frames.length - 1].time : 0;
 
   const stepTo = useCallback(
     (index: number) => {
@@ -87,6 +105,13 @@ export default function OverlayVideoPlayer({ videoUrl, frames }: Props) {
     [frames],
   );
 
+  const seekTo = useCallback((time: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = time;
+    setCurrentTime(time);
+  }, []);
+
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -94,15 +119,61 @@ export default function OverlayVideoPlayer({ videoUrl, frames }: Props) {
     else video.pause();
   }, []);
 
+  const changeSpeed = useCallback((rate: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = rate;
+    setSpeed(rate);
+  }, []);
+
   const toggleLayer = useCallback((key: keyof OverlayToggles) => {
     setToggles((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
+
+  // Keyboard shortcuts: Space = play/pause, ←/→ = step frames. Ignored while a
+  // form control or the native video is focused so it keeps its own key behavior.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!frames.length || isInteractiveTarget(event.target)) return;
+
+      if (event.key === " ") {
+        event.preventDefault();
+        togglePlay();
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        const video = videoRef.current;
+        stepTo(frameIndexForTime(frames, video?.currentTime ?? 0) - 1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        const video = videoRef.current;
+        stepTo(frameIndexForTime(frames, video?.currentTime ?? 0) + 1);
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [frames, togglePlay, stepTo]);
 
   return (
     <div className="space-y-3">
       <div className="relative overflow-hidden rounded-xl border bg-black">
         <video ref={videoRef} src={videoUrl} controls playsInline className="h-auto w-full" />
         <VideoOverlay videoRef={videoRef} frames={frames} toggles={toggles} />
+      </div>
+
+      {/* Scrubber timeline */}
+      <div className="rounded-xl border bg-white p-3">
+        <input
+          type="range"
+          min={firstTime}
+          max={lastTime}
+          step="any"
+          value={Math.min(Math.max(currentTime, firstTime), lastTime)}
+          onChange={(event) => seekTo(Number(event.target.value))}
+          disabled={!hasFrames}
+          aria-label="Seek timeline"
+          className="w-full accent-lane disabled:cursor-not-allowed disabled:opacity-40"
+        />
       </div>
 
       {/* Frame transport */}
@@ -133,6 +204,28 @@ export default function OverlayVideoPlayer({ videoUrl, frames }: Props) {
         >
           Next ▶
         </button>
+
+        <div className="ml-1 flex items-center gap-1">
+          <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+            Speed
+          </span>
+          {SPEEDS.map((rate) => (
+            <button
+              key={rate}
+              type="button"
+              onClick={() => changeSpeed(rate)}
+              disabled={!hasFrames}
+              aria-pressed={speed === rate}
+              className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                speed === rate
+                  ? "border-lane bg-lane text-white"
+                  : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {rate}x
+            </button>
+          ))}
+        </div>
 
         <div className="ml-auto flex items-center gap-4 font-mono text-xs text-gray-600">
           <span>
