@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
-import { saveManualCalibration, clearManualCalibration } from "@/app/sessions/actions";
+import { saveManualCalibration, removeCalibration } from "@/app/sessions/actions";
 import OverlaySurface, {
   SPEEDS,
   frameIndexForTime,
@@ -50,7 +50,7 @@ export default function OverlayVideoPlayer({
         sessionId,
         saved: manualCalibration,
         onSave: saveManualCalibration,
-        onClear: clearManualCalibration,
+        onClear: removeCalibration,
       }
     : undefined;
   const surfaceRef = useRef<OverlaySurfaceHandle>(null);

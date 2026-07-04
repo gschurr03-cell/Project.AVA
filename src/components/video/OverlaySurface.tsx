@@ -500,10 +500,22 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
               </span>
             )}
             {calibration.saved && (
-              <form action={calibration.onClear} className="ml-auto">
+              <form
+                action={calibration.onClear}
+                className="ml-auto"
+                onSubmit={() => {
+                  // Also clear any in-progress placement so the UI resets fully.
+                  setPendingPoints([]);
+                  setCalibrationMode(false);
+                }}
+              >
                 <input type="hidden" name="id" value={calibration.sessionId} />
-                <button type="submit" className="text-xs text-gray-400 hover:text-red-600">
-                  Clear calibration
+                <button
+                  type="submit"
+                  title="Delete both gates, the known distance, and the calibration zone so you can re-add from scratch"
+                  className="rounded-full border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                >
+                  ✕ Remove calibration
                 </button>
               </form>
             )}

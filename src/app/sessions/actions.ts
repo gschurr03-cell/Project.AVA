@@ -308,8 +308,9 @@ export async function saveManualCalibration(formData: FormData) {
     redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
   }
 
+  // Revalidate in place (no happy-path redirect) so the gates appear immediately
+  // without triggering the Next.js dev error-overlay redirect crash.
   revalidatePath(`/sessions/${id}`);
-  redirect(`/sessions/${id}?saved=1`);
 }
 
 /**
@@ -336,10 +337,21 @@ export async function setSessionBenchmark(formData: FormData) {
   redirect(`/sessions/${id}?saved=1`);
 }
 
-/** Clear a session's manual calibration points (revert to auto-calibration). */
-export async function clearManualCalibration(formData: FormData) {
+/**
+ * Remove ALL of a session's calibration in one go (Day 66): both calibration
+ * gates (A/B points + their placement times), the known distance, and the
+ * known-distance calibration zone — so the coach can re-add gates from scratch.
+ * The FPS override is intentionally left untouched (it isn't part of the gate
+ * calibration).
+ *
+ * On success it revalidates the page in place (no redirect) so the overlay + panel
+ * update immediately. Avoiding the happy-path `redirect()` also sidesteps the
+ * Next.js dev error-overlay crash ("frame.join is not a function") that fires when
+ * a Server Action throws the NEXT_REDIRECT control signal.
+ */
+export async function removeCalibration(formData: FormData) {
   const id = String(formData.get("id") ?? "");
-  if (!id) redirect("/dashboard");
+  if (!id) return;
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -352,6 +364,9 @@ export async function clearManualCalibration(formData: FormData) {
       calibration_known_distance_m: null,
       calibration_point_a_time_s: null,
       calibration_point_b_time_s: null,
+      calibration_zone_start_s: null,
+      calibration_zone_end_s: null,
+      calibration_zone_distance_m: null,
     })
     .eq("id", id);
 
@@ -360,5 +375,4 @@ export async function clearManualCalibration(formData: FormData) {
   }
 
   revalidatePath(`/sessions/${id}`);
-  redirect(`/sessions/${id}?saved=1`);
 }
