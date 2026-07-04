@@ -232,3 +232,133 @@ export async function updateSessionCalibration(formData: FormData) {
   revalidatePath(`/sessions/${id}`);
   redirect(`/sessions/${id}?saved=1`);
 }
+
+/** A normalized (0..1) overlay coordinate from a click, or null when blank/out of range. */
+const normalizedCoord = z.preprocess(
+  blankToNull,
+  z.number({ invalid_type_error: "Point must be a number" }).min(0).max(1),
+);
+
+/**
+ * Manual ground-based calibration points (Day 62). The coach clicks two ground
+ * points on the overlay a known distance apart; we store both normalized points
+ * and the distance in metres, yielding a high-confidence pixel→metre scale.
+ * All five values are required together and the two points must differ. Mirrors
+ * the CHECK constraints in migration 0008.
+ */
+const gateTime = z.preprocess(
+  blankToNull,
+  z.number({ invalid_type_error: "Gate time must be a number" }).min(0).nullable(),
+);
+
+const manualCalibrationSchema = z
+  .object({
+    calibration_point_ax: normalizedCoord,
+    calibration_point_ay: normalizedCoord,
+    calibration_point_bx: normalizedCoord,
+    calibration_point_by: normalizedCoord,
+    calibration_known_distance_m: z.preprocess(
+      blankToNull,
+      z
+        .number({ invalid_type_error: "Known distance must be a number" })
+        .positive("Known distance must be greater than 0"),
+    ),
+    // Clip time each gate was placed (Day 64), for world-coordinate calibration
+    // under camera pan. Optional — static-camera calibrations leave them blank.
+    calibration_point_a_time_s: gateTime,
+    calibration_point_b_time_s: gateTime,
+  })
+  .superRefine((v, ctx) => {
+    if (v.calibration_point_ax === v.calibration_point_bx && v.calibration_point_ay === v.calibration_point_by) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "The two calibration points must be different.",
+      });
+    }
+  });
+
+/**
+ * Save the two clicked ground points + their known distance for a session. RLS
+ * scopes the update to sessions whose athlete the coach owns. On validation
+ * failure the coach is returned to the page with the reason.
+ */
+export async function saveManualCalibration(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const parsed = manualCalibrationSchema.safeParse({
+    calibration_point_ax: formData.get("calibration_point_ax"),
+    calibration_point_ay: formData.get("calibration_point_ay"),
+    calibration_point_bx: formData.get("calibration_point_bx"),
+    calibration_point_by: formData.get("calibration_point_by"),
+    calibration_known_distance_m: formData.get("calibration_known_distance_m"),
+    calibration_point_a_time_s: formData.get("calibration_point_a_time_s"),
+    calibration_point_b_time_s: formData.get("calibration_point_b_time_s"),
+  });
+
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Invalid calibration points";
+    redirect(`/sessions/${id}?error=${encodeURIComponent(message)}`);
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("sessions").update(parsed.data).eq("id", id);
+
+  if (error) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath(`/sessions/${id}`);
+  redirect(`/sessions/${id}?saved=1`);
+}
+
+/**
+ * Link (or unlink) a session to a benchmark reference (Day 62). An empty value
+ * clears the link. The `benchmarks` FK rejects unknown ids at the DB level; RLS
+ * scopes the update to sessions the coach owns. Only linked sessions show the
+ * benchmark validation panel, keeping comparisons honest.
+ */
+export async function setSessionBenchmark(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const raw = String(formData.get("benchmark_id") ?? "").trim();
+  const benchmark_id = raw === "" ? null : raw;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("sessions").update({ benchmark_id }).eq("id", id);
+
+  if (error) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath(`/sessions/${id}`);
+  redirect(`/sessions/${id}?saved=1`);
+}
+
+/** Clear a session's manual calibration points (revert to auto-calibration). */
+export async function clearManualCalibration(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sessions")
+    .update({
+      calibration_point_ax: null,
+      calibration_point_ay: null,
+      calibration_point_bx: null,
+      calibration_point_by: null,
+      calibration_known_distance_m: null,
+      calibration_point_a_time_s: null,
+      calibration_point_b_time_s: null,
+    })
+    .eq("id", id);
+
+  if (error) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath(`/sessions/${id}`);
+  redirect(`/sessions/${id}?saved=1`);
+}

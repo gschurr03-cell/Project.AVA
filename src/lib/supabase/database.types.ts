@@ -9,6 +9,39 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      benchmarks: {
+        Row: {
+          created_at: string
+          distance_m: number | null
+          id: string
+          kind: string | null
+          name: string
+          notes: string | null
+          reference_metrics: Json
+          source: string | null
+        }
+        Insert: {
+          created_at?: string
+          distance_m?: number | null
+          id?: string
+          kind?: string | null
+          name: string
+          notes?: string | null
+          reference_metrics?: Json
+          source?: string | null
+        }
+        Update: {
+          created_at?: string
+          distance_m?: number | null
+          id?: string
+          kind?: string | null
+          name?: string
+          notes?: string | null
+          reference_metrics?: Json
+          source?: string | null
+        }
+        Relationships: []
+      }
       analyses: {
         Row: {
           completed_at: string | null
@@ -139,6 +172,14 @@ export type Database = {
       sessions: {
         Row: {
           athlete_id: string
+          benchmark_id: string | null
+          calibration_known_distance_m: number | null
+          calibration_point_a_time_s: number | null
+          calibration_point_b_time_s: number | null
+          calibration_point_ax: number | null
+          calibration_point_ay: number | null
+          calibration_point_bx: number | null
+          calibration_point_by: number | null
           calibration_zone_distance_m: number | null
           calibration_zone_end_s: number | null
           calibration_zone_start_s: number | null
@@ -162,6 +203,14 @@ export type Database = {
         }
         Insert: {
           athlete_id: string
+          benchmark_id?: string | null
+          calibration_known_distance_m?: number | null
+          calibration_point_a_time_s?: number | null
+          calibration_point_ax?: number | null
+          calibration_point_ay?: number | null
+          calibration_point_b_time_s?: number | null
+          calibration_point_bx?: number | null
+          calibration_point_by?: number | null
           calibration_zone_distance_m?: number | null
           calibration_zone_end_s?: number | null
           calibration_zone_start_s?: number | null
@@ -185,6 +234,14 @@ export type Database = {
         }
         Update: {
           athlete_id?: string
+          benchmark_id?: string | null
+          calibration_known_distance_m?: number | null
+          calibration_point_a_time_s?: number | null
+          calibration_point_ax?: number | null
+          calibration_point_ay?: number | null
+          calibration_point_b_time_s?: number | null
+          calibration_point_bx?: number | null
+          calibration_point_by?: number | null
           calibration_zone_distance_m?: number | null
           calibration_zone_end_s?: number | null
           calibration_zone_start_s?: number | null
@@ -212,6 +269,13 @@ export type Database = {
             columns: ["athlete_id"]
             isOneToOne: false
             referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_benchmark_id_fkey"
+            columns: ["benchmark_id"]
+            isOneToOne: false
+            referencedRelation: "benchmarks"
             referencedColumns: ["id"]
           },
           {

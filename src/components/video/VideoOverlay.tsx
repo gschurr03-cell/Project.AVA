@@ -7,6 +7,7 @@ import {
   applyRealWorldStepDistances,
   type StepDistanceScale,
 } from "@/lib/video/steps";
+import { estimateCameraMotion, cameraOffsetAtTime } from "@/lib/video/camera";
 import {
   getDisplayedVideoRect,
   projectLandmark,
@@ -23,6 +24,9 @@ export type OverlayToggles = {
   velocity: boolean;
   footLabels: boolean;
   stepMarks: boolean;
+  /** Hidden coaching-view declutter switch: shows step indices, the step path,
+   * and relative (uncalibrated) distances. Off by default. */
+  debug: boolean;
 };
 
 /** Arm chains highlighted by the arm layer: [shoulder, elbow, wrist] per side. */
@@ -31,8 +35,17 @@ const armChains = [
   ["rightShoulder", "rightElbow", "rightWrist"],
 ] as const;
 
-/** Most recent step contacts to draw at once (rolling window, keeps it legible). */
-const MAX_VISIBLE_STEP_MARKS = 6;
+/** Two clicked gate points + their known distance, normalized to the frame. */
+export type OverlayCalibrationPoints = {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  distanceM: number;
+  /** Clip time each gate was placed (Day 64), for ground-anchoring under pan. */
+  aTimeS?: number | null;
+  bTimeS?: number | null;
+};
 
 type Props = {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -44,6 +57,10 @@ type Props = {
   selectedJoint: string | null;
   /** Calibration scale for step distances; null → show relative (uncalibrated). */
   stepScale?: StepDistanceScale | null;
+  /** Saved manual calibration line, drawn fixed on the ground. */
+  calibrationPoints?: OverlayCalibrationPoints | null;
+  /** Points placed so far in calibration mode (0–2 normalized ground points). */
+  pendingCalibration?: Point2D[];
 };
 
 const bones = [
@@ -78,10 +95,12 @@ const COLORS = {
   selected: "#22d3ee", // cyan-400
   arm: "#a78bfa", // violet-400 — upper-arm/forearm segments
   armAngle: "#c4b5fd", // violet-300 — arm angle labels
-  stepLeft: "#2dd4bf", // teal-400 — left-foot step marks
-  stepRight: "#fb7185", // rose-400 — right-foot step marks
-  stepPath: "rgba(226, 232, 240, 0.75)", // slate-200 — connecting step path
+  stepLeft: "#ef4444", // red-500 — left-foot ground contacts
+  stepRight: "#22c55e", // green-500 — right-foot ground contacts
+  stepPath: "rgba(226, 232, 240, 0.75)", // slate-200 — connecting step path (debug only)
   stepDist: "#e2e8f0", // slate-200 — uncalibrated distance labels
+  calibration: "#facc15", // yellow-400 — manual calibration line + points
+  calibrationPending: "#fef08a", // yellow-200 — points being placed
   labelBg: "rgba(15, 23, 42, 0.72)",
 } as const;
 
@@ -161,6 +180,8 @@ export default function VideoOverlay({
   hoveredJoint,
   selectedJoint,
   stepScale = null,
+  calibrationPoints = null,
+  pendingCalibration = [],
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -177,6 +198,12 @@ export default function VideoOverlay({
   hoveredRef.current = hoveredJoint;
   const selectedRef = useRef(selectedJoint);
   selectedRef.current = selectedJoint;
+  // Calibration line + in-progress clicks are read from refs too, so placing a
+  // point (which updates on every click) never restarts the draw loop.
+  const calibrationRef = useRef(calibrationPoints);
+  calibrationRef.current = calibrationPoints;
+  const pendingRef = useRef(pendingCalibration);
+  pendingRef.current = pendingCalibration;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -187,6 +214,11 @@ export default function VideoOverlay({
     // reveals the ones reached by the current playback time. When a calibration
     // scale is present, each gap also carries a real-world metre distance.
     const stepMarks = applyRealWorldStepDistances(detectStepMarks(frames), stepScale);
+
+    // Camera-motion track (Day 64): lets a contact/gate captured at one time be
+    // reprojected to where that ground point appears at the current time, so marks
+    // stay planted on the track under a panning camera (identity when static).
+    const cameraTrack = estimateCameraMotion(frames);
 
     const draw = () => {
       const ctx = canvas.getContext("2d");
@@ -228,6 +260,14 @@ export default function VideoOverlay({
         if (candidate.time <= currentTime) frame = candidate;
         else break;
       }
+
+      // Camera offset at the current time; ground points captured at `atTime` are
+      // shifted by (offset_then − offset_now) so they track the ground under pan.
+      const camNow = cameraOffsetAtTime(cameraTrack, currentTime);
+      const groundToFrame = (nx: number, ny: number, atTime: number): Point2D => {
+        const camThen = cameraOffsetAtTime(cameraTrack, atTime);
+        return { x: nx + (camThen.x - camNow.x), y: ny + (camThen.y - camNow.y) };
+      };
 
       ctx.lineWidth = 3;
       ctx.lineJoin = "round";
@@ -469,55 +509,39 @@ export default function VideoOverlay({
         }
       }
 
-      // --- Step marks (Day 56): accumulated ground-contact footprints up to the
-      // current time — L/R colour, chronological index, and an UNCALIBRATED
-      // step-distance estimate (normalized image units, not real-world metres). ---
+      // --- Step marks (Day 56, ground-fixed Day 62, decluttered Day 63): each
+      // ground contact leaves ONE permanent dot at the exact spot the foot struck
+      // (red = left, green = right) and ONE step-length label — nothing else — so
+      // the overlay reads like chalk marks on the track. The dot is drawn from the
+      // contact's STORED position, never the live foot, so it stays put as the
+      // athlete runs on (and moves with the ground under Auto Follow). Indices and
+      // the connecting path are hidden behind debug mode. A contact appears once
+      // playback reaches it and disappears again on rewind. ---
       if (show.stepMarks && stepMarks.length) {
-        // Show a rolling window of the most recent contacts, not the whole run —
-        // early strides (athlete far from camera) compress into a tiny region and
-        // would pile up. Recent steps stay readable and sit near the athlete, so
-        // they compose well with Auto Follow.
-        const reached = stepMarks
-          .filter((m) => m.time <= currentTime + 1e-3)
-          .slice(-MAX_VISIBLE_STEP_MARKS);
+        const reached = stepMarks.filter((m) => m.time <= currentTime + 1e-3);
 
-        // Dashed path linking consecutive contacts (the step-to-step trail).
-        if (reached.length > 1) {
+        // Debug only: dashed step-to-step path linking consecutive contacts.
+        if (show.debug && reached.length > 1) {
           ctx.strokeStyle = COLORS.stepPath;
           ctx.lineWidth = 2;
           ctx.setLineDash([5, 4]);
           ctx.beginPath();
           reached.forEach((m, i) => {
-            const p = project(m);
+            const p = project(groundToFrame(m.x, m.y, m.time));
             if (i === 0) ctx.moveTo(p.x, p.y);
             else ctx.lineTo(p.x, p.y);
           });
           ctx.stroke();
           ctx.setLineDash([]);
-
-          // Step distance at each segment midpoint: real metres when calibrated,
-          // otherwise an uncalibrated relative estimate (≈ … rel). This is a
-          // spatial gap between contacts — never a contact/flight time.
-          for (let i = 1; i < reached.length; i++) {
-            const meters = reached[i].distanceMetersFromPrev;
-            const relative = reached[i].distanceFromPrev;
-            const label =
-              meters != null
-                ? `${meters.toFixed(2)} m`
-                : relative != null
-                  ? `≈${relative.toFixed(2)} rel`
-                  : null;
-            if (label == null) continue;
-            const a = project(reached[i - 1]);
-            const b = project(reached[i]);
-            drawLabel(ctx, label, (a.x + b.x) / 2, (a.y + b.y) / 2, COLORS.stepDist);
-          }
         }
 
-        // The contact marks themselves, with side + index labels.
         for (const mark of reached) {
-          const p = project(mark);
+          // Reproject the contact from its capture time into the current view so
+          // it stays planted on the track as the camera pans (identity if static).
+          const p = project(groundToFrame(mark.x, mark.y, mark.time));
           const color = mark.side === "left" ? COLORS.stepLeft : COLORS.stepRight;
+
+          // One dot at the fixed ground contact position.
           ctx.beginPath();
           ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
           ctx.fillStyle = color;
@@ -525,8 +549,61 @@ export default function VideoOverlay({
           ctx.lineWidth = 2;
           ctx.strokeStyle = COLORS.jointStroke;
           ctx.stroke();
-          drawLabel(ctx, `${mark.side === "left" ? "L" : "R"}${mark.index}`, p.x + 9, p.y + 11, color);
+
+          // One step-length label (the gap from the previous contact), anchored at
+          // this contact's ground spot. Real metres when calibrated; a relative
+          // estimate only in debug mode. Never a contact/flight time.
+          const meters = mark.distanceMetersFromPrev;
+          if (meters != null) {
+            placeLabel(ctx, `${meters.toFixed(2)} m`, p.x + 9, p.y + 12, color, placedLabels);
+          } else if (show.debug && mark.distanceFromPrev != null) {
+            placeLabel(ctx, `≈${mark.distanceFromPrev.toFixed(2)} rel`, p.x + 9, p.y + 12, color, placedLabels);
+          }
+
+          // Debug only: the chronological side + index (L1/R2/…).
+          if (show.debug) {
+            placeLabel(ctx, `${mark.side === "left" ? "L" : "R"}${mark.index}`, p.x + 9, p.y - 11, color, placedLabels);
+          }
         }
+      }
+
+      // --- Calibration gates (Day 63): the two calibration points render as
+      // VERTICAL LINES across the lane — electronic timing gates the athlete runs
+      // through. They live in ground coordinates (fixed x in the source frame), so
+      // they stay planted on the track and pan out of view under Auto Follow —
+      // they never follow the athlete. Also renders gates being placed. ---
+      // A gate is anchored to the ground at the x it was placed; reproject by its
+      // placement time so it tracks the track (not the frame) under pan. `atTime`
+      // null (static camera / legacy) → no reprojection.
+      const gateFrameX = (normX: number, atTime: number | null | undefined): number =>
+        atTime != null ? groundToFrame(normX, 0, atTime).x : normX;
+      const drawGate = (normX: number, atTime: number | null | undefined, color: string, tag?: string) => {
+        const x = project({ x: gateFrameX(normX, atTime), y: 0 }).x;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, picture.height);
+        ctx.stroke();
+        if (tag) placeLabel(ctx, tag, x + 6, 14, color, placedLabels);
+      };
+
+      const savedCalibration = calibrationRef.current;
+      if (savedCalibration) {
+        drawGate(savedCalibration.ax, savedCalibration.aTimeS, COLORS.calibration, "A");
+        drawGate(savedCalibration.bx, savedCalibration.bTimeS, COLORS.calibration, "B");
+        const midX =
+          (gateFrameX(savedCalibration.ax, savedCalibration.aTimeS) +
+            gateFrameX(savedCalibration.bx, savedCalibration.bTimeS)) /
+          2;
+        const mid = project({ x: midX, y: 0 }).x;
+        placeLabel(ctx, `${savedCalibration.distanceM} m gate`, mid, 30, COLORS.calibration, placedLabels);
+      }
+
+      // Pending gates carry their own placement time `t` (attached at click).
+      const pending = pendingRef.current as (Point2D & { t?: number })[];
+      if (pending && pending.length) {
+        pending.forEach((pt, i) => drawGate(pt.x, pt.t, COLORS.calibrationPending, i === 0 ? "A" : "B"));
       }
 
       animationRef.current = requestAnimationFrame(draw);

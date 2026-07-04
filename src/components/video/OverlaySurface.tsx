@@ -10,17 +10,32 @@ import {
   type ReactNode,
 } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
-import { getDisplayedVideoRect, projectLandmark } from "@/lib/video/coordinates";
+import { getDisplayedVideoRect, projectLandmark, type Point2D } from "@/lib/video/coordinates";
 import {
   IDENTITY_FOLLOW,
   computeFollowTarget,
   followTransform,
   followsDiffer,
-  smoothFollow,
+  smoothFollowStable,
   type FollowBox,
 } from "@/lib/video/follow";
-import VideoOverlay, { type OverlayToggles } from "./VideoOverlay";
+import VideoOverlay, {
+  type OverlayToggles,
+  type OverlayCalibrationPoints,
+} from "./VideoOverlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
+
+/**
+ * Optional manual-calibration wiring for the single-player surface: the coach
+ * clicks two ground points a known distance apart to set a high-confidence scale.
+ * The two server actions persist / clear those points for the session.
+ */
+export type SurfaceCalibration = {
+  sessionId: string;
+  saved: OverlayCalibrationPoints | null;
+  onSave: (formData: FormData) => void | Promise<void>;
+  onClear: (formData: FormData) => void | Promise<void>;
+};
 
 /** Playback rates offered by the shared controls. */
 export const SPEEDS = [0.25, 0.5, 1, 2] as const;
@@ -33,6 +48,7 @@ const DEFAULT_TOGGLES: OverlayToggles = {
   velocity: true,
   footLabels: true,
   stepMarks: true,
+  debug: false,
 };
 
 const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
@@ -47,9 +63,6 @@ const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
 
 /** Pointer-to-joint hit radius, in CSS pixels. */
 const HIT_RADIUS = 16;
-
-/** Per-frame easing for Auto Follow: higher = snappier, lower = smoother. */
-const FOLLOW_ALPHA = 0.12;
 
 /** "leftFootIndex" → "Left Foot Index" for the inspector label. */
 function prettyJoint(name: string) {
@@ -116,7 +129,16 @@ type Props = {
   onState?: (state: SurfaceState) => void;
   /** Calibration scale for step distances (metres); null → relative labels. */
   stepScale?: StepDistanceScale | null;
+  /** Step frequency (steps/s) from verified contacts, for the legend readout. */
+  stepCadenceHz?: number | null;
+  /** Number of detected ground contacts, shown alongside the cadence. */
+  stepContactCount?: number;
+  /** Enables click-to-set manual ground calibration on this surface. */
+  calibration?: SurfaceCalibration;
 };
+
+/** Clamp to the normalized [0,1] range landmarks/calibration points live in. */
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 /**
  * One interactive overlay view: a video, its pose overlay, per-side layer
@@ -125,7 +147,18 @@ type Props = {
  * player can share one set of transport controls across one or two surfaces.
  */
 const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlaySurface(
-  { videoUrl, frames, label, controlsSlot, overlaySlot, onState, stepScale = null },
+  {
+    videoUrl,
+    frames,
+    label,
+    controlsSlot,
+    overlaySlot,
+    onState,
+    stepScale = null,
+    stepCadenceHz = null,
+    stepContactCount = 0,
+    calibration,
+  },
   ref,
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -136,6 +169,13 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   const [hoveredJoint, setHoveredJoint] = useState<string | null>(null);
   const [selectedJoint, setSelectedJoint] = useState<string | null>(null);
   const [autoFollow, setAutoFollow] = useState(false);
+  // Manual calibration: while `calibrationMode` is on, clicks drop ground points
+  // (A then B) instead of selecting joints. `pendingPoints` holds the 0–2 points
+  // placed so far, normalized to the source frame.
+  const [calibrationMode, setCalibrationMode] = useState(false);
+  // Each pending gate carries its clip time `t`, so world-coordinate calibration
+  // can account for camera pan between the two placements.
+  const [pendingPoints, setPendingPoints] = useState<(Point2D & { t: number })[]>([]);
 
   // Live copies for the rAF follow loop, so toggling/replaying doesn't restart it.
   const autoFollowRef = useRef(autoFollow);
@@ -195,7 +235,9 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           // visible landmarks), avoiding a snap back to centre.
           target = (frame && computeFollowTarget(frame)) ?? followRef.current;
         }
-        const next = smoothFollow(followRef.current, target, FOLLOW_ALPHA);
+        // Broadcast-style stabilization: dead-zone + damped vertical + separate,
+        // deadbanded zoom so the viewport doesn't bounce or pulse each stride.
+        const next = smoothFollowStable(followRef.current, target);
         if (followsDiffer(followRef.current, next)) {
           followRef.current = next;
           wrapper.style.transform = followTransform(next);
@@ -294,14 +336,40 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     return best;
   };
 
+  // Inverse of the overlay projection: a screen click → normalized [0,1] source
+  // coordinate. Uses the same picture-rect + follow-transform math as
+  // `jointAtPointer`, so a clicked ground point lands exactly where the overlay
+  // would draw that coordinate — the calibration points stay glued to the ground.
+  const groundPointAtPointer = (clientX: number, clientY: number): Point2D | null => {
+    const video = videoRef.current;
+    if (!video) return null;
+    const videoRect = video.getBoundingClientRect();
+    const picture = getDisplayedVideoRect(video);
+    if (picture.width <= 0 || picture.height <= 0) return null;
+    const fx = videoRect.width ? (clientX - videoRect.left) / videoRect.width : 0;
+    const fy = videoRect.height ? (clientY - videoRect.top) / videoRect.height : 0;
+    const px = fx * video.clientWidth - picture.x;
+    const py = fy * video.clientHeight - picture.y;
+    return { x: clamp01(px / picture.width), y: clamp01(py / picture.height) };
+  };
+
   const handlePointerMove = (event: React.MouseEvent) => {
+    if (calibrationMode) return; // no joint hover while marking ground points
     const hit = jointAtPointer(event.clientX, event.clientY);
     setHoveredJoint((prev) => (prev === hit ? prev : hit));
   };
 
-  // Click a joint to pin it; click the same joint again to unpin. Clicks that
-  // miss every joint (e.g. on the native video controls) leave selection alone.
+  // In calibration mode a click drops a ground point (A, then B; a third click
+  // starts a new pair). Otherwise: click a joint to pin it, click it again to
+  // unpin; clicks that miss every joint leave selection alone.
   const handlePointerClick = (event: React.MouseEvent) => {
+    if (calibrationMode) {
+      const point = groundPointAtPointer(event.clientX, event.clientY);
+      if (!point) return;
+      const gate = { ...point, t: videoRef.current?.currentTime ?? 0 };
+      setPendingPoints((prev) => (prev.length >= 2 ? [gate] : [...prev, gate]));
+      return;
+    }
     const hit = jointAtPointer(event.clientX, event.clientY);
     if (!hit) return;
     setSelectedJoint((prev) => (prev === hit ? null : hit));
@@ -329,7 +397,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
         onMouseLeave={() => setHoveredJoint(null)}
         onClick={handlePointerClick}
         className={`relative overflow-hidden rounded-xl border bg-black ${
-          hoveredJoint ? "cursor-pointer" : ""
+          calibrationMode ? "cursor-crosshair" : hoveredJoint ? "cursor-pointer" : ""
         }`}
       >
         {/* Auto-Follow transform target: the video and the pose overlay share this
@@ -341,8 +409,9 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             src={videoUrl}
             // Native controls would pan out of reach while following; the shared
             // PlayerControls transport (rendered outside this wrapper) drives
-            // playback in that mode.
-            controls={!autoFollow}
+            // playback in that mode. They're also hidden while calibrating so the
+            // control bar doesn't swallow clicks meant to place ground points.
+            controls={!autoFollow && !calibrationMode}
             playsInline
             className="block h-auto w-full"
           />
@@ -353,6 +422,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             hoveredJoint={hoveredJoint}
             selectedJoint={selectedJoint}
             stepScale={stepScale}
+            calibrationPoints={calibration?.saved ?? null}
+            pendingCalibration={calibrationMode ? pendingPoints : []}
           />
           {overlaySlot}
         </div>
@@ -379,7 +450,134 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
         <span className="text-xs text-gray-400">
           {autoFollow ? "Following athlete" : "Off"}
         </span>
+
+        <button
+          type="button"
+          onClick={() => setToggles((prev) => ({ ...prev, debug: !prev.debug }))}
+          aria-pressed={toggles.debug}
+          title="Show step indices, the step path, and relative distances (debug)"
+          className={`ml-auto rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            toggles.debug
+              ? "border-lane bg-lane text-white"
+              : "border-gray-300 bg-white text-gray-400 hover:bg-gray-50"
+          }`}
+        >
+          {toggles.debug ? "◉" : "○"} Debug labels
+        </button>
       </div>
+
+      {/* Manual ground calibration (single-player only) */}
+      {calibration && (
+        <div className="space-y-3 rounded-xl border bg-white p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+              Calibrate
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setCalibrationMode((prev) => !prev);
+                setPendingPoints([]);
+                setHoveredJoint(null);
+              }}
+              aria-pressed={calibrationMode}
+              title="Click two ground points a known distance apart to set the scale"
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                calibrationMode
+                  ? "border-lane bg-lane text-white"
+                  : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
+              }`}
+            >
+              {calibrationMode ? "◉" : "○"} Calibration gates
+            </button>
+            {calibration.saved ? (
+              <span className="text-xs text-gray-500">
+                Calibrated: {calibration.saved.distanceM} m between two gates.
+              </span>
+            ) : (
+              <span className="text-xs text-gray-400">
+                No calibration gates set — distances show as relative units.
+              </span>
+            )}
+            {calibration.saved && (
+              <form action={calibration.onClear} className="ml-auto">
+                <input type="hidden" name="id" value={calibration.sessionId} />
+                <button type="submit" className="text-xs text-gray-400 hover:text-red-600">
+                  Clear calibration
+                </button>
+              </form>
+            )}
+          </div>
+
+          {calibrationMode && (
+            <div className="rounded-lg border bg-gray-50 p-3">
+              <p className="text-xs text-gray-600">
+                Click the <span className="font-semibold">start gate</span> (a line drops across the
+                lane), scrub to the end of the zone, then click the{" "}
+                <span className="font-semibold">finish gate</span>. The athlete runs through the two
+                gates like timing lasers. Then enter the known distance and save.
+              </p>
+              <p className="mt-2 text-xs text-gray-500">
+                Gate A:{" "}
+                <span className="font-mono text-gray-700">
+                  {pendingPoints[0]
+                    ? `x ${pendingPoints[0].x.toFixed(3)} @ ${pendingPoints[0].t.toFixed(2)}s`
+                    : "— click to set"}
+                </span>
+                {"  ·  "}
+                Gate B:{" "}
+                <span className="font-mono text-gray-700">
+                  {pendingPoints[1]
+                    ? `x ${pendingPoints[1].x.toFixed(3)} @ ${pendingPoints[1].t.toFixed(2)}s`
+                    : "— click to set"}
+                </span>
+              </p>
+
+              <form action={calibration.onSave} className="mt-3 flex flex-wrap items-end gap-3">
+                <input type="hidden" name="id" value={calibration.sessionId} />
+                <input type="hidden" name="calibration_point_ax" value={pendingPoints[0]?.x ?? ""} />
+                <input type="hidden" name="calibration_point_ay" value={pendingPoints[0]?.y ?? ""} />
+                <input type="hidden" name="calibration_point_bx" value={pendingPoints[1]?.x ?? ""} />
+                <input type="hidden" name="calibration_point_by" value={pendingPoints[1]?.y ?? ""} />
+                <input type="hidden" name="calibration_point_a_time_s" value={pendingPoints[0]?.t ?? ""} />
+                <input type="hidden" name="calibration_point_b_time_s" value={pendingPoints[1]?.t ?? ""} />
+                <div>
+                  <label
+                    htmlFor="calibration_known_distance_m"
+                    className="block text-xs font-medium text-gray-700"
+                  >
+                    Known distance <span className="text-gray-400">(m)</span>
+                  </label>
+                  <input
+                    id="calibration_known_distance_m"
+                    name="calibration_known_distance_m"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min={0}
+                    placeholder="e.g. 30"
+                    className="mt-1 w-32 rounded border px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={pendingPoints.length < 2}
+                  className="rounded bg-lane px-4 py-2 text-sm text-white disabled:opacity-50"
+                >
+                  Save calibration
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingPoints([])}
+                  className="text-xs text-gray-400 hover:text-gray-700"
+                >
+                  Reset points
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Layer toggles */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3">
@@ -405,14 +603,24 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           );
         })}
         {toggles.stepMarks && (
-          <span className="ml-1 flex items-center gap-2 text-xs text-gray-400">
+          <span className="ml-1 flex flex-wrap items-center gap-2 text-xs text-gray-400">
             <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-teal-400" /> Left
+              <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> Left
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-rose-400" /> Right
+              <span className="inline-block h-2 w-2 rounded-full bg-green-500" /> Right
             </span>
-            <span>· step distance is uncalibrated (relative image units)</span>
+            <span>
+              ·{" "}
+              {stepScale
+                ? "distances in metres (calibrated)"
+                : "distances relative — set calibration for metres"}
+            </span>
+            {stepCadenceHz != null && (
+              <span>
+                · cadence {stepCadenceHz.toFixed(2)} steps/s from {stepContactCount} contacts
+              </span>
+            )}
           </span>
         )}
       </div>

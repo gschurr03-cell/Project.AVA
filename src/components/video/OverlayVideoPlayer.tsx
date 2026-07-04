@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
+import { saveManualCalibration, clearManualCalibration } from "@/app/sessions/actions";
 import OverlaySurface, {
   SPEEDS,
   frameIndexForTime,
   isInteractiveTarget,
   type OverlaySurfaceHandle,
   type SurfaceState,
+  type SurfaceCalibration,
 } from "./OverlaySurface";
+import type { OverlayCalibrationPoints } from "./VideoOverlay";
 import PlayerControls from "./PlayerControls";
 import TelestrationCanvas from "./TelestrationCanvas";
 
@@ -18,6 +21,14 @@ type Props = {
   frames: OverlayFrame[];
   /** Calibration scale for step distances (metres); null → relative labels. */
   stepScale?: StepDistanceScale | null;
+  /** Step frequency (steps/s) from verified contacts, shown in the legend. */
+  stepCadenceHz?: number | null;
+  /** Detected ground-contact count, shown alongside cadence. */
+  stepContactCount?: number;
+  /** Session id — enables the manual click-to-calibrate controls when present. */
+  sessionId?: string;
+  /** Saved manual calibration line for this session, if any. */
+  manualCalibration?: OverlayCalibrationPoints | null;
 };
 
 /**
@@ -25,7 +36,23 @@ type Props = {
  * {@link PlayerControls}. Transport goes through the surface's imperative handle
  * so the same controls are reused by the comparison player without duplication.
  */
-export default function OverlayVideoPlayer({ videoUrl, frames, stepScale = null }: Props) {
+export default function OverlayVideoPlayer({
+  videoUrl,
+  frames,
+  stepScale = null,
+  stepCadenceHz = null,
+  stepContactCount = 0,
+  sessionId,
+  manualCalibration = null,
+}: Props) {
+  const calibration: SurfaceCalibration | undefined = sessionId
+    ? {
+        sessionId,
+        saved: manualCalibration,
+        onSave: saveManualCalibration,
+        onClear: clearManualCalibration,
+      }
+    : undefined;
   const surfaceRef = useRef<OverlaySurfaceHandle>(null);
   const [state, setState] = useState<SurfaceState>({
     currentTime: 0,
@@ -65,6 +92,9 @@ export default function OverlayVideoPlayer({ videoUrl, frames, stepScale = null 
       videoUrl={videoUrl}
       frames={frames}
       stepScale={stepScale}
+      stepCadenceHz={stepCadenceHz}
+      stepContactCount={stepContactCount}
+      calibration={calibration}
       onState={setState}
       overlaySlot={<TelestrationCanvas />}
       controlsSlot={

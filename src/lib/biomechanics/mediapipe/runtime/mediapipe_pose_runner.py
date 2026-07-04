@@ -29,10 +29,31 @@ INSTALL_HINT = (
     "mediapipe opencv-python"
 )
 
-MODEL_URL = (
+# Model variant is configurable (Day 65). The HEAVY model is the default: it
+# tracks a small/distant runner (e.g. the far end of a 20 m fly) far better than
+# `lite`, which simply fails to detect the athlete for the first ~third of the
+# rep. Accuracy is preferred over speed here. Override with MEDIAPIPE_POSE_VARIANT
+# = lite | full | heavy, or point MEDIAPIPE_POSE_MODEL at a specific .task file.
+MODEL_VARIANT = os.environ.get("MEDIAPIPE_POSE_VARIANT", "heavy").strip().lower()
+MODEL_URL_TEMPLATE = (
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-    "pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+    "pose_landmarker_{variant}/float16/latest/pose_landmarker_{variant}.task"
 )
+
+# Detection/tracking confidence thresholds. Lower than MediaPipe's 0.5 default so
+# the athlete is picked up while still small on screen (first ground contacts),
+# then held through tracking. Overridable via env for tuning.
+def _conf(env_key, default):
+    try:
+        v = float(os.environ.get(env_key, default))
+        return min(1.0, max(0.0, v))
+    except (TypeError, ValueError):
+        return default
+
+
+MIN_DETECTION_CONFIDENCE = _conf("MEDIAPIPE_MIN_DETECTION_CONFIDENCE", 0.3)
+MIN_PRESENCE_CONFIDENCE = _conf("MEDIAPIPE_MIN_PRESENCE_CONFIDENCE", 0.3)
+MIN_TRACKING_CONFIDENCE = _conf("MEDIAPIPE_MIN_TRACKING_CONFIDENCE", 0.3)
 
 
 def fail(message, code=1):
@@ -48,19 +69,21 @@ def ensure_model():
             fail("Pose model not found at MEDIAPIPE_POSE_MODEL=%s" % override)
         return override
 
+    variant = MODEL_VARIANT if MODEL_VARIANT in ("lite", "full", "heavy") else "heavy"
+    fname = "pose_landmarker_%s.task" % variant
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
     os.makedirs(model_dir, exist_ok=True)
-    model_path = os.path.join(model_dir, "pose_landmarker_lite.task")
+    model_path = os.path.join(model_dir, fname)
     if not os.path.exists(model_path):
-        print("Downloading pose model (first run only)...", file=sys.stderr)
+        print("Downloading pose model '%s' (first run only)..." % variant, file=sys.stderr)
         tmp = model_path + ".download"
         try:
-            urllib.request.urlretrieve(MODEL_URL, tmp)
+            urllib.request.urlretrieve(MODEL_URL_TEMPLATE.format(variant=variant), tmp)
             os.replace(tmp, model_path)
         except Exception as exc:
             if os.path.exists(tmp):
                 os.remove(tmp)
-            fail("Failed to download pose model: %s" % exc)
+            fail("Failed to download pose model '%s': %s" % (variant, exc))
     return model_path
 
 
@@ -106,10 +129,18 @@ def main():
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
 
     model_path = ensure_model()
+    print(
+        "pose model=%s det=%.2f pres=%.2f track=%.2f"
+        % (os.path.basename(model_path), MIN_DETECTION_CONFIDENCE, MIN_PRESENCE_CONFIDENCE, MIN_TRACKING_CONFIDENCE),
+        file=sys.stderr,
+    )
     options = mp_vision.PoseLandmarkerOptions(
         base_options=mp_python.BaseOptions(model_asset_path=model_path),
         running_mode=mp_vision.RunningMode.VIDEO,
         num_poses=1,
+        min_pose_detection_confidence=MIN_DETECTION_CONFIDENCE,
+        min_pose_presence_confidence=MIN_PRESENCE_CONFIDENCE,
+        min_tracking_confidence=MIN_TRACKING_CONFIDENCE,
     )
     landmarker = mp_vision.PoseLandmarker.create_from_options(options)
 

@@ -69,11 +69,18 @@ function toOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
   return buildOverlayFrames({ ...sequence, frames: rawFrames } as unknown as PoseSequence);
 }
 
+/** Overlay frames plus the source metadata the artifact carries (fps + pixel dims). */
+export interface OverlayLoadResult {
+  frames: OverlayFrame[];
+  /** Detected source metadata from the pose artifact; null when unavailable. */
+  meta: { fps: number; width: number; height: number } | null;
+}
+
 export async function loadOverlayFrames(
   supabase: ServerClient,
   keypointsPath: string | null | undefined,
-): Promise<OverlayFrame[]> {
-  if (!keypointsPath) return [];
+): Promise<OverlayLoadResult> {
+  if (!keypointsPath) return { frames: [], meta: null };
 
   try {
     const { data, error } = await supabase.storage
@@ -82,20 +89,27 @@ export async function loadOverlayFrames(
 
     if (error || !data) {
       console.warn(`[overlay] keypoints artifact unavailable: ${error?.message ?? "no data"}`);
-      return [];
+      return { frames: [], meta: null };
     }
 
     const parsed = poseSequenceSchema.safeParse(JSON.parse(await data.text()));
     if (!parsed.success) {
       console.warn("[overlay] keypoints artifact did not match the pose-sequence schema");
-      return [];
+      return { frames: [], meta: null };
     }
 
-    return toOverlayFrames(parsed.data as PoseSequence);
+    const sequence = parsed.data as PoseSequence;
+    // The artifact carries the true detected fps + source dimensions (the worker
+    // computed them from the video). The session row may not have them, so expose
+    // them here as the detected-metadata fallback for calibration + timing.
+    return {
+      frames: toOverlayFrames(sequence),
+      meta: { fps: sequence.fps, width: sequence.width, height: sequence.height },
+    };
   } catch (err) {
     console.warn(
       `[overlay] failed to build overlay frames: ${err instanceof Error ? err.message : "unknown error"}`,
     );
-    return [];
+    return { frames: [], meta: null };
   }
 }

@@ -24,7 +24,18 @@ import { buildCalibrationReport, type CalibrationReport, type CalibrationZone } 
 import { predictPerformance, type RaceDistance } from "@/lib/prediction";
 import { detectSprintPhases } from "@/lib/phases";
 import { applyFpsOverride, isValidFps } from "@/lib/video/fps";
-import type { StepDistanceScale } from "@/lib/video/steps";
+import { detectStepMarks, type StepDistanceScale } from "@/lib/video/steps";
+import { stepFrequencyFromContacts } from "@/lib/video/cadence";
+import type { ManualCalibrationPoints } from "@/lib/calibration";
+import { computeSprintMeasurements } from "@/lib/benchmark/measurements";
+import {
+  assembleAvaValues,
+  compareToBenchmark,
+  evaluateAccuracy,
+  referenceMetricsSchema,
+  type BenchmarkComparisonRow,
+  type AccuracyRow,
+} from "@/lib/benchmark";
 import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
 import MetricsPanel from "./MetricsPanel";
@@ -35,6 +46,7 @@ import PerformancePredictionPanel from "./PerformancePredictionPanel";
 import PhaseTimelinePanel from "./PhaseTimelinePanel";
 import SprintIntelligencePanel from "./SprintIntelligencePanel";
 import CalibrationControlsForm from "./CalibrationControlsForm";
+import BenchmarkPanel from "./BenchmarkPanel";
 import CoachNotesForm from "./CoachNotesForm";
 
 /** Pull a calibrated measurement value by key from a calibration report. */
@@ -76,7 +88,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, distance_m, duration_s, width, height, fps, fps_override, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -126,9 +138,16 @@ export default async function SessionPage({
   // Interactive-overlay frames come from the analysis's stored pose artifact
   // (analyses.keypoints_path). The loader is fully defensive: a missing path,
   // bucket, object, or malformed artifact resolves to [] (placeholder shown).
-  const rawOverlayFrames: OverlayFrame[] = parsedMetrics?.success
+  const { frames: rawOverlayFrames, meta: overlayMeta } = parsedMetrics?.success
     ? await loadOverlayFrames(supabase, analysis?.keypoints_path)
-    : [];
+    : { frames: [] as OverlayFrame[], meta: null };
+
+  // Source video dimensions + detected FPS. The session row may lack them (older
+  // uploads), so fall back to the pose artifact's own metadata, which the worker
+  // derived from the video. These drive every metre-scale + timing calculation.
+  const effectiveWidth = session.width ?? overlayMeta?.width ?? null;
+  const effectiveHeight = session.height ?? overlayMeta?.height ?? null;
+  const detectedFps = session.fps ?? overlayMeta?.fps ?? null;
 
   // Manual FPS override (Day 61): when set, re-time every frame so all
   // downstream timing (steps, phases, calibrated + segment velocity) uses the
@@ -149,28 +168,107 @@ export default async function SessionPage({
         }
       : null;
 
+  // Manual ground calibration (Day 62): two clicked ground points a known
+  // distance apart. Same shape drives both the calibration scale and the fixed
+  // calibration line drawn on the overlay.
+  const manualPoints: ManualCalibrationPoints | null =
+    session.calibration_point_ax != null &&
+    session.calibration_point_ay != null &&
+    session.calibration_point_bx != null &&
+    session.calibration_point_by != null &&
+    session.calibration_known_distance_m != null
+      ? {
+          ax: session.calibration_point_ax,
+          ay: session.calibration_point_ay,
+          bx: session.calibration_point_bx,
+          by: session.calibration_point_by,
+          distanceM: session.calibration_known_distance_m,
+          aTimeS: session.calibration_point_a_time_s ?? null,
+          bTimeS: session.calibration_point_b_time_s ?? null,
+        }
+      : null;
+
   // Calibration: real-world estimates (with confidence) derived from the pose
-  // overlay + athlete profile + optional known-distance zone. Kept fully separate
-  // from the biomechanics metrics; only shown once an overlay is available.
+  // overlay + athlete profile + optional known-distance zone + manual ground
+  // points. Kept fully separate from the biomechanics metrics; only shown once an
+  // overlay is available.
   const calibrationReport = overlayFrames.length
     ? buildCalibrationReport({
         legLengthCm: session.athletes?.leg_length_cm ?? null,
         knownDistanceM: session.distance_m ?? null,
-        frameWidth: session.width ?? null,
-        frameHeight: session.height ?? null,
+        frameWidth: effectiveWidth,
+        frameHeight: effectiveHeight,
         frames: overlayFrames,
         zone: calibrationZone,
+        manualPoints,
       })
     : null;
+
+  // Step cadence straight from the verified ground contacts (contacts / elapsed
+  // time), independent of any scale — shown on the overlay's step-marks legend.
+  const overlayStepMarks = overlayFrames.length ? detectStepMarks(overlayFrames) : [];
+  const stepCadenceHz = stepFrequencyFromContacts(overlayStepMarks);
+
+  // Full calibrated sprint measurement set (Day 62 benchmark): contacts, combined
+  // + per-side frequency, average/individual/per-side step length, and the three
+  // cross-checked velocities. The manual calibration points supply both the scale
+  // and the zone bounds; frames are already FPS-retimed above.
+  const measurements = overlayFrames.length
+    ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight)
+    : null;
+
+  // Active FPS + its source, for the timing-provenance display. Every timing-derived
+  // number (contact, flight, frequency, zone, velocity, phases) uses this clock.
+  const activeFps = isValidFps(session.fps_override) ? session.fps_override : detectedFps;
+  const fpsSource: "override" | "detected" | "none" = isValidFps(session.fps_override)
+    ? "override"
+    : detectedFps != null
+      ? "detected"
+      : "none";
+
+  // Benchmark validation: the list of available benchmarks (for the link selector)
+  // and, when this session is explicitly linked to one, the AVA-vs-reference
+  // percent-error comparison. Reference data is global (RLS: readable by any
+  // authenticated user).
+  const { data: benchmarks } = await supabase
+    .from("benchmarks")
+    .select("id, name, reference_metrics")
+    .order("created_at", { ascending: true });
+
+  let benchmarkComparison: {
+    benchmarkName: string;
+    rows: BenchmarkComparisonRow[];
+    accuracy: AccuracyRow[];
+  } | null = null;
+  const linkedBenchmark = session.benchmark_id
+    ? benchmarks?.find((b) => b.id === session.benchmark_id)
+    : null;
+  if (linkedBenchmark && measurements && parsedMetrics?.success) {
+    const refParsed = referenceMetricsSchema.safeParse(linkedBenchmark.reference_metrics);
+    const reference = refParsed.success ? refParsed.data : {};
+    const avaValues = assembleAvaValues(
+      measurements,
+      {
+        groundContactTimeMs: parsedMetrics.data.groundContactTimeMs,
+        flightTimeMs: parsedMetrics.data.flightTimeMs,
+      },
+      { activeFps },
+    );
+    benchmarkComparison = {
+      benchmarkName: linkedBenchmark.name,
+      rows: compareToBenchmark(avaValues, reference),
+      accuracy: evaluateAccuracy(avaValues, reference),
+    };
+  }
 
   // Step-distance scale: turns the overlay's normalized step gaps into metres
   // when a calibration scale + pixel dimensions are available.
   const stepScale: StepDistanceScale | null =
-    calibrationReport?.scale && session.width && session.height
+    calibrationReport?.scale && effectiveWidth && effectiveHeight
       ? {
           metersPerPixel: calibrationReport.scale.metersPerPixel,
-          frameWidth: session.width,
-          frameHeight: session.height,
+          frameWidth: effectiveWidth,
+          frameHeight: effectiveHeight,
         }
       : null;
 
@@ -373,6 +471,10 @@ export default async function SessionPage({
                       videoUrl={signedVideo.signedUrl}
                       frames={overlayFrames}
                       stepScale={stepScale}
+                      stepCadenceHz={stepCadenceHz}
+                      stepContactCount={overlayStepMarks.length}
+                      sessionId={session.id}
+                      manualCalibration={manualPoints}
                     />
                   ) : (
                     <p className="text-sm text-gray-500">
@@ -386,12 +488,25 @@ export default async function SessionPage({
                 {calibrationReport && <CalibrationPanel report={calibrationReport} />}
                 <CalibrationControlsForm
                   sessionId={session.id}
-                  detectedFps={session.fps ?? null}
+                  detectedFps={detectedFps}
                   fpsOverride={session.fps_override ?? null}
                   zoneStartS={session.calibration_zone_start_s ?? null}
                   zoneEndS={session.calibration_zone_end_s ?? null}
                   zoneDistanceM={session.calibration_zone_distance_m ?? null}
                 />
+                {measurements && (
+                  <BenchmarkPanel
+                    sessionId={session.id}
+                    measurements={measurements}
+                    activeFps={activeFps}
+                    fpsSource={fpsSource}
+                    detectedFps={detectedFps}
+                    fpsOverride={session.fps_override ?? null}
+                    benchmarks={(benchmarks ?? []).map((b) => ({ id: b.id, name: b.name }))}
+                    linkedBenchmarkId={session.benchmark_id ?? null}
+                    comparison={benchmarkComparison}
+                  />
+                )}
                 {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
                 {prediction && <PerformancePredictionPanel prediction={prediction} />}
                 {coachingReport && (

@@ -24,11 +24,34 @@
 
 import type { OverlayFrame, OverlayPoint } from "@/lib/video/overlay";
 import { detectStepMarks, type StepMark } from "@/lib/video/steps";
+import { stepFrequencyFromContacts } from "@/lib/video/cadence";
 
 export type Confidence = "high" | "medium" | "low";
 
 /** How a scale was derived, best (most trusted) first. */
 export type CalibrationMethod = "manual" | "zone" | "legLength" | "knownDistance";
+
+/**
+ * Two ground points the coach clicked directly on the overlay, plus the known
+ * real-world distance between them (e.g. 30 m). Both points are normalized to the
+ * source frame (0..1), matching landmark space, so they map to pixels with the
+ * same frame dimensions the steps use. This is a *spatial* calibration — it does
+ * not depend on timing at all.
+ */
+export interface ManualCalibrationPoints {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  distanceM: number;
+  /**
+   * Clip time (seconds) each gate was placed, when known. On panning footage the
+   * two gates are marked at different moments, so their world separation needs the
+   * camera offset at these times; absent → gates treated as static-camera frame x.
+   */
+  aTimeS?: number | null;
+  bTimeS?: number | null;
+}
 
 /**
  * A user-defined calibration zone: a known real-world distance covered between
@@ -88,6 +111,8 @@ export interface CalibrationInputs {
   steps?: StepMark[];
   /** A user-supplied scale (metres per pixel) from manual calibration points. */
   manualMetersPerPixel?: number | null;
+  /** Two clicked ground points + their known distance (spatial calibration). */
+  manualPoints?: ManualCalibrationPoints | null;
   /** A known-distance calibration zone (e.g. a 30 m fly), if the coach set one. */
   zone?: CalibrationZone | null;
 }
@@ -253,11 +278,42 @@ export function estimateScaleFromZone(
 }
 
 /**
+ * High-confidence spatial scale from two calibration gates the coach placed on
+ * the overlay — vertical lines across the lane (like electronic timing gates) a
+ * known distance apart. The athlete runs *through* the gates, so the metres are
+ * the HORIZONTAL separation of the two lines; the pixel distance is therefore the
+ * x-gap between them (their y is irrelevant). Unlike the anthropometric or whole-
+ * clip estimates this is a real, measured ground scale independent of depth/time.
+ */
+export function estimateScaleFromPoints(
+  points: ManualCalibrationPoints | null | undefined,
+  w: number | null,
+  h: number | null,
+): CalibrationScale | null {
+  if (!points || !w || !h) return null;
+  if (!(points.distanceM > 0)) return null;
+
+  const pixelDistance = Math.abs(points.ax - points.bx) * w;
+  if (pixelDistance < 1) return null;
+
+  return {
+    metersPerPixel: points.distanceM / pixelDistance,
+    method: "manual",
+    confidence: "high",
+    reason: `Scaled from two calibration gates ${points.distanceM} m apart (${pixelDistance.toFixed(0)} px between the lines).`,
+  };
+}
+
+/**
  * Resolve the best available scale: manual (user-provided) beats a known-distance
  * zone, which beats anthropometric, which beats a whole-clip known distance.
+ * Manual clicked points are preferred over a raw metres-per-pixel override.
  * Returns null when nothing is available.
  */
 export function resolveScale(inputs: CalibrationInputs): CalibrationScale | null {
+  const fromPoints = estimateScaleFromPoints(inputs.manualPoints, inputs.frameWidth, inputs.frameHeight);
+  if (fromPoints) return fromPoints;
+
   if (inputs.manualMetersPerPixel && inputs.manualMetersPerPixel > 0) {
     return {
       metersPerPixel: inputs.manualMetersPerPixel,
@@ -377,6 +433,24 @@ export function computeMeasurements(
     value: topPx,
     unit: "m/s",
     confidence: topPx != null ? downgrade(velConf) : null,
+  });
+
+  // Max velocity from the sprint identity step length × step frequency, where
+  // the frequency comes straight from the verified contact timestamps. Preferred
+  // when it can be computed (a calibrated step length and ≥2 contacts): it is
+  // grounded in real footfalls rather than frame-to-frame COM jitter.
+  const stepFrequency = stepFrequencyFromContacts(steps);
+  const maxVelStepFreq =
+    stepMed != null && stepFrequency != null ? stepMed * mpp * stepFrequency : null;
+  measurements.push({
+    key: "maxVelocityStepFreq",
+    label: "Max velocity (step × cadence)",
+    value: maxVelStepFreq,
+    unit: "m/s",
+    confidence:
+      maxVelStepFreq != null
+        ? minConfidence(scale.confidence, countConfidence(stepPx.length, 6, 2))
+        : null,
   });
 
   measurements.push({

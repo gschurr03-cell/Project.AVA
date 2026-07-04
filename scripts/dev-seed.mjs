@@ -45,6 +45,25 @@ const ATHLETE_ID = "11111111-1111-4111-8111-111111111111";
 const SESSION_ID = "22222222-2222-4222-8222-222222222222";
 const ANALYSIS_ID = "33333333-3333-4333-8333-333333333333";
 
+// The permanent AVA Calab Vid 1 (VueMotion 20 m) benchmark reference. Mirrors
+// migrations 0009 + 0010; kept here so the seed can re-assert it idempotently.
+const BENCHMARK_ID = "44444444-4444-4444-8444-444444444444";
+const BENCHMARK_REFERENCE = {
+  zoneTimeS: 1.93,
+  avgVelocityMps: 10.36,
+  maxVelocityMps: 10.74,
+  avgStepLengthM: 2.15,
+  leftStepLengthM: 2.16,
+  rightStepLengthM: 2.14,
+  combinedStepFrequencyHz: 4.86,
+  leftStepFrequencyHz: 5.0,
+  rightStepFrequencyHz: 4.72,
+  groundContactLeftMs: 80,
+  groundContactRightMs: 80,
+  flightLeftMs: 120,
+  flightRightMs: 130,
+};
+
 // Committed, aligned demo fixtures. The video is the H.264 copy (see
 // `npm run sample:transcode`) so it plays reliably in Chrome; it keeps the
 // source's dimensions, so the pose artifact stays aligned.
@@ -193,6 +212,28 @@ async function main() {
   }
 
   const userId = await upsertUser();
+
+  // benchmarks: the AVA Calab Vid 1 (VueMotion 20 m) reference must ALWAYS exist
+  // — it is AVA's permanent accuracy target. It's seeded by migration 0009, but
+  // re-assert it here (idempotent) so a stray delete or a partial DB can't leave
+  // the system without its benchmark. Values match migrations 0009 + 0010.
+  {
+    const { error } = await supabase.from("benchmarks").upsert(
+      {
+        id: BENCHMARK_ID,
+        name: "AVA Calab Vid 1",
+        source: "VueMotion",
+        kind: "20m fly",
+        distance_m: 20,
+        reference_metrics: BENCHMARK_REFERENCE,
+        notes:
+          "First official AVA benchmark. VueMotion-measured 20 m fly zone (first pair of yellow cones to the final pair). Permanent accuracy reference — do not delete.",
+      },
+      { onConflict: "id" },
+    );
+    if (error) throw new Error(`benchmarks upsert: ${error.message}`);
+    log("benchmark upserted (AVA Calab Vid 1 — permanent reference)");
+  }
 
   // profiles: a row is auto-created by the on-signup trigger; make sure the dev
   // user's name/role are set (upsert covers both new and existing users).
