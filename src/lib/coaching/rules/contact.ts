@@ -8,7 +8,9 @@ export const eliteContactRule: CoachingRule = {
       (evaluation) => evaluation.id === "groundContactTime"
     );
 
-    if (!contact || contact.status !== "elite") return null;
+    if (!contact || contact.status !== "elite") {
+      return null;
+    }
 
     return {
       id: "elite-contact",

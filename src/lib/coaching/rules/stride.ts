@@ -4,9 +4,7 @@ export const strideLimiterRule: CoachingRule = {
   id: "stride-limiter",
 
   evaluate({ evaluations }): CoachingInsight | null {
-    const stride = evaluations.find(
-      (evaluation) => evaluation.id === "strideLength"
-    );
+    const stride = evaluations.find((evaluation) => evaluation.id === "strideLength");
 
     if (!stride || (stride.status !== "watch" && stride.status !== "poor")) {
       return null;
@@ -38,16 +36,18 @@ export const cadenceStrideRule: CoachingRule = {
     const cadence = evaluations.find(
       (evaluation) => evaluation.id === "stepFrequency"
     );
-    const stride = evaluations.find(
-      (evaluation) => evaluation.id === "strideLength"
-    );
+    const stride = evaluations.find((evaluation) => evaluation.id === "strideLength");
 
-    if (!cadence || !stride) return null;
+    if (!cadence || !stride) {
+      return null;
+    }
 
     const cadenceStrong = cadence.status === "elite" || cadence.status === "good";
     const strideLimited = stride.status === "watch" || stride.status === "poor";
 
-    if (!cadenceStrong || !strideLimited) return null;
+    if (!cadenceStrong || !strideLimited) {
+      return null;
+    }
 
     return {
       id: "cadence-stride-balance",

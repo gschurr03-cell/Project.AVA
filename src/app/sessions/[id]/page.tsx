@@ -20,10 +20,24 @@ import { buildTimelineMarkersFromMetrics } from "@/lib/biomechanics/video/timeli
 import OverlayVideoPlayer from "@/components/video/OverlayVideoPlayer";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import { loadOverlayFrames } from "@/lib/video/loadOverlayFrames";
+import { buildCalibrationReport, type CalibrationReport } from "@/lib/calibration";
+import { predictPerformance, type RaceDistance } from "@/lib/prediction";
+import { detectSprintPhases } from "@/lib/phases";
+import { buildTrainingFocus } from "@/lib/coaching/focus";
+import { buildSprintIntelligence } from "@/lib/intelligence";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
 import RecommendationsPanel from "./RecommendationsPanel";
+import CalibrationPanel from "./CalibrationPanel";
+import PerformancePredictionPanel from "./PerformancePredictionPanel";
+import PhaseTimelinePanel from "./PhaseTimelinePanel";
+import SprintIntelligencePanel from "./SprintIntelligencePanel";
 import CoachNotesForm from "./CoachNotesForm";
+
+/** Pull a calibrated measurement value by key from a calibration report. */
+function calibratedValue(report: CalibrationReport | null, key: string): number | null {
+  return report?.measurements.find((m) => m.key === key)?.value ?? null;
+}
 
 /** Map validated analysis metrics onto the coaching engine's metric keys. */
 function toCoachingMetrics(data: AnalysisMetrics) {
@@ -59,7 +73,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, duration_s, width, height, fps, codec, size_bytes, athletes(full_name)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, distance_m, duration_s, width, height, fps, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -112,6 +126,78 @@ export default async function SessionPage({
   const overlayFrames: OverlayFrame[] = parsedMetrics?.success
     ? await loadOverlayFrames(supabase, analysis?.keypoints_path)
     : [];
+
+  // Calibration: real-world estimates (with confidence) derived from the pose
+  // overlay + athlete profile. Kept fully separate from the biomechanics
+  // metrics; only shown once an overlay is available.
+  const calibrationReport = overlayFrames.length
+    ? buildCalibrationReport({
+        legLengthCm: session.athletes?.leg_length_cm ?? null,
+        knownDistanceM: session.distance_m ?? null,
+        frameWidth: session.width ?? null,
+        frameHeight: session.height ?? null,
+        frames: overlayFrames,
+      })
+    : null;
+
+  // Sprint phase detection: segment the run (start → acceleration → transition →
+  // max velocity → maintenance → deceleration) from the velocity profile + step
+  // marks. Presentation-only; changes no metric math.
+  const phaseReport = overlayFrames.length ? detectSprintPhases(overlayFrames) : null;
+
+  // PB Predictor v1: deterministic, explainable race-time estimates from the
+  // athlete profile + calibrated biomechanics. Consumes the other engines'
+  // outputs without modifying them; only shown once metrics exist.
+  const athleteProfile = session.athletes;
+  const pb = (d: RaceDistance) =>
+    athleteProfile?.[`personal_best_${d}m` as const] ?? null;
+  const goal = (d: RaceDistance) => athleteProfile?.[`goal_${d}m` as const] ?? null;
+  const prediction = parsedMetrics?.success
+    ? predictPerformance({
+        heightCm: athleteProfile?.height_cm ?? null,
+        weightKg: athleteProfile?.weight_kg ?? null,
+        legLengthCm: athleteProfile?.leg_length_cm ?? null,
+        personalBests: { 60: pb(60), 100: pb(100), 200: pb(200) },
+        goals: { 60: goal(60), 100: goal(100), 200: goal(200) },
+        strideFrequencyHz: parsedMetrics.data.strideFrequencyHz,
+        groundContactTimeMs: parsedMetrics.data.groundContactTimeMs,
+        flightTimeMs: parsedMetrics.data.flightTimeMs,
+        metricsTopSpeedMps: parsedMetrics.data.topSpeedMps,
+        metricsStrideLengthM: parsedMetrics.data.avgStrideLengthM,
+        calibratedStepLengthM: calibratedValue(calibrationReport, "stepLength"),
+        calibratedStrideLengthM: calibratedValue(calibrationReport, "strideLength"),
+        calibratedAvgVelocityMps: calibratedValue(calibrationReport, "avgVelocity"),
+        calibratedTopVelocityMps: calibratedValue(calibrationReport, "topVelocity"),
+        calibrationConfidence: calibrationReport?.scale?.confidence ?? null,
+      })
+    : null;
+
+  // Longitudinal training focus across this athlete's completed analyses, so the
+  // intelligence engine can flag persistent (vs one-off) limiters. Read-only,
+  // RLS-scoped; a failed/empty read simply yields no focus.
+  const { data: athleteAnalyses } = parsedMetrics?.success
+    ? await supabase
+        .from("analyses")
+        .select("id, metrics, created_at, sessions!inner(athlete_id)")
+        .eq("sessions.athlete_id", session.athlete_id)
+        .eq("status", "complete")
+        .order("created_at", { ascending: false })
+        .limit(10)
+    : { data: null };
+  const trainingFocus = athleteAnalyses ? buildTrainingFocus(athleteAnalyses) : null;
+
+  // Sprint Intelligence (Day 60): synthesize the metrics, calibration, phases,
+  // prediction, and training focus into a ranked, fully-explained set of
+  // limiters. Consumes the other engines' outputs; modifies none of them.
+  const intelligence = parsedMetrics?.success
+    ? buildSprintIntelligence({
+        metrics: parsedMetrics.data,
+        calibration: calibrationReport,
+        prediction,
+        phases: phaseReport,
+        trainingFocus,
+      })
+    : null;
 
   // Progress tracking: compare against this athlete's previous completed
   // analysis (any earlier session). Read-only, non-mutating, RLS-scoped.
@@ -253,6 +339,10 @@ export default async function SessionPage({
                   )}
                 </section>
                 <MetricsPanel metrics={parsedMetrics.data} />
+                {intelligence && <SprintIntelligencePanel report={intelligence} />}
+                {calibrationReport && <CalibrationPanel report={calibrationReport} />}
+                {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
+                {prediction && <PerformancePredictionPanel prediction={prediction} />}
                 {coachingReport && (
                   <InsightPanel report={coachingReport} comparison={comparisonReport} />
                 )}
