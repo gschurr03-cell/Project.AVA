@@ -26,6 +26,32 @@ You need the [Supabase CLI](https://supabase.com/docs/guides/cli) and Docker for
 local development. `supabase start` prints the local URL and anon/service keys
 to paste into `.env.local`.
 
+## Permanent local dev account
+
+Instead of creating a throwaway verify user each time, seed one permanent local
+account with a complete, analyzed demo session:
+
+```bash
+npm run dev:seed     # idempotent — safe to re-run any time
+```
+
+This creates (or updates) a coach, one athlete with a full profile, and one
+`complete` session, and uploads the bundled sample video plus its aligned
+MediaPipe pose artifact — so the interactive overlay, calibration, PB
+prediction, sprint phases, and sprint intelligence panels all populate from
+real, aligned pose data.
+
+Sign in at [`/login`](http://localhost:3000/login):
+
+- **email:** `dev@projectava.local`
+- **password:** `dev-password-123` — the local default. Override it by setting
+  `DEV_SEED_PASSWORD` before running the seed. No secret is stored in the repo.
+
+The seed talks to the local Supabase stack only; it **refuses to run against a
+non-local Supabase URL** unless `DEV_SEED_ALLOW_REMOTE=1` is set, so it can never
+touch production data. Re-running it never creates duplicates (every row is keyed
+by a fixed id; storage objects are overwritten).
+
 ## Local analysis workers (dev)
 
 Two workers poll for queued analyses and POST results to the secured callback.

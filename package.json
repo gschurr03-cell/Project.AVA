@@ -5,6 +5,8 @@
   "description": "AI-powered sprint biomechanics web platform",
   "scripts": {
     "dev": "next dev",
+    "dev:seed": "node --env-file=.env.local scripts/dev-seed.mjs",
+    "sample:transcode": "node scripts/make-sample-h264.mjs",
     "worker:mock": "node --env-file=.env.local scripts/mock-worker.mjs",
     "worker:analysis": "node --env-file=.env.local scripts/analysis-worker.mjs",
     "worker:analysis:sanity": "node scripts/worker-analysis-sanity.mjs",
@@ -39,8 +41,8 @@
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.0",
     "next": "15.5.19",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
+    "react": "19.0.7",
+    "react-dom": "19.0.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -50,6 +52,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.16.0",
     "eslint-config-next": "15.5.19",
+    "ffmpeg-static": "^5.3.0",
     "postcss": "^8.4.49",
     "prettier": "^3.4.2",
     "supabase": "^1.223.10",

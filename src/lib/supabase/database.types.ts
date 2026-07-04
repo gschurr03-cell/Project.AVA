@@ -139,12 +139,16 @@ export type Database = {
       sessions: {
         Row: {
           athlete_id: string
+          calibration_zone_distance_m: number | null
+          calibration_zone_end_s: number | null
+          calibration_zone_start_s: number | null
           codec: string | null
           created_at: string
           created_by: string
           distance_m: number | null
           duration_s: number | null
           fps: number | null
+          fps_override: number | null
           height: number | null
           id: string
           name: string | null
@@ -158,12 +162,16 @@ export type Database = {
         }
         Insert: {
           athlete_id: string
+          calibration_zone_distance_m?: number | null
+          calibration_zone_end_s?: number | null
+          calibration_zone_start_s?: number | null
           codec?: string | null
           created_at?: string
           created_by: string
           distance_m?: number | null
           duration_s?: number | null
           fps?: number | null
+          fps_override?: number | null
           height?: number | null
           id?: string
           name?: string | null
@@ -177,12 +185,16 @@ export type Database = {
         }
         Update: {
           athlete_id?: string
+          calibration_zone_distance_m?: number | null
+          calibration_zone_end_s?: number | null
+          calibration_zone_start_s?: number | null
           codec?: string | null
           created_at?: string
           created_by?: string
           distance_m?: number | null
           duration_s?: number | null
           fps?: number | null
+          fps_override?: number | null
           height?: number | null
           id?: string
           name?: string | null

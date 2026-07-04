@@ -28,7 +28,22 @@ import { detectStepMarks, type StepMark } from "@/lib/video/steps";
 export type Confidence = "high" | "medium" | "low";
 
 /** How a scale was derived, best (most trusted) first. */
-export type CalibrationMethod = "manual" | "legLength" | "knownDistance";
+export type CalibrationMethod = "manual" | "zone" | "legLength" | "knownDistance";
+
+/**
+ * A user-defined calibration zone: a known real-world distance covered between
+ * two timestamps in the clip (e.g. a 30 m fly zone). Because the distance is
+ * known and the segment is bounded, this yields a high-confidence scale and a
+ * direct segment (average) velocity.
+ */
+export interface CalibrationZone {
+  /** Zone start time in seconds. */
+  startTime: number;
+  /** Zone end time in seconds (must be after `startTime`). */
+  endTime: number;
+  /** Known real-world distance covered in the zone, metres. */
+  distanceM: number;
+}
 
 /** A resolved pixel→metre scale plus how much to trust it. */
 export interface CalibrationScale {
@@ -73,6 +88,8 @@ export interface CalibrationInputs {
   steps?: StepMark[];
   /** A user-supplied scale (metres per pixel) from manual calibration points. */
   manualMetersPerPixel?: number | null;
+  /** A known-distance calibration zone (e.g. a 30 m fly), if the coach set one. */
+  zone?: CalibrationZone | null;
 }
 
 const CONFIDENCE_ORDER: Confidence[] = ["low", "medium", "high"];
@@ -187,9 +204,58 @@ export function estimateScaleFromKnownDistance(
   };
 }
 
+/** Valid, well-ordered zone (end after start, positive distance), or null. */
+function validZone(zone: CalibrationZone | null | undefined): CalibrationZone | null {
+  if (!zone) return null;
+  if (!(zone.distanceM > 0)) return null;
+  if (!(zone.endTime > zone.startTime)) return null;
+  return zone;
+}
+
+/** COM x (normalized) at the frame nearest a given time, or null. */
+function comXNearestTime(frames: OverlayFrame[], t: number): number | null {
+  let best: { dt: number; x: number } | null = null;
+  for (const f of frames) {
+    if (!f.centerOfMass) continue;
+    const dt = Math.abs(f.time - t);
+    if (!best || dt < best.dt) best = { dt, x: f.centerOfMass.x };
+  }
+  return best ? best.x : null;
+}
+
 /**
- * Resolve the best available scale: manual (user-provided) beats anthropometric,
- * which beats known-distance. Returns null when nothing is available.
+ * High-confidence scale from a known-distance calibration zone: the horizontal
+ * COM travel between the zone's start/end frames corresponds to `distanceM`.
+ * Because the distance is real and the segment is explicitly bounded by the
+ * coach, this is more trustworthy than anthropometric or whole-clip estimates.
+ */
+export function estimateScaleFromZone(
+  frames: OverlayFrame[],
+  zone: CalibrationZone | null | undefined,
+  w: number | null,
+): CalibrationScale | null {
+  const z = validZone(zone);
+  if (!z || !w) return null;
+
+  const xStart = comXNearestTime(frames, z.startTime);
+  const xEnd = comXNearestTime(frames, z.endTime);
+  if (xStart == null || xEnd == null) return null;
+
+  const travelPx = Math.abs(xEnd - xStart) * w;
+  if (travelPx < 1) return null;
+
+  return {
+    metersPerPixel: z.distanceM / travelPx,
+    method: "zone",
+    confidence: "high",
+    reason: `Scaled from a ${z.distanceM} m calibration zone (${z.startTime.toFixed(2)}–${z.endTime.toFixed(2)} s of the clip).`,
+  };
+}
+
+/**
+ * Resolve the best available scale: manual (user-provided) beats a known-distance
+ * zone, which beats anthropometric, which beats a whole-clip known distance.
+ * Returns null when nothing is available.
  */
 export function resolveScale(inputs: CalibrationInputs): CalibrationScale | null {
   if (inputs.manualMetersPerPixel && inputs.manualMetersPerPixel > 0) {
@@ -201,6 +267,7 @@ export function resolveScale(inputs: CalibrationInputs): CalibrationScale | null
     };
   }
   return (
+    estimateScaleFromZone(inputs.frames, inputs.zone, inputs.frameWidth) ??
     estimateScaleFromLegLength(inputs.frames, inputs.legLengthCm, inputs.frameWidth, inputs.frameHeight) ??
     estimateScaleFromKnownDistance(inputs.frames, inputs.knownDistanceM, inputs.frameWidth)
   );
@@ -319,6 +386,21 @@ export function computeMeasurements(
     unit: "m",
     confidence: netDistanceM != null ? velConf : null,
   });
+
+  // Segment (zone) velocity: a known distance over a known elapsed time is a
+  // direct average speed — no pixel scale needed, so it is high confidence. For a
+  // fly zone this is the athlete's near-top velocity over that segment.
+  const z = validZone(inputs.zone);
+  if (z) {
+    const elapsed = z.endTime - z.startTime;
+    measurements.push({
+      key: "segmentVelocity",
+      label: `Zone velocity (${z.distanceM} m)`,
+      value: elapsed > 0 ? z.distanceM / elapsed : null,
+      unit: "m/s",
+      confidence: elapsed > 0 ? "high" : null,
+    });
+  }
 
   return measurements;
 }

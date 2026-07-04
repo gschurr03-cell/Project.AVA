@@ -20,9 +20,11 @@ import { buildTimelineMarkersFromMetrics } from "@/lib/biomechanics/video/timeli
 import OverlayVideoPlayer from "@/components/video/OverlayVideoPlayer";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import { loadOverlayFrames } from "@/lib/video/loadOverlayFrames";
-import { buildCalibrationReport, type CalibrationReport } from "@/lib/calibration";
+import { buildCalibrationReport, type CalibrationReport, type CalibrationZone } from "@/lib/calibration";
 import { predictPerformance, type RaceDistance } from "@/lib/prediction";
 import { detectSprintPhases } from "@/lib/phases";
+import { applyFpsOverride, isValidFps } from "@/lib/video/fps";
+import type { StepDistanceScale } from "@/lib/video/steps";
 import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
 import MetricsPanel from "./MetricsPanel";
@@ -32,6 +34,7 @@ import CalibrationPanel from "./CalibrationPanel";
 import PerformancePredictionPanel from "./PerformancePredictionPanel";
 import PhaseTimelinePanel from "./PhaseTimelinePanel";
 import SprintIntelligencePanel from "./SprintIntelligencePanel";
+import CalibrationControlsForm from "./CalibrationControlsForm";
 import CoachNotesForm from "./CoachNotesForm";
 
 /** Pull a calibrated measurement value by key from a calibration report. */
@@ -59,10 +62,10 @@ export default async function SessionPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string }>;
 }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, saved } = await searchParams;
 
   const supabase = await createClient();
   const {
@@ -73,7 +76,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, distance_m, duration_s, width, height, fps, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, distance_m, duration_s, width, height, fps, fps_override, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -123,13 +126,32 @@ export default async function SessionPage({
   // Interactive-overlay frames come from the analysis's stored pose artifact
   // (analyses.keypoints_path). The loader is fully defensive: a missing path,
   // bucket, object, or malformed artifact resolves to [] (placeholder shown).
-  const overlayFrames: OverlayFrame[] = parsedMetrics?.success
+  const rawOverlayFrames: OverlayFrame[] = parsedMetrics?.success
     ? await loadOverlayFrames(supabase, analysis?.keypoints_path)
     : [];
 
+  // Manual FPS override (Day 61): when set, re-time every frame so all
+  // downstream timing (steps, phases, calibrated + segment velocity) uses the
+  // coach-supplied frame rate instead of the detected one.
+  const overlayFrames = isValidFps(session.fps_override)
+    ? applyFpsOverride(rawOverlayFrames, session.fps_override)
+    : rawOverlayFrames;
+
+  // Known-distance calibration zone (Day 61), if the coach set all three parts.
+  const calibrationZone: CalibrationZone | null =
+    session.calibration_zone_start_s != null &&
+    session.calibration_zone_end_s != null &&
+    session.calibration_zone_distance_m != null
+      ? {
+          startTime: session.calibration_zone_start_s,
+          endTime: session.calibration_zone_end_s,
+          distanceM: session.calibration_zone_distance_m,
+        }
+      : null;
+
   // Calibration: real-world estimates (with confidence) derived from the pose
-  // overlay + athlete profile. Kept fully separate from the biomechanics
-  // metrics; only shown once an overlay is available.
+  // overlay + athlete profile + optional known-distance zone. Kept fully separate
+  // from the biomechanics metrics; only shown once an overlay is available.
   const calibrationReport = overlayFrames.length
     ? buildCalibrationReport({
         legLengthCm: session.athletes?.leg_length_cm ?? null,
@@ -137,8 +159,20 @@ export default async function SessionPage({
         frameWidth: session.width ?? null,
         frameHeight: session.height ?? null,
         frames: overlayFrames,
+        zone: calibrationZone,
       })
     : null;
+
+  // Step-distance scale: turns the overlay's normalized step gaps into metres
+  // when a calibration scale + pixel dimensions are available.
+  const stepScale: StepDistanceScale | null =
+    calibrationReport?.scale && session.width && session.height
+      ? {
+          metersPerPixel: calibrationReport.scale.metersPerPixel,
+          frameWidth: session.width,
+          frameHeight: session.height,
+        }
+      : null;
 
   // Sprint phase detection: segment the run (start → acceleration → transition →
   // max velocity → maintenance → deceleration) from the velocity profile + step
@@ -240,6 +274,11 @@ export default async function SessionPage({
           {error}
         </p>
       )}
+      {saved && (
+        <p className="mb-4 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700">
+          Calibration saved.
+        </p>
+      )}
 
       <dl className="mb-8 grid grid-cols-3 gap-y-3 rounded border p-4 text-sm">
         <dt className="font-medium text-gray-500">Athlete</dt>
@@ -330,7 +369,11 @@ export default async function SessionPage({
                 <section className="mt-6 rounded-lg border bg-gray-50 p-5">
                   <h2 className="mb-3 text-xl font-bold text-lane">Interactive Overlay</h2>
                   {signedVideo?.signedUrl && overlayFrames.length > 0 ? (
-                    <OverlayVideoPlayer videoUrl={signedVideo.signedUrl} frames={overlayFrames} />
+                    <OverlayVideoPlayer
+                      videoUrl={signedVideo.signedUrl}
+                      frames={overlayFrames}
+                      stepScale={stepScale}
+                    />
                   ) : (
                     <p className="text-sm text-gray-500">
                       The pose overlay (skeleton, joint angles, COM trail, and foot-contact labels)
@@ -341,6 +384,14 @@ export default async function SessionPage({
                 <MetricsPanel metrics={parsedMetrics.data} />
                 {intelligence && <SprintIntelligencePanel report={intelligence} />}
                 {calibrationReport && <CalibrationPanel report={calibrationReport} />}
+                <CalibrationControlsForm
+                  sessionId={session.id}
+                  detectedFps={session.fps ?? null}
+                  fpsOverride={session.fps_override ?? null}
+                  zoneStartS={session.calibration_zone_start_s ?? null}
+                  zoneEndS={session.calibration_zone_end_s ?? null}
+                  zoneDistanceM={session.calibration_zone_distance_m ?? null}
+                />
                 {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
                 {prediction && <PerformancePredictionPanel prediction={prediction} />}
                 {coachingReport && (

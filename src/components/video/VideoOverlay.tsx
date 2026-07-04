@@ -2,7 +2,11 @@
 
 import { useEffect, useRef } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
-import { detectStepMarks } from "@/lib/video/steps";
+import {
+  detectStepMarks,
+  applyRealWorldStepDistances,
+  type StepDistanceScale,
+} from "@/lib/video/steps";
 import {
   getDisplayedVideoRect,
   projectLandmark,
@@ -38,6 +42,8 @@ type Props = {
   hoveredJoint: string | null;
   /** Landmark key pinned by a click (persistent highlight). */
   selectedJoint: string | null;
+  /** Calibration scale for step distances; null → show relative (uncalibrated). */
+  stepScale?: StepDistanceScale | null;
 };
 
 const bones = [
@@ -154,6 +160,7 @@ export default function VideoOverlay({
   toggles,
   hoveredJoint,
   selectedJoint,
+  stepScale = null,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -177,8 +184,9 @@ export default function VideoOverlay({
     if (!canvas || !video || !frames.length) return;
 
     // Detect step marks once per clip (cheap, O(frames)); the draw loop only
-    // reveals the ones reached by the current playback time.
-    const stepMarks = detectStepMarks(frames);
+    // reveals the ones reached by the current playback time. When a calibration
+    // scale is present, each gap also carries a real-world metre distance.
+    const stepMarks = applyRealWorldStepDistances(detectStepMarks(frames), stepScale);
 
     const draw = () => {
       const ctx = canvas.getContext("2d");
@@ -487,13 +495,22 @@ export default function VideoOverlay({
           ctx.stroke();
           ctx.setLineDash([]);
 
-          // Uncalibrated distance at each segment midpoint (≈ signals estimate).
+          // Step distance at each segment midpoint: real metres when calibrated,
+          // otherwise an uncalibrated relative estimate (≈ … rel). This is a
+          // spatial gap between contacts — never a contact/flight time.
           for (let i = 1; i < reached.length; i++) {
-            const d = reached[i].distanceFromPrev;
-            if (d == null) continue;
+            const meters = reached[i].distanceMetersFromPrev;
+            const relative = reached[i].distanceFromPrev;
+            const label =
+              meters != null
+                ? `${meters.toFixed(2)} m`
+                : relative != null
+                  ? `≈${relative.toFixed(2)} rel`
+                  : null;
+            if (label == null) continue;
             const a = project(reached[i - 1]);
             const b = project(reached[i]);
-            drawLabel(ctx, `≈${d.toFixed(2)}`, (a.x + b.x) / 2, (a.y + b.y) / 2, COLORS.stepDist);
+            drawLabel(ctx, label, (a.x + b.x) / 2, (a.y + b.y) / 2, COLORS.stepDist);
           }
         }
 
@@ -520,7 +537,7 @@ export default function VideoOverlay({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [videoRef, frames]);
+  }, [videoRef, frames, stepScale]);
 
   // Position/size are driven imperatively in the draw loop so the canvas covers
   // exactly the displayed picture (letterbox-aware); left/top default to 0.

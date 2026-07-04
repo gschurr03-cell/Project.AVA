@@ -16,8 +16,6 @@ import { PROFILE_FIELDS, athleteProfileSchema } from "@/lib/athletes/profile";
  */
 export async function updateAthleteProfile(formData: FormData) {
   const id = String(formData.get("id") ?? "");
-  const back = (query: string) => redirect(`/athletes/${id}?${query}`);
-
   if (!id) redirect("/dashboard");
 
   const parsed = athleteProfileSchema.safeParse(
@@ -26,7 +24,7 @@ export async function updateAthleteProfile(formData: FormData) {
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Invalid profile values";
-    return back(`error=${encodeURIComponent(message)}`);
+    redirect(`/athletes/${id}?error=${encodeURIComponent(message)}`);
   }
 
   const supabase = await createClient();
@@ -41,9 +39,9 @@ export async function updateAthleteProfile(formData: FormData) {
     .eq("id", id);
 
   if (error) {
-    back(`error=${encodeURIComponent(error.message)}`);
+    redirect(`/athletes/${id}?error=${encodeURIComponent(error.message)}`);
   }
 
   revalidatePath(`/athletes/${id}`);
-  back("saved=1");
+  redirect(`/athletes/${id}?saved=1`);
 }

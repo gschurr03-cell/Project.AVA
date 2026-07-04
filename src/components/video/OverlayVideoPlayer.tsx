@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
+import type { StepDistanceScale } from "@/lib/video/steps";
 import OverlaySurface, {
   SPEEDS,
   frameIndexForTime,
@@ -15,6 +16,8 @@ import TelestrationCanvas from "./TelestrationCanvas";
 type Props = {
   videoUrl: string;
   frames: OverlayFrame[];
+  /** Calibration scale for step distances (metres); null → relative labels. */
+  stepScale?: StepDistanceScale | null;
 };
 
 /**
@@ -22,7 +25,7 @@ type Props = {
  * {@link PlayerControls}. Transport goes through the surface's imperative handle
  * so the same controls are reused by the comparison player without duplication.
  */
-export default function OverlayVideoPlayer({ videoUrl, frames }: Props) {
+export default function OverlayVideoPlayer({ videoUrl, frames, stepScale = null }: Props) {
   const surfaceRef = useRef<OverlaySurfaceHandle>(null);
   const [state, setState] = useState<SurfaceState>({
     currentTime: 0,
@@ -61,6 +64,7 @@ export default function OverlayVideoPlayer({ videoUrl, frames }: Props) {
       ref={surfaceRef}
       videoUrl={videoUrl}
       frames={frames}
+      stepScale={stepScale}
       onState={setState}
       overlaySlot={<TelestrationCanvas />}
       controlsSlot={

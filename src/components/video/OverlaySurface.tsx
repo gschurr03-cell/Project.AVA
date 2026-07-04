@@ -20,6 +20,7 @@ import {
   type FollowBox,
 } from "@/lib/video/follow";
 import VideoOverlay, { type OverlayToggles } from "./VideoOverlay";
+import type { StepDistanceScale } from "@/lib/video/steps";
 
 /** Playback rates offered by the shared controls. */
 export const SPEEDS = [0.25, 0.5, 1, 2] as const;
@@ -113,6 +114,8 @@ type Props = {
   overlaySlot?: ReactNode;
   /** Called whenever the underlying video clock/state changes. */
   onState?: (state: SurfaceState) => void;
+  /** Calibration scale for step distances (metres); null → relative labels. */
+  stepScale?: StepDistanceScale | null;
 };
 
 /**
@@ -122,7 +125,7 @@ type Props = {
  * player can share one set of transport controls across one or two surfaces.
  */
 const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlaySurface(
-  { videoUrl, frames, label, controlsSlot, overlaySlot, onState },
+  { videoUrl, frames, label, controlsSlot, overlaySlot, onState, stepScale = null },
   ref,
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -349,6 +352,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             toggles={toggles}
             hoveredJoint={hoveredJoint}
             selectedJoint={selectedJoint}
+            stepScale={stepScale}
           />
           {overlaySlot}
         </div>

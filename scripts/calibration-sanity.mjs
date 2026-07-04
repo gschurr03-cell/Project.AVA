@@ -132,6 +132,22 @@ try {
   const again = buildCalibrationReport(base);
   check("deterministic report", JSON.stringify(again) === JSON.stringify(report));
 
+  // (6) Known-distance calibration zone (Day 61): a high-confidence scale plus a
+  // direct segment (average) velocity from distance / elapsed time. The zone
+  // scale must win over the leg-length scale.
+  const zone = { startTime: 0.2, endTime: 1.0, distanceM: 5 };
+  const zoned = buildCalibrationReport({ ...base, legLengthCm: 90, zone });
+  check("zone scale wins over leg length, high confidence", zoned.scale.method === "zone" && zoned.scale.confidence === "high");
+  const zByKey = Object.fromEntries(zoned.measurements.map((m) => [m.key, m]));
+  check("segment velocity = distance / elapsed", approx(zByKey.segmentVelocity?.value, 5 / (1.0 - 0.2), 0.01));
+  check("segment velocity is high confidence", zByKey.segmentVelocity?.confidence === "high");
+  // The zone scale changes the recovered step/velocity numbers vs leg-length.
+  const legOnly = buildCalibrationReport({ ...base, legLengthCm: 90 });
+  check("zone scale differs from the leg-length scale", Math.abs(zoned.scale.metersPerPixel - legOnly.scale.metersPerPixel) > 1e-9);
+  // A malformed zone (end ≤ start) is ignored, not fabricated.
+  const badZone = buildCalibrationReport({ ...base, legLengthCm: 90, zone: { startTime: 1.0, endTime: 0.5, distanceM: 5 } });
+  check("malformed zone ignored → falls back to leg length, no segment velocity", badZone.scale.method === "legLength" && !badZone.measurements.some((m) => m.key === "segmentVelocity"));
+
   console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");
 } finally {
   rmSync(out, { recursive: true, force: true });

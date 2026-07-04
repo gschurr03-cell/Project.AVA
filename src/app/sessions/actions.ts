@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { MIN_FPS, MAX_FPS } from "@/lib/video/fps";
 
 /**
  * Rename a session (sets the editable display `name`). RLS scopes the update to
@@ -136,4 +138,97 @@ export async function queueAnalysis(formData: FormData) {
 
   revalidatePath(`/sessions/${id}`);
   redirect(`/sessions/${id}`);
+}
+
+/** A blank form field → null, otherwise a finite number (kept as string if not). */
+function blankToNull(raw: unknown): number | null | string {
+  const s = String(raw ?? "").trim();
+  if (s === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : s;
+}
+
+/**
+ * Coach-controlled calibration inputs for a session (Day 61): the manual FPS
+ * override and the known-distance calibration zone. Every field is independently
+ * optional; leaving a field blank clears it. The zone is all-or-nothing and must
+ * be well-ordered (end after start, positive distance). Validated with Zod before
+ * it reaches the DB, mirroring the CHECK constraints in migration 0007.
+ */
+const sessionCalibrationSchema = z
+  .object({
+    fps_override: z.preprocess(
+      blankToNull,
+      z
+        .number({ invalid_type_error: "FPS must be a number" })
+        .min(MIN_FPS, `FPS must be at least ${MIN_FPS}`)
+        .max(MAX_FPS, `FPS must be at most ${MAX_FPS}`)
+        .nullable(),
+    ),
+    calibration_zone_start_s: z.preprocess(
+      blankToNull,
+      z.number({ invalid_type_error: "Zone start must be a number" }).min(0).nullable(),
+    ),
+    calibration_zone_end_s: z.preprocess(
+      blankToNull,
+      z.number({ invalid_type_error: "Zone end must be a number" }).min(0).nullable(),
+    ),
+    calibration_zone_distance_m: z.preprocess(
+      blankToNull,
+      z
+        .number({ invalid_type_error: "Zone distance must be a number" })
+        .positive("Zone distance must be greater than 0")
+        .nullable(),
+    ),
+  })
+  .superRefine((v, ctx) => {
+    const zoneFields = [
+      v.calibration_zone_start_s,
+      v.calibration_zone_end_s,
+      v.calibration_zone_distance_m,
+    ];
+    const set = zoneFields.filter((x) => x != null).length;
+    if (set > 0 && set < 3) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Set the zone start, end, and distance together (or clear all three).",
+      });
+    }
+    if (
+      v.calibration_zone_start_s != null &&
+      v.calibration_zone_end_s != null &&
+      v.calibration_zone_end_s <= v.calibration_zone_start_s
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Zone end time must be after the start time.",
+      });
+    }
+  });
+
+export async function updateSessionCalibration(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const parsed = sessionCalibrationSchema.safeParse({
+    fps_override: formData.get("fps_override"),
+    calibration_zone_start_s: formData.get("calibration_zone_start_s"),
+    calibration_zone_end_s: formData.get("calibration_zone_end_s"),
+    calibration_zone_distance_m: formData.get("calibration_zone_distance_m"),
+  });
+
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Invalid calibration values";
+    redirect(`/sessions/${id}?error=${encodeURIComponent(message)}`);
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("sessions").update(parsed.data).eq("id", id);
+
+  if (error) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  revalidatePath(`/sessions/${id}`);
+  redirect(`/sessions/${id}?saved=1`);
 }
