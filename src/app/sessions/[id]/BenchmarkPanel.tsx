@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { setSessionBenchmark } from "@/app/sessions/actions";
 import type { SprintMeasurements } from "@/lib/benchmark/measurements";
 import type { AccuracyRow, BenchmarkComparisonRow, ComparisonStatus } from "@/lib/benchmark";
@@ -21,11 +22,12 @@ const int = (v: number | null | undefined) => (v == null ? "—" : String(v));
 const fmtMs = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v)} ms`);
 const fmtFr = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(1));
 
-const CONF_BADGE: Record<string, string> = {
-  high: "bg-green-100 text-green-700",
-  medium: "bg-amber-100 text-amber-700",
-  low: "bg-gray-200 text-gray-600",
-};
+/** Per-side frequency is computed + stored but hidden from the UI (Day 74) — only
+ *  the combined value is shown. Filtered from the comparison table below. */
+const HIDDEN_COMPARISON_KEYS: ReadonlySet<string> = new Set([
+  "leftStepFrequencyHz",
+  "rightStepFrequencyHz",
+]);
 
 const STATUS_BADGE: Record<ComparisonStatus, string> = {
   ok: "bg-green-100 text-green-700",
@@ -50,6 +52,47 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
       <p className="mt-1 text-2xl font-bold text-gray-800">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-gray-400">{sub}</p>}
     </div>
+  );
+}
+
+/**
+ * A compact, default-collapsed disclosure card (Day 73 declutter). Keeps diagnostic
+ * detail available behind a chevron so the headline numbers read first. Presentation
+ * only — no data is removed, just hidden until expanded.
+ */
+function Collapsible({
+  title,
+  hint,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details className="group mb-4 rounded-md border bg-white text-sm" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          {title}
+          {hint && <span className="ml-2 font-normal normal-case text-gray-400">{hint}</span>}
+        </span>
+        <svg
+          className="h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-150 group-open:rotate-90"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </summary>
+      <div className="border-t px-3 py-3">{children}</div>
+    </details>
   );
 }
 
@@ -112,7 +155,7 @@ export default function BenchmarkPanel({
   sessionId: string;
   measurements: SprintMeasurements;
   activeFps: number | null;
-  fpsSource: "override" | "detected" | "none";
+  fpsSource: "override" | "normalized" | "detected" | "none";
   detectedFps: number | null;
   fpsOverride: number | null;
   benchmarks: { id: string; name: string }[];
@@ -131,69 +174,83 @@ export default function BenchmarkPanel({
         step length, contact time, and flight time are separate metrics and reported as such.
       </p>
 
-      {/* Precision mode (Day 69): explain what's trusted vs downgraded at this FPS. */}
-      {precisionLimited && (
-        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-          <p className="font-semibold">
-            Precision mode — {activeFps ?? "unknown"} fps (high-precision timing needs ≥
-            {HIGH_PRECISION_TIMING_FPS} fps)
-          </p>
-          <p className="mt-1">
-            Headline metrics are the trusted spatial/zone measurements (step length, zone distance,
-            velocity, combined cadence). Ground contact, flight time, and small left/right
-            asymmetries are shown as diagnostics only — one frame (~{Math.round(1000 / (activeFps || 60))}{" "}
-            ms) is too large a share of an ~80 ms contact to trust as a headline number. Capture at
-            120–240 fps for high-precision timing.
-          </p>
-        </div>
-      )}
+      {/* FPS / precision / camera compensation — diagnostic, collapsed by default. */}
+      <Collapsible
+        title="FPS, precision &amp; camera"
+        hint={`${activeFps ?? "—"} fps${precisionLimited ? " · precision mode" : ""} · ${m.cameraCompensation.confidence} camera`}
+      >
+        {precisionLimited && (
+          <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+            <p className="font-semibold">
+              Precision mode — {activeFps ?? "unknown"} fps (high-precision timing needs ≥
+              {HIGH_PRECISION_TIMING_FPS} fps)
+            </p>
+            <p className="mt-1">
+              Headline metrics are the trusted spatial/zone measurements (step length, zone distance,
+              velocity, combined cadence). Ground contact, flight time, and small left/right
+              asymmetries are shown as diagnostics only — one frame (~
+              {Math.round(1000 / (activeFps || 60))} ms) is too large a share of an ~80 ms contact to
+              trust as a headline number. Capture at 120–240 fps for high-precision timing.
+            </p>
+          </div>
+        )}
 
-      {/* FPS source */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border bg-white p-3 text-sm">
-        <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Active FPS</span>
-        <span className="text-lg font-bold text-gray-800">{activeFps ?? "—"}</span>
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
-            fpsSource === "override" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
-          }`}
-        >
-          {fpsSource === "override" ? "manual override" : fpsSource === "detected" ? "detected" : "unknown"}
-        </span>
-        <span className="text-xs text-gray-400">
-          detected {detectedFps ?? "—"} · override {fpsOverride ?? "—"} · drives all timing
-          (contact, flight, frequency, zone, velocity, phases)
-        </span>
-      </div>
-
-      {/* Camera-motion compensation status (Day 64) */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border bg-white p-3 text-sm">
-        <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
-          Camera compensation
-        </span>
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
-            m.cameraCompensation.confidence === "high"
-              ? "bg-green-100 text-green-700"
-              : m.cameraCompensation.confidence === "medium"
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Active FPS</span>
+          <span className="text-lg font-bold text-gray-800">{activeFps ?? "—"}</span>
+          <span
+            className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
+              fpsSource === "override"
                 ? "bg-amber-100 text-amber-700"
-                : m.cameraCompensation.confidence === "low"
-                  ? "bg-orange-100 text-orange-700"
-                  : "bg-gray-200 text-gray-600"
-          }`}
-        >
-          {m.cameraCompensation.confidence}
-        </span>
-        <span className="text-xs text-gray-500">
-          {m.cameraCompensation.available
-            ? `Spatial metrics use stabilized world coordinates · ${Math.round(m.cameraCompensation.coverage * 100)}% frame coverage`
-            : "Not compensated — spatial metrics use raw frame coordinates"}
-        </span>
-      </div>
-      {m.cameraCompensation.warning && (
-        <p className="mb-4 rounded border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-800">
-          ⚠ {m.cameraCompensation.warning}
-        </p>
-      )}
+                : fpsSource === "normalized"
+                  ? "bg-sky-100 text-sky-700"
+                  : "bg-green-100 text-green-700"
+            }`}
+          >
+            {fpsSource === "override"
+              ? "manual override"
+              : fpsSource === "normalized"
+                ? "normalized"
+                : fpsSource === "detected"
+                  ? "detected"
+                  : "unknown"}
+          </span>
+          <span className="text-xs text-gray-400">
+            detected {detectedFps ?? "—"}
+            {fpsSource === "normalized" ? ` → ${activeFps} (snapped to canonical)` : ""} · override{" "}
+            {fpsOverride ?? "—"} · drives all timing (contact, flight, frequency, zone, velocity, phases)
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
+            Camera compensation
+          </span>
+          <span
+            className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
+              m.cameraCompensation.confidence === "high"
+                ? "bg-green-100 text-green-700"
+                : m.cameraCompensation.confidence === "medium"
+                  ? "bg-amber-100 text-amber-700"
+                  : m.cameraCompensation.confidence === "low"
+                    ? "bg-orange-100 text-orange-700"
+                    : "bg-gray-200 text-gray-600"
+            }`}
+          >
+            {m.cameraCompensation.confidence}
+          </span>
+          <span className="text-xs text-gray-500">
+            {m.cameraCompensation.available
+              ? `Spatial metrics use stabilized world coordinates · ${Math.round(m.cameraCompensation.coverage * 100)}% frame coverage`
+              : "Not compensated — spatial metrics use raw frame coordinates"}
+          </span>
+        </div>
+        {m.cameraCompensation.warning && (
+          <p className="mt-3 rounded border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+            ⚠ {m.cameraCompensation.warning}
+          </p>
+        )}
+      </Collapsible>
 
       {/* Diagnostics: which frames/contacts were included/excluded (Day 65) */}
       <details className="mb-4 rounded-md border bg-white p-3 text-sm">
@@ -260,82 +317,103 @@ export default function BenchmarkPanel({
         </p>
       )}
 
-      {/* Contacts + frequency */}
-      <h3 className="mb-2 text-sm font-semibold text-gray-700">Contacts &amp; frequency</h3>
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat
-          label="Combined frequency"
-          value={m.combinedStepFrequencyHz != null ? `${n2(m.combinedStepFrequencyHz)}` : "—"}
-          sub="steps/s (primary)"
-        />
-        <Stat label="Left / Right freq" value={`${n2(m.leftStepFrequencyHz)} / ${n2(m.rightStepFrequencyHz)}`} sub="steps/s" />
-        <Stat
-          label="Contacts (total)"
-          value={int(m.totalContacts)}
-          sub={`L ${m.leftContacts} · R ${m.rightContacts}`}
-        />
-        <Stat
-          label="Valid in zone"
-          value={int(m.validContacts)}
-          sub={m.zoneTimeS != null ? `over ${n2(m.zoneTimeS)} s` : "no zone time"}
-        />
-      </div>
+      {/* Contacts & frequency — detailed cards, collapsed by default. Only the
+          COMBINED frequency is surfaced (Day 74); per-side frequency stays computed
+          + stored, just not shown. */}
+      <Collapsible
+        title="Contacts &amp; frequency"
+        hint={`${m.combinedStepFrequencyHz != null ? n2(m.combinedStepFrequencyHz) : "—"} steps/s · ${int(m.validContacts)} in-zone contacts`}
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Stat
+            label="Frequency"
+            value={m.combinedStepFrequencyHz != null ? `${n2(m.combinedStepFrequencyHz)}` : "—"}
+            sub="steps/s"
+          />
+          <Stat
+            label="Contacts (total)"
+            value={int(m.totalContacts)}
+            sub={`L ${m.leftContacts} · R ${m.rightContacts}`}
+          />
+          <Stat
+            label="Valid in zone"
+            value={int(m.validContacts)}
+            sub={m.zoneTimeS != null ? `over ${n2(m.zoneTimeS)} s` : "no zone time"}
+          />
+        </div>
+      </Collapsible>
 
-      {/* Step length */}
-      <div className="mb-2 flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-gray-700">Step length</h3>
-        <span className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${CONF_BADGE[m.stepLengthConfidence]}`}>
-          {m.stepLengthConfidence} confidence
-        </span>
-      </div>
-      <div className="mb-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Avg (zone ÷ steps)" value={m.avgZoneStepLengthM != null ? `${n2(m.avgZoneStepLengthM)} m` : "—"} sub="trusted" />
-        <Stat label="Avg (individual)" value={m.avgIndividualStepLengthM != null ? `${n2(m.avgIndividualStepLengthM)} m` : "—"} />
-        <Stat label="Left step" value={m.leftStepLengthM != null ? `${n2(m.leftStepLengthM)} m` : "—"} />
-        <Stat label="Right step" value={m.rightStepLengthM != null ? `${n2(m.rightStepLengthM)} m` : "—"} />
-      </div>
-      {m.calibrated && m.individualStepLengthsM.length > 0 && (
-        <p className="mb-4 text-xs text-gray-500">
-          <span className="font-medium">Individual steps:</span>{" "}
-          {m.individualStepLengthsM.map((d, i) => `#${i + 1} ${d.toFixed(2)}m`).join(" · ")}
-          {m.stepLengthConfidence !== "high" && (
-            <span className="ml-1 text-amber-600">
-              (lower confidence — trust the zone average above)
-            </span>
-          )}
-        </p>
-      )}
+      {/* Step length — detailed cards, collapsed by default (Day 74). The headline
+          average also appears in the benchmark comparison table below. */}
+      <Collapsible
+        title="Step length"
+        hint={`avg ${
+          m.avgIndividualStepLengthM != null
+            ? n2(m.avgIndividualStepLengthM)
+            : m.avgZoneStepLengthM != null
+              ? n2(m.avgZoneStepLengthM)
+              : "—"
+        } m · ${m.stepLengthConfidence} confidence`}
+      >
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat label="Avg (zone ÷ steps)" value={m.avgZoneStepLengthM != null ? `${n2(m.avgZoneStepLengthM)} m` : "—"} sub="trusted" />
+          <Stat label="Avg (individual)" value={m.avgIndividualStepLengthM != null ? `${n2(m.avgIndividualStepLengthM)} m` : "—"} />
+          <Stat label="Left step" value={m.leftStepLengthM != null ? `${n2(m.leftStepLengthM)} m` : "—"} />
+          <Stat label="Right step" value={m.rightStepLengthM != null ? `${n2(m.rightStepLengthM)} m` : "—"} />
+        </div>
+        {m.calibrated && m.zoneSteps.some((s) => s.stepLengthM != null) && (
+          <p className="mt-3 text-xs text-gray-500">
+            <span className="font-medium">Individual steps through the zone:</span>{" "}
+            {m.zoneSteps
+              .filter((s) => s.stepLengthM != null)
+              .map(
+                (s) =>
+                  `#${s.index} ${s.fromSide ? `${s.fromSide[0].toUpperCase()}→${s.side[0].toUpperCase()} ` : ""}${(s.stepLengthM ?? 0).toFixed(2)}m`,
+              )
+              .join(" · ")}
+            {m.stepLengthConfidence !== "high" && (
+              <span className="ml-1 text-amber-600">
+                (lower confidence — trust the zone average above)
+              </span>
+            )}
+          </p>
+        )}
+      </Collapsible>
 
-      {/* Velocity cross-check */}
-      <h3 className="mb-2 text-sm font-semibold text-gray-700">Velocity (cross-checked)</h3>
-      <div className="mb-2 overflow-hidden rounded-md border bg-white">
-        <table className="w-full text-sm">
-          <tbody>
-            {m.velocities.map((v) => (
-              <tr key={v.key} className="border-b last:border-0">
-                <td className="px-3 py-2 text-gray-600">{v.label}</td>
+      {/* Velocity cross-check — diagnostic table, collapsed by default. */}
+      <Collapsible
+        title="Velocity (cross-checked)"
+        hint={`zone ${primaryVel != null ? n2(primaryVel) : "—"} m/s · max ${m.maxVelocityMps != null ? n2(m.maxVelocityMps) : "—"} m/s`}
+      >
+        <div className="overflow-hidden rounded-md border bg-white">
+          <table className="w-full text-sm">
+            <tbody>
+              {m.velocities.map((v) => (
+                <tr key={v.key} className="border-b last:border-0">
+                  <td className="px-3 py-2 text-gray-600">{v.label}</td>
+                  <td className="px-3 py-2 text-right font-mono text-gray-900">
+                    {v.value != null ? `${n2(v.value)} m/s` : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-gray-400">{v.method}</td>
+                </tr>
+              ))}
+              <tr className="border-b last:border-0 bg-gray-50">
+                <td className="px-3 py-2 font-medium text-gray-700">Max velocity (peak single-stride)</td>
                 <td className="px-3 py-2 text-right font-mono text-gray-900">
-                  {v.value != null ? `${n2(v.value)} m/s` : "—"}
+                  {m.maxVelocityMps != null ? `${n2(m.maxVelocityMps)} m/s` : "—"}
                 </td>
-                <td className="px-3 py-2 text-xs text-gray-400">{v.method}</td>
+                <td className="px-3 py-2 text-xs text-gray-400">fastest stride</td>
               </tr>
-            ))}
-            <tr className="border-b last:border-0 bg-gray-50">
-              <td className="px-3 py-2 font-medium text-gray-700">Max velocity (longest step × cadence)</td>
-              <td className="px-3 py-2 text-right font-mono text-gray-900">
-                {m.maxVelocityMps != null ? `${n2(m.maxVelocityMps)} m/s` : "—"}
-              </td>
-              <td className="px-3 py-2 text-xs text-gray-400">peak step</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      {m.velocitySpreadPct != null && (
-        <p className={`mb-4 text-xs ${m.velocitySpreadPct > 15 ? "text-amber-600" : "text-gray-500"}`}>
-          Methods spread {n1(m.velocitySpreadPct)}% · {m.velocityNote}
-          {primaryVel != null && ` · zone velocity ${n2(primaryVel)} m/s`}
-        </p>
-      )}
+            </tbody>
+          </table>
+        </div>
+        {m.velocitySpreadPct != null && (
+          <p className={`mt-2 text-xs ${m.velocitySpreadPct > 15 ? "text-amber-600" : "text-gray-500"}`}>
+            Methods spread {n1(m.velocitySpreadPct)}% · {m.velocityNote}
+            {primaryVel != null && ` · zone velocity ${n2(primaryVel)} m/s`}
+          </p>
+        )}
+      </Collapsible>
 
       {/* Benchmark link + validation */}
       <div className="mt-5 rounded-md border bg-white p-4">
@@ -408,6 +486,7 @@ export default function BenchmarkPanel({
               const diagnostic: BenchmarkComparisonRow[] = [];
               const timing: BenchmarkComparisonRow[] = [];
               for (const r of comparison.rows) {
+                if (HIDDEN_COMPARISON_KEYS.has(r.key)) continue; // per-side freq hidden (Day 74)
                 const tier = classifyMetric(r.key, activeFps);
                 if (tier === "requiresHigherFps") timing.push(r);
                 else if (tier === "diagnostic") diagnostic.push(r);
@@ -437,13 +516,29 @@ export default function BenchmarkPanel({
                   )}
 
                   {timing.length > 0 && (
-                    <div className="mt-3 rounded-md border border-dashed border-amber-300 bg-amber-50/40 p-3">
-                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700">
-                        Timing — requires higher FPS
-                      </p>
-                      <ComparisonTable rows={timing} muted />
-                      <p className="mt-2 text-xs text-amber-700">{PRECISION_TIMING_MESSAGE}</p>
-                    </div>
+                    <details className="group mt-3 rounded-md border border-dashed border-amber-300 bg-amber-50/40">
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
+                        <span className="text-xs font-medium uppercase tracking-wide text-amber-700">
+                          Timing — requires higher FPS
+                        </span>
+                        <svg
+                          className="h-3.5 w-3.5 shrink-0 text-amber-400 transition-transform duration-150 group-open:rotate-90"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </summary>
+                      <div className="border-t border-amber-200 px-3 py-3">
+                        <ComparisonTable rows={timing} muted />
+                        <p className="mt-2 text-xs text-amber-700">{PRECISION_TIMING_MESSAGE}</p>
+                      </div>
+                    </details>
                   )}
                 </>
               );

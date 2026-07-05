@@ -106,6 +106,27 @@ export interface VelocityEstimate {
   value: number | null;
 }
 
+/**
+ * One in-zone step, exposed for transparency (Day 73): the landing contact plus the
+ * step LENGTH from the previous contact. `stepLengthM` is the world contact-to-contact
+ * displacement (the same value that feeds the per-side and individual averages), so a
+ * coach can see the exact step-by-step sequence through the calibrated zone.
+ */
+export interface ZoneStep {
+  /** 1-based step number within the zone. */
+  index: number;
+  /** Landing foot of this contact. */
+  side: StepSide;
+  /** Contact time (s). */
+  timeS: number;
+  /** World x of the contact (normalized), camera-compensated. */
+  worldX: number;
+  /** Step length from the previous contact, metres (null for the first, uncalibrated). */
+  stepLengthM: number | null;
+  /** The previous contact's foot (the step is fromSide → side), or null. */
+  fromSide: StepSide | null;
+}
+
 export interface SprintMeasurements {
   calibrated: boolean;
   /** Metres-per-pixel scale used, if any. */
@@ -122,6 +143,9 @@ export interface SprintMeasurements {
   // Zone + timing
   zone: SprintZone | null;
   zoneTimeS: number | null;
+  /** Torso start/finish gate crossing times (s) — the raw zone-timer endpoints. */
+  zoneEntryTimeS: number | null;
+  zoneExitTimeS: number | null;
 
   // Step frequency (steps/s) — combined is the primary value
   combinedStepFrequencyHz: number | null;
@@ -143,6 +167,8 @@ export interface SprintMeasurements {
   leftStepLengthM: number | null;
   rightStepLengthM: number | null;
   individualStepLengthsM: number[];
+  /** Step-by-step sequence through the calibrated zone (Day 73 transparency). */
+  zoneSteps: ZoneStep[];
   stepLengthConfidence: MeasurementConfidence;
 
   // Velocity (m/s)
@@ -504,6 +530,22 @@ export function computeSprintMeasurements(
     .map((m) => m.distanceMetersFromPrev)
     .filter((v): v is number => v != null && v > 0);
 
+  // Step-by-step sequence through the zone (Day 73): each valid in-zone contact with
+  // its step length from the previous contact + which foot that was. Pure exposure of
+  // the same numbers the averages use — no new math, so nothing downstream changes.
+  const zoneSteps: ZoneStep[] = gapMarks.map((m, i) => {
+    const globalIdx = marks.indexOf(m);
+    const prev = globalIdx > 0 ? marks[globalIdx - 1] : null;
+    return {
+      index: i + 1,
+      side: m.side,
+      timeS: m.time,
+      worldX: m.wx,
+      stepLengthM: usableScale ? m.distanceMetersFromPrev : null,
+      fromSide: prev ? prev.side : null,
+    };
+  });
+
   const avgIndividualStepLengthM = mean(individualStepLengthsM);
   const leftStepLengthM = median(leftGaps);
   const rightStepLengthM = median(rightGaps);
@@ -542,11 +584,30 @@ export function computeSprintMeasurements(
     { key: "medianLenFreq", label: "Median step length × cadence", method: "median length × combined frequency", value: vMedianLenFreq },
   ];
 
+  // Max velocity — the peak single-stride window (Day 73): the fastest L+R stride
+  // through the zone, i.e. the world distance over TWO consecutive contacts ÷ its
+  // elapsed time. Averaging a full stride (both feet, two intervals) smooths the
+  // frame-quantization noise and the per-foot placement asymmetry that make a single
+  // step's velocity unreliable, and it uses the same clock as the zone timer so it
+  // stays consistent under FPS normalization. Falls back to longest-step × cadence
+  // when there are too few contacts to form a stride window.
+  const strideMarks = zone ? validMarks : marks;
+  let maxVelocityMps: number | null = null;
+  if (usableScale && strideMarks.length >= 3) {
+    for (let i = 0; i + 2 < strideMarks.length; i++) {
+      const a = strideMarks[i];
+      const b = strideMarks[i + 2];
+      const dt = b.time - a.time;
+      if (dt <= 0) continue;
+      const distM = Math.hypot((b.wx - a.wx) * w, (b.wy - a.wy) * h) * usableScale.metersPerPixel;
+      const v = distM / dt;
+      if (maxVelocityMps == null || v > maxVelocityMps) maxVelocityMps = v;
+    }
+  }
   const maxIndividual = individualStepLengthsM.length ? Math.max(...individualStepLengthsM) : null;
-  const maxVelocityMps =
-    maxIndividual != null && combinedStepFrequencyHz != null
-      ? maxIndividual * combinedStepFrequencyHz
-      : null;
+  if (maxVelocityMps == null && maxIndividual != null && combinedStepFrequencyHz != null) {
+    maxVelocityMps = maxIndividual * combinedStepFrequencyHz;
+  }
   const zoneVelocityMps = vDistanceOverTime;
 
   // Agreement across the three methods.
@@ -688,6 +749,8 @@ export function computeSprintMeasurements(
     validRightContacts,
     zone,
     zoneTimeS: zoneElapsedS,
+    zoneEntryTimeS: tEntry,
+    zoneExitTimeS: tExit,
     combinedStepFrequencyHz,
     leftStepFrequencyHz,
     rightStepFrequencyHz,
@@ -702,6 +765,7 @@ export function computeSprintMeasurements(
     leftStepLengthM: usableScale ? leftStepLengthM : null,
     rightStepLengthM: usableScale ? rightStepLengthM : null,
     individualStepLengthsM,
+    zoneSteps,
     stepLengthConfidence,
     velocities,
     maxVelocityMps,

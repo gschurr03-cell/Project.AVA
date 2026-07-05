@@ -89,8 +89,10 @@ function MetricGroup({
 export default function RecordingQualityCard({ report }: { report: RecordingQualityReport }) {
   const style = RATING_STYLE[report.rating];
   return (
-    <section className={`mb-8 rounded-xl border bg-white p-5 shadow-sm ring-1 ${style.ring}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <details className={`group mb-8 rounded-xl border bg-white p-5 shadow-sm ring-1 ${style.ring}`}>
+      {/* Header stays visible as the trust indicator; the detail (factors + which
+          metrics are certified/estimated/unavailable) is collapsed by default (Day 74). */}
+      <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3 [&::-webkit-details-marker]:hidden">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Recording quality</p>
           <div className="mt-1 flex items-center gap-3">
@@ -99,13 +101,27 @@ export default function RecordingQualityCard({ report }: { report: RecordingQual
           </div>
           <p className="mt-1 max-w-xl text-sm text-gray-600">{report.summary}</p>
         </div>
-        <div className="text-right">
-          <p className={`text-3xl font-extrabold ${style.text}`}>{report.score}</p>
-          <p className="text-xs uppercase tracking-wide text-gray-400">Score / 100</p>
+        <div className="flex items-start gap-3">
+          <div className="text-right">
+            <p className={`text-3xl font-extrabold ${style.text}`}>{report.score}</p>
+            <p className="text-xs uppercase tracking-wide text-gray-400">Score / 100</p>
+          </div>
+          <svg
+            className="mt-1 h-4 w-4 shrink-0 text-gray-400 transition-transform duration-150 group-open:rotate-90"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
+              clipRule="evenodd"
+            />
+          </svg>
         </div>
-      </div>
+      </summary>
 
-      <div className="mt-4 grid gap-5 md:grid-cols-2">
+      <div className="mt-4 grid gap-5 border-t pt-4 md:grid-cols-2">
         <ul className="space-y-1.5">
           {report.factors.map((f) => (
             <Factor key={f.key} factor={f} />
@@ -117,6 +133,6 @@ export default function RecordingQualityCard({ report }: { report: RecordingQual
           <MetricGroup availability="unavailable" items={report.unavailable} />
         </div>
       </div>
-    </section>
+    </details>
   );
 }

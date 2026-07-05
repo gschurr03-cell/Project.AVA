@@ -23,7 +23,7 @@ import { loadOverlayFrames } from "@/lib/video/loadOverlayFrames";
 import { buildCalibrationReport, type CalibrationReport, type CalibrationZone } from "@/lib/calibration";
 import { predictPerformance, type RaceDistance } from "@/lib/prediction";
 import { detectSprintPhases } from "@/lib/phases";
-import { applyFpsOverride, isValidFps } from "@/lib/video/fps";
+import { applyFpsOverride, isValidFps, normalizeFps } from "@/lib/video/fps";
 import { detectStepMarks, type StepDistanceScale } from "@/lib/video/steps";
 import { stepFrequencyFromContacts } from "@/lib/video/cadence";
 import type { ManualCalibrationPoints } from "@/lib/calibration";
@@ -154,12 +154,23 @@ export default async function SessionPage({
   const effectiveHeight = session.height ?? overlayMeta?.height ?? null;
   const detectedFps = session.fps ?? overlayMeta?.fps ?? null;
 
-  // Manual FPS override (Day 61): when set, re-time every frame so all
-  // downstream timing (steps, phases, calibrated + segment velocity) uses the
-  // coach-supplied frame rate instead of the detected one.
-  const overlayFrames = isValidFps(session.fps_override)
-    ? applyFpsOverride(rawOverlayFrames, session.fps_override)
-    : rawOverlayFrames;
+  // FPS normalization (Day 73): snap a detected rate that has drifted (e.g. 59.16
+  // from a VFR container) to the true canonical capture rate (60/120/240) when it's
+  // within tolerance, so small metadata drift doesn't add timing error to every
+  // metric. A manual override always wins over both.
+  const normalizedFps = normalizeFps(detectedFps);
+  const overrideFps = isValidFps(session.fps_override) ? session.fps_override : null;
+  const fpsSnapped = normalizedFps != null && detectedFps != null && normalizedFps !== detectedFps;
+  // The clock every timing-derived number uses: manual override, else the normalized
+  // detected rate.
+  const effectiveFps = overrideFps ?? normalizedFps;
+
+  // Re-time every frame from the effective clock when the coach overrode OR we snapped
+  // a drifted rate to canonical — so steps, phases, zone time, and velocity all use it.
+  const overlayFrames =
+    (overrideFps != null || fpsSnapped) && isValidFps(effectiveFps)
+      ? applyFpsOverride(rawOverlayFrames, effectiveFps)
+      : rawOverlayFrames;
 
   // Known-distance calibration zone (Day 61), if the coach set all three parts.
   const calibrationZone: CalibrationZone | null =
@@ -233,12 +244,14 @@ export default async function SessionPage({
 
   // Active FPS + its source, for the timing-provenance display. Every timing-derived
   // number (contact, flight, frequency, zone, velocity, phases) uses this clock.
-  const activeFps = isValidFps(session.fps_override) ? session.fps_override : detectedFps;
-  const fpsSource: "override" | "detected" | "none" = isValidFps(session.fps_override)
+  const activeFps = effectiveFps;
+  const fpsSource: "override" | "normalized" | "detected" | "none" = overrideFps
     ? "override"
-    : detectedFps != null
-      ? "detected"
-      : "none";
+    : fpsSnapped
+      ? "normalized"
+      : detectedFps != null
+        ? "detected"
+        : "none";
 
   // Precision mode (Day 69): below ~120 fps, temporal metrics (contact/flight) are
   // frame-quantized too coarsely to be trusted as high-confidence — so we neither

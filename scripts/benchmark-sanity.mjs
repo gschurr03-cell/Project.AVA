@@ -167,7 +167,7 @@ try {
   check("velocity #2 = avg individual length × combined frequency", approx(vAvg, m.avgIndividualStepLengthM * m.combinedStepFrequencyHz, 1e-6));
   check("velocity #3 (median × freq) present and positive", vMed > 0);
   check("zone velocity equals distance ÷ time method", approx(m.zoneVelocityMps, vDist, 1e-9));
-  check("max velocity ≥ the avg-length velocity (uses the longest step)", m.maxVelocityMps >= vAvg - 1e-9);
+  check("max velocity (peak single-stride window) ≥ zone average velocity", m.maxVelocityMps != null && m.maxVelocityMps >= m.zoneVelocityMps - 1e-6);
   check("velocity spread percent is computed", typeof m.velocitySpreadPct === "number");
 
   // --- Uncalibrated: contacts only, metre fields null ------------------------

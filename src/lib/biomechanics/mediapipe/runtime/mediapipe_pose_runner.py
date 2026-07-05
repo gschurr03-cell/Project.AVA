@@ -44,9 +44,20 @@ MODEL_URL_TEMPLATE = (
 # the athlete is picked up while still small on screen (first ground contacts),
 # then held through tracking. Overridable via env for tuning.
 def _conf(env_key, default):
+    """A confidence in [0, 1] from the environment (clamped)."""
     try:
         v = float(os.environ.get(env_key, default))
         return min(1.0, max(0.0, v))
+    except (TypeError, ValueError):
+        return default
+
+
+def _num(env_key, default):
+    """A non-negative float from the environment, NOT clamped to 1 (padding/zoom
+    scale factors legitimately exceed 1). Falls back to the default when unset/bad."""
+    try:
+        v = float(os.environ.get(env_key, default))
+        return v if v > 0 else default
     except (TypeError, ValueError):
         return default
 
@@ -65,11 +76,24 @@ MIN_TRACKING_CONFIDENCE = _conf("MEDIAPIPE_MIN_TRACKING_CONFIDENCE", 0.3)
 # pose mode); the default full-frame pipeline is unchanged.
 ROI_ENABLED = os.environ.get("MEDIAPIPE_ROI", "").strip().lower() in ("1", "true", "yes", "on")
 # Crop side = ROI_PADDING × the athlete's bounding-box height (feet→head), so the
-# whole body plus margin is inside the crop even as the runner's size changes.
-ROI_PADDING = _conf("MEDIAPIPE_ROI_PADDING", 2.2) or 2.2
+# whole body plus margin is inside the crop even as the runner's size changes. Kept
+# tight (1.3 ≈ 30% margin) so the runner is large in the model's input by default.
+ROI_PADDING = _num("MEDIAPIPE_ROI_PADDING", 1.3)
 # Floor on the crop side as a fraction of frame height, so an over-tight extrapolated
 # box at the far end still contains the athlete.
-ROI_MIN_SIDE_FRAC = _conf("MEDIAPIPE_ROI_MIN_SIDE_FRAC", 0.22) or 0.22
+ROI_MIN_SIDE_FRAC = _num("MEDIAPIPE_ROI_MIN_SIDE_FRAC", 0.22)
+# ROI ZOOM (Day 73b): a single knob to make the athlete LARGER in the crop. >1 tightens
+# both the padding and the far-end floor, so the runner fills more of the model's 256px
+# input and the earliest small-foot contacts become trackable. The padding is floored at
+# 1.1 (a small margin so an imperfect/extrapolated box never clips the body).
+ROI_ZOOM = _num("MEDIAPIPE_ROI_ZOOM", 1.0)
+EFF_PADDING = max(1.1, ROI_PADDING / ROI_ZOOM)
+EFF_MIN_SIDE_FRAC = ROI_MIN_SIDE_FRAC / ROI_ZOOM
+# Optional centered moving-average window (frames) for the crop track. Default OFF
+# (1): on this footage the raw detected-box + linear-extrapolation track catches the
+# earliest far contacts best; smoothing shifts the far crop and drops them. Tunable
+# for footage where a jittery box needs stabilising.
+ROI_SMOOTH_WINDOW = int(_num("MEDIAPIPE_ROI_SMOOTH_WINDOW", 1))
 
 
 def fail(message, code=1):
@@ -156,27 +180,45 @@ def _lin_fit(indices, values):
     return b, (sy - b * sx) / n
 
 
+def _moving_avg(track, window):
+    """Centered moving average of a list of (cx, cy, h) tuples."""
+    if window <= 1 or len(track) < 2:
+        return list(track)
+    half = window // 2
+    n = len(track)
+    out = []
+    for i in range(n):
+        lo, hi = max(0, i - half), min(n, i + half + 1)
+        seg = track[lo:hi]
+        k = len(seg)
+        out.append((sum(t[0] for t in seg) / k, sum(t[1] for t in seg) / k, sum(t[2] for t in seg) / k))
+    return out
+
+
 def plan_crops(boxes, width, height):
-    """Per-frame square crop (x0,y0,x1,y1) around the athlete. Detected frames use
-    their padded bounding box; undetected frames (e.g. the far end before MediaPipe
-    could see the small athlete) EXTRAPOLATE the centre + size from the linear trend
-    of the detected frames — the runner travels in a straight line at ~constant speed
-    — so the far frames still get an athlete-centred crop to zoom into."""
+    """Per-frame square crop (x0,y0,x1,y1) around the athlete. A full-video planning
+    pass: detected frames use their bounding box; undetected frames (e.g. the far end
+    before MediaPipe could see the small athlete) EXTRAPOLATE the centre + size from
+    the linear trend of the detected frames — the runner travels in a straight line at
+    ~constant speed. The resulting track is smoothed so the crop glides, keeping the
+    athlete reliably inside a tight, high-zoom crop (ROI_ZOOM)."""
     det = [(i, b) for i, b in enumerate(boxes) if b is not None]
     if not det:
         return [(0, 0, width, height)] * len(boxes)
-    min_side = ROI_MIN_SIDE_FRAC * height
+    min_side = EFF_MIN_SIDE_FRAC * height
     idx = [i for i, _ in det]
     cx_s, cx_i = _lin_fit(idx, [b[0] for _, b in det])
     cy_s, cy_i = _lin_fit(idx, [b[1] for _, b in det])
     h_s, h_i = _lin_fit(idx, [b[2] for _, b in det])
+    # Raw per-frame track: detected box where present, else the linear trend; then smooth.
+    raw = [
+        (b[0], b[1], b[2]) if b is not None else (cx_s * i + cx_i, cy_s * i + cy_i, h_s * i + h_i)
+        for i, b in enumerate(boxes)
+    ]
+    track = _moving_avg(raw, ROI_SMOOTH_WINDOW)
     crops = []
-    for i, b in enumerate(boxes):
-        if b is not None:
-            cx, cy, h = b
-        else:
-            cx, cy, h = cx_s * i + cx_i, cy_s * i + cy_i, h_s * i + h_i
-        side = max(min_side, ROI_PADDING * max(h, 1.0))
+    for cx, cy, h in track:
+        side = max(min_side, EFF_PADDING * max(h, 1.0))
         half = side / 2.0
         x0, y0, x1, y1 = cx - half, cy - half, cx + half, cy + half
         # Shift (don't shrink) back inside the frame to keep the crop square.
@@ -220,8 +262,8 @@ def main():
 
     model_path = ensure_model()
     print(
-        "pose model=%s det=%.2f pres=%.2f track=%.2f roi=%s"
-        % (os.path.basename(model_path), MIN_DETECTION_CONFIDENCE, MIN_PRESENCE_CONFIDENCE, MIN_TRACKING_CONFIDENCE, ROI_ENABLED),
+        "pose model=%s det=%.2f pres=%.2f track=%.2f roi=%s zoom=%.2f pad=%.2f minfrac=%.3f"
+        % (os.path.basename(model_path), MIN_DETECTION_CONFIDENCE, MIN_PRESENCE_CONFIDENCE, MIN_TRACKING_CONFIDENCE, ROI_ENABLED, ROI_ZOOM, EFF_PADDING, EFF_MIN_SIDE_FRAC),
         file=sys.stderr,
     )
 

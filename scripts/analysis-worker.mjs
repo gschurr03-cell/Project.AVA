@@ -88,6 +88,20 @@ const { MediaPipePoseBackend } = require(path.join(buildDir, "mediapipe/index.js
 const { analyzeSprint } = require(path.join(buildDir, "analysis/index.js"));
 const { toAnalysisMetrics } = require(path.join(buildDir, "worker/index.js"));
 
+// Benchmark-grade pose (Day 73b): the worker analyses real sprints where the athlete
+// is often small/distant, so it runs the ROI "detection zoom" by default — the SAME
+// strong settings as the CLI `--roi` benchmark path — so app reruns don't silently
+// regress to the weaker full-frame pose. The Python runner reads these from the
+// environment and the spawned child inherits this process's env. Set MEDIAPIPE_ROI=0
+// to force the plain full-frame pipeline.
+if (process.env.MEDIAPIPE_ROI == null || process.env.MEDIAPIPE_ROI === "") {
+  process.env.MEDIAPIPE_ROI = "1";
+}
+const roiOn = process.env.MEDIAPIPE_ROI !== "0" && process.env.MEDIAPIPE_ROI !== "";
+log(
+  `ROI detection zoom: ${roiOn ? "ON" : "off"} (zoom=${process.env.MEDIAPIPE_ROI_ZOOM ?? "1.0"}, pad=${process.env.MEDIAPIPE_ROI_PADDING ?? "1.3"})`,
+);
+
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });

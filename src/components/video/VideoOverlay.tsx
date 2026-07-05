@@ -91,6 +91,8 @@ const COLORS = {
   bone: "#38bdf8", // sky-400
   jointFill: "#f8fafc", // slate-50
   jointStroke: "#0f172a", // slate-900
+  jointFillSoft: "rgba(248, 250, 252, 0.7)", // slate-50, semi-transparent tiny dots
+  jointStrokeSoft: "rgba(15, 23, 42, 0.45)", // slate-900, thin soft outline
   angle: "#fde047", // yellow-300
   com: "#fb923c", // orange-400
   trail: "rgba(251, 146, 60, 0.65)",
@@ -312,15 +314,18 @@ export default function VideoOverlay({
           ctx.stroke();
         }
 
-        ctx.lineWidth = 2;
+        // Landmark dots (Day 73 cleanup): tiny (1.5 px) and semi-transparent so the
+        // skeleton LINES read as a stick figure instead of a blob of circles when the
+        // athlete is far/small. Visual only — coordinates are unchanged.
+        ctx.lineWidth = 0.75;
         for (const point of Object.values(frame.landmarks)) {
           if (!point) continue;
           const p = project(point);
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = COLORS.jointFill;
+          ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+          ctx.fillStyle = COLORS.jointFillSoft;
           ctx.fill();
-          ctx.strokeStyle = COLORS.jointStroke;
+          ctx.strokeStyle = COLORS.jointStrokeSoft;
           ctx.stroke();
         }
       }
@@ -350,16 +355,17 @@ export default function VideoOverlay({
           ctx.stroke();
         }
 
-        // Emphasized joints at shoulders, elbows, and wrists.
-        ctx.lineWidth = 2;
+        // Small joints at shoulders, elbows, and wrists (Day 73: shrunk so the arm
+        // lines are what read, not the dots).
+        ctx.lineWidth = 0.75;
         for (const [shoulder, elbow, wrist] of armChains) {
           for (const name of [shoulder, elbow, wrist]) {
             const pt = frame.landmarks[name];
             if (!pt) continue;
             const p = project(pt);
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-            ctx.fillStyle = COLORS.jointFill;
+            ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+            ctx.fillStyle = COLORS.jointFillSoft;
             ctx.fill();
             ctx.strokeStyle = COLORS.arm;
             ctx.stroke();
@@ -593,12 +599,13 @@ export default function VideoOverlay({
       // camera it sits still while the athlete runs THROUGH it; under a pan it
       // slides with the ground and, once a cone's world location leaves the frame,
       // the bar is not drawn (it never follows the athlete). ---
-      // Small cone marker at a gate endpoint (Day 68: smaller, to reduce clutter
-      // and make placing/reading the timing bars easier).
+      // Small cone marker at a gate endpoint (Day 73: halved again to 1.75 px — the
+      // yellow A/B laser-gate set-point dots, kept minimal. Visual only; the bar's
+      // coordinates, labels, and calibration math are unchanged).
       const drawCone = (p: Point2D, color: string) => {
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
         ctx.fill();
       };
 
@@ -615,9 +622,10 @@ export default function VideoOverlay({
       };
 
       // Stroke a gate bar (cone-to-cone) with cone markers and an optional tag.
+      // Day 74: thin (2 px) so the laser line is precise and unobtrusive.
       const strokeBar = (g: BarGeom, color: string, tag?: string) => {
         ctx.strokeStyle = color;
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(g.p1.x, g.p1.y);
         ctx.lineTo(g.p2.x, g.p2.y);
@@ -652,7 +660,7 @@ export default function VideoOverlay({
         if (renderedX == null) return null;
         const x = project({ x: renderedX, y: 0 }).x;
         ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, picture.height);
