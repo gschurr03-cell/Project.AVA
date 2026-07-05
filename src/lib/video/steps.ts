@@ -153,6 +153,35 @@ function contactScore(c: RawContact): number {
   return c.prominence + c.vis * 1e-3;
 }
 
+/**
+ * Local maxima INCLUDING the start boundary of the tracked window (Day 71). The
+ * shared {@link findLocalMaxima} can't mark the first finite sample — it needs a
+ * finite neighbour on BOTH sides — so a genuine contact that occurs exactly when the
+ * athlete first becomes visible is invisible to it. Here the first finite sample is
+ * added as a candidate peak when the foot is at its lowest there and RISES afterwards
+ * (`y[first] > y[first+1]`, image-y grows downward), i.e. the foot was planted at the
+ * moment of first visibility and then lifts off — a real "contact at onset".
+ *
+ * The END boundary is deliberately NOT recovered: at the last tracked frame a foot
+ * that is still descending (`y[last] > y[last-1]`) has not yet completed a contact —
+ * the peak lies beyond the clip — so marking it would fabricate a contact the data
+ * doesn't support. Downstream spacing + duplicate suppression still reject noise, so
+ * this never invents a contact where a stronger, closer one exists.
+ */
+function boundaryAwareMaxima(values: number[]): number[] {
+  const peaks = new Set(findLocalMaxima(values));
+  const first = values.findIndex((v) => Number.isFinite(v));
+  if (
+    first >= 0 &&
+    first + 1 < values.length &&
+    Number.isFinite(values[first + 1]) &&
+    values[first] > values[first + 1]
+  ) {
+    peaks.add(first);
+  }
+  return [...peaks].sort((a, b) => a - b);
+}
+
 function detectSide(
   frames: OverlayFrame[],
   side: StepSide,
@@ -171,7 +200,7 @@ function detectSide(
 
   const contacts: RawContact[] = [];
   let lastMs = -Infinity;
-  for (const idx of findLocalMaxima(smoothed)) {
+  for (const idx of boundaryAwareMaxima(smoothed)) {
     const time = frames[idx].time;
     // One foot cannot re-strike within a stride: enforce a generous per-foot gap,
     // keeping the deeper contact if a closer maximum appears.

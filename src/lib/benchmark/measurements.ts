@@ -24,8 +24,9 @@
  */
 
 import type { OverlayFrame, OverlayPoint } from "@/lib/video/overlay";
-import { detectStepMarks, type StepMark, type StepSide, type StepDistanceScale } from "@/lib/video/steps";
-import { detectContactPhases, summariseContactFlight, type ContactFlightSummary } from "@/lib/video/contacts";
+import { type StepMark, type StepSide, type StepDistanceScale } from "@/lib/video/steps";
+import { summariseContactFlight, type ContactFlightSummary } from "@/lib/video/contacts";
+import { buildFullRunEvents } from "@/lib/video/events";
 import type { ManualCalibrationPoints } from "@/lib/calibration";
 import { stepFrequenciesFromContacts } from "@/lib/video/cadence";
 import {
@@ -346,11 +347,16 @@ export function computeSprintMeasurements(
       : null;
   const usableScale = scale && scale.metersPerPixel > 0 ? scale : null;
 
-  // Contacts in WORLD coordinates: each mark's frame position shifted by the
-  // camera offset at its contact time, so gaps reflect real ground travel — not
-  // camera pan — on panning footage. Step distances are recomputed from these.
+  // STAGE 1 — the full-run event stream: every reliable contact across the whole
+  // visible run, detected with NO knowledge of the calibration gates or the zone
+  // (Day 71). Calibration measures these events; it never decides which exist.
+  const fullRun = buildFullRunEvents(frames);
+
+  // STAGE 2 (this function) — measure the zone. Contacts in WORLD coordinates: each
+  // mark's frame position shifted by the camera offset at its contact time, so gaps
+  // reflect real ground travel — not camera pan — on panning footage.
   type WorldMark = StepMark & { wx: number; wy: number };
-  const detected = detectStepMarks(frames);
+  const detected = fullRun.contacts;
   const worldPositions: WorldMark[] = detected.map((m) => {
     const o = off(m.time);
     return { ...m, wx: m.x + o.x, wy: m.y + o.y };
@@ -477,7 +483,8 @@ export function computeSprintMeasurements(
   // anchor only). Times come from the frames' own timestamps, so the active FPS is
   // already baked in.
   const zoneFrameSet = new Set((zone ? validMarks : marks).map((m) => m.frame));
-  const contactPhases = detectContactPhases(frames, detected).filter((p) => zoneFrameSet.has(p.frame));
+  // Zone filter applied to the full-run contact phases (Stage 2 measuring Stage 1).
+  const contactPhases = fullRun.contactPhases.filter((p) => zoneFrameSet.has(p.frame));
   const contactFlight: ContactFlightSummary = summariseContactFlight(contactPhases);
 
   // Step lengths. Individual gaps come straight from consecutive contact

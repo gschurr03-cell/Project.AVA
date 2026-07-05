@@ -31,6 +31,7 @@
     "contacts:sanity": "node scripts/contacts-sanity.mjs",
     "precision:sanity": "node scripts/precision-sanity.mjs",
     "quality:sanity": "node scripts/quality-sanity.mjs",
+    "fullrun:sanity": "node scripts/fullrun-sanity.mjs",
     "follow:sanity": "node scripts/follow-sanity.mjs",
     "calibration:sanity": "node scripts/calibration-sanity.mjs",
     "prediction:sanity": "node scripts/prediction-sanity.mjs",
