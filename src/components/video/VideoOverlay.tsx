@@ -7,13 +7,17 @@ import {
   applyRealWorldStepDistances,
   type StepDistanceScale,
 } from "@/lib/video/steps";
-import { estimateCameraMotion, cameraOffsetAtTime } from "@/lib/video/camera";
+import { estimateCameraMotion, cameraOffsetAtTime, gateFrameXAt } from "@/lib/video/camera";
 import {
   getDisplayedVideoRect,
   projectLandmark,
   type DisplayRect,
   type Point2D,
 } from "@/lib/video/coordinates";
+import type { CalibrationGates } from "@/lib/calibration/gates";
+
+/** A cone placed while marking a timing-gate bar (carries its clip time). */
+export type PendingCone = Point2D & { t: number };
 
 /** Which overlay layers are drawn. Owned by {@link OverlayVideoPlayer}. */
 export type OverlayToggles = {
@@ -57,10 +61,12 @@ type Props = {
   selectedJoint: string | null;
   /** Calibration scale for step distances; null → show relative (uncalibrated). */
   stepScale?: StepDistanceScale | null;
-  /** Saved manual calibration line, drawn fixed on the ground. */
+  /** Legacy saved manual calibration line (pre-Day-66), drawn fixed on the ground. */
   calibrationPoints?: OverlayCalibrationPoints | null;
-  /** Points placed so far in calibration mode (0–2 normalized ground points). */
-  pendingCalibration?: Point2D[];
+  /** Saved timing-gate BARS (Day 66) — drawn cone-to-cone across the lane. */
+  calibrationGates?: CalibrationGates | null;
+  /** Cones placed so far while marking gates (0–4): [startC1, startC2, finishC1, finishC2]. */
+  pendingGates?: PendingCone[];
 };
 
 const bones = [
@@ -101,8 +107,13 @@ const COLORS = {
   stepDist: "#e2e8f0", // slate-200 — uncalibrated distance labels
   calibration: "#facc15", // yellow-400 — manual calibration line + points
   calibrationPending: "#fef08a", // yellow-200 — points being placed
+  zoneShade: "rgba(250, 204, 21, 0.16)", // translucent yellow — the detection zone fill
   labelBg: "rgba(15, 23, 42, 0.72)",
 } as const;
+
+/** Default overlay label font, and a smaller one for the decluttered step labels. */
+const DEFAULT_LABEL_FONT = "600 13px system-ui, sans-serif";
+const STEP_LABEL_FONT = "600 11px system-ui, sans-serif";
 
 /** Axis-aligned box a pill label occupies, used to keep labels from overlapping. */
 type LabelBox = { x: number; y: number; w: number; h: number };
@@ -181,7 +192,8 @@ export default function VideoOverlay({
   selectedJoint,
   stepScale = null,
   calibrationPoints = null,
-  pendingCalibration = [],
+  calibrationGates = null,
+  pendingGates = [],
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -202,8 +214,10 @@ export default function VideoOverlay({
   // point (which updates on every click) never restarts the draw loop.
   const calibrationRef = useRef(calibrationPoints);
   calibrationRef.current = calibrationPoints;
-  const pendingRef = useRef(pendingCalibration);
-  pendingRef.current = pendingCalibration;
+  const calibrationGatesRef = useRef(calibrationGates);
+  calibrationGatesRef.current = calibrationGates;
+  const pendingRef = useRef(pendingGates);
+  pendingRef.current = pendingGates;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -272,7 +286,7 @@ export default function VideoOverlay({
       ctx.lineWidth = 3;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
-      ctx.font = "600 13px system-ui, sans-serif";
+      ctx.font = DEFAULT_LABEL_FONT;
       ctx.textBaseline = "middle";
       ctx.textAlign = "left";
 
@@ -541,24 +555,28 @@ export default function VideoOverlay({
           const p = project(groundToFrame(mark.x, mark.y, mark.time));
           const color = mark.side === "left" ? COLORS.stepLeft : COLORS.stepRight;
 
-          // One dot at the fixed ground contact position.
+          // One SMALL dot at the fixed ground contact position (Day 68: −50% size
+          // + thinner outline to cut overlay clutter).
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
           ctx.fillStyle = color;
           ctx.fill();
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 1;
           ctx.strokeStyle = COLORS.jointStroke;
           ctx.stroke();
 
           // One step-length label (the gap from the previous contact), anchored at
-          // this contact's ground spot. Real metres when calibrated; a relative
-          // estimate only in debug mode. Never a contact/flight time.
+          // this contact's ground spot — the ONLY text on a step in normal mode.
+          // Real metres when calibrated; a relative estimate only in debug mode.
+          // Never a contact/flight time. Drawn in a smaller font to stay unobtrusive.
           const meters = mark.distanceMetersFromPrev;
+          ctx.font = STEP_LABEL_FONT;
           if (meters != null) {
-            placeLabel(ctx, `${meters.toFixed(2)} m`, p.x + 9, p.y + 12, color, placedLabels);
+            placeLabel(ctx, `${meters.toFixed(2)} m`, p.x + 6, p.y + 10, color, placedLabels);
           } else if (show.debug && mark.distanceFromPrev != null) {
-            placeLabel(ctx, `≈${mark.distanceFromPrev.toFixed(2)} rel`, p.x + 9, p.y + 12, color, placedLabels);
+            placeLabel(ctx, `≈${mark.distanceFromPrev.toFixed(2)} rel`, p.x + 6, p.y + 10, color, placedLabels);
           }
+          ctx.font = DEFAULT_LABEL_FONT;
 
           // Debug only: the chronological side + index (L1/R2/…).
           if (show.debug) {
@@ -567,18 +585,72 @@ export default function VideoOverlay({
         }
       }
 
-      // --- Calibration gates (Day 63): the two calibration points render as
-      // VERTICAL LINES across the lane — electronic timing gates the athlete runs
-      // through. They live in ground coordinates (fixed x in the source frame), so
-      // they stay planted on the track and pan out of view under Auto Follow —
-      // they never follow the athlete. Also renders gates being placed. ---
-      // A gate is anchored to the ground at the x it was placed; reproject by its
-      // placement time so it tracks the track (not the frame) under pan. `atTime`
-      // null (static camera / legacy) → no reprojection.
-      const gateFrameX = (normX: number, atTime: number | null | undefined): number =>
-        atTime != null ? groundToFrame(normX, 0, atTime).x : normX;
-      const drawGate = (normX: number, atTime: number | null | undefined, color: string, tag?: string) => {
-        const x = project({ x: gateFrameX(normX, atTime), y: 0 }).x;
+      // --- Timing-gate BARS (Day 66): each gate is a real timing bar drawn
+      // cone-to-cone across the lane (not a full-height line). Every cone is
+      // world-anchored via `gateFrameXAt` — lifted to a fixed WORLD position
+      // (frame-x at placement + the camera offset then) and projected back into the
+      // CURRENT frame view — so the bar stays planted on the track: on a static
+      // camera it sits still while the athlete runs THROUGH it; under a pan it
+      // slides with the ground and, once a cone's world location leaves the frame,
+      // the bar is not drawn (it never follows the athlete). ---
+      // Small cone marker at a gate endpoint (Day 68: smaller, to reduce clutter
+      // and make placing/reading the timing bars easier).
+      const drawCone = (p: Point2D, color: string) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      };
+
+      // Geometry of one gate bar: its two cone endpoints (frame px) + midpoint, or
+      // null when either cone has panned outside the frame view.
+      type BarGeom = { p1: Point2D; p2: Point2D; mid: Point2D };
+      const barGeom = (c1: Point2D, c2: Point2D, timeS: number | null | undefined): BarGeom | null => {
+        const rx1 = gateFrameXAt(c1.x, timeS, cameraTrack, currentTime);
+        const rx2 = gateFrameXAt(c2.x, timeS, cameraTrack, currentTime);
+        if (rx1 == null || rx2 == null) return null; // a cone is outside the frame
+        const p1 = project({ x: rx1, y: c1.y });
+        const p2 = project({ x: rx2, y: c2.y });
+        return { p1, p2, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } };
+      };
+
+      // Stroke a gate bar (cone-to-cone) with cone markers and an optional tag.
+      const strokeBar = (g: BarGeom, color: string, tag?: string) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(g.p1.x, g.p1.y);
+        ctx.lineTo(g.p2.x, g.p2.y);
+        ctx.stroke();
+        drawCone(g.p1, color);
+        drawCone(g.p2, color);
+        if (tag) placeLabel(ctx, tag, g.mid.x + 8, g.mid.y - 12, color, placedLabels);
+      };
+
+      // Compute + stroke a gate bar in one step. Returns the midpoint, or null.
+      const drawBar = (
+        c1: Point2D,
+        c2: Point2D,
+        timeS: number | null | undefined,
+        color: string,
+        tag?: string,
+      ): Point2D | null => {
+        const g = barGeom(c1, c2, timeS);
+        if (!g) return null;
+        strokeBar(g, color, tag);
+        return g.mid;
+      };
+
+      // Legacy vertical timing line (pre-Day-66 sessions store only two midpoints).
+      const drawLegacyGate = (
+        normX: number,
+        atTime: number | null | undefined,
+        color: string,
+        tag?: string,
+      ): number | null => {
+        const renderedX = gateFrameXAt(normX, atTime, cameraTrack, currentTime);
+        if (renderedX == null) return null;
+        const x = project({ x: renderedX, y: 0 }).x;
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -586,24 +658,64 @@ export default function VideoOverlay({
         ctx.lineTo(x, picture.height);
         ctx.stroke();
         if (tag) placeLabel(ctx, tag, x + 6, 14, color, placedLabels);
+        return renderedX;
       };
 
+      const savedGates = calibrationGatesRef.current;
       const savedCalibration = calibrationRef.current;
-      if (savedCalibration) {
-        drawGate(savedCalibration.ax, savedCalibration.aTimeS, COLORS.calibration, "A");
-        drawGate(savedCalibration.bx, savedCalibration.bTimeS, COLORS.calibration, "B");
-        const midX =
-          (gateFrameX(savedCalibration.ax, savedCalibration.aTimeS) +
-            gateFrameX(savedCalibration.bx, savedCalibration.bTimeS)) /
-          2;
-        const mid = project({ x: midX, y: 0 }).x;
-        placeLabel(ctx, `${savedCalibration.distanceM} m gate`, mid, 30, COLORS.calibration, placedLabels);
+      if (savedGates) {
+        const startG = barGeom(savedGates.startGate.c1, savedGates.startGate.c2, savedGates.startGate.timeS);
+        const finishG = barGeom(savedGates.finishGate.c1, savedGates.finishGate.c2, savedGates.finishGate.timeS);
+        // Yellow shaded DETECTION ZONE (Day 67): a translucent band between the two
+        // gate bars, extending ~9 m up the lane so the active timing zone is obvious.
+        // Its height uses the known gate distance for scale (px-per-metre = the gate
+        // midpoint separation ÷ distanceM). Drawn first so the bars sit on top.
+        if (startG && finishG && savedGates.distanceM > 0) {
+          const sepPx = Math.hypot(finishG.mid.x - startG.mid.x, finishG.mid.y - startG.mid.y);
+          const zoneH = (9 / savedGates.distanceM) * sepPx; // ~9 m upward, in px
+          ctx.fillStyle = COLORS.zoneShade;
+          ctx.beginPath();
+          ctx.moveTo(startG.mid.x, startG.mid.y);
+          ctx.lineTo(finishG.mid.x, finishG.mid.y);
+          ctx.lineTo(finishG.mid.x, finishG.mid.y - zoneH);
+          ctx.lineTo(startG.mid.x, startG.mid.y - zoneH);
+          ctx.closePath();
+          ctx.fill();
+        }
+        if (startG) strokeBar(startG, COLORS.calibration, "Start");
+        if (finishG) strokeBar(finishG, COLORS.calibration, "Finish");
+        // Label the known distance between the bars only when both are in view.
+        if (startG && finishG) {
+          placeLabel(
+            ctx, `${savedGates.distanceM} m`,
+            (startG.mid.x + finishG.mid.x) / 2, (startG.mid.y + finishG.mid.y) / 2,
+            COLORS.calibration, placedLabels,
+          );
+        }
+      } else if (savedCalibration) {
+        // Backward-compat: old two-point calibrations render as vertical lines.
+        const aX = drawLegacyGate(savedCalibration.ax, savedCalibration.aTimeS, COLORS.calibration, "A");
+        const bX = drawLegacyGate(savedCalibration.bx, savedCalibration.bTimeS, COLORS.calibration, "B");
+        if (aX != null && bX != null) {
+          const mid = project({ x: (aX + bX) / 2, y: 0 }).x;
+          placeLabel(ctx, `${savedCalibration.distanceM} m gate`, mid, 30, COLORS.calibration, placedLabels);
+        }
       }
 
-      // Pending gates carry their own placement time `t` (attached at click).
-      const pending = pendingRef.current as (Point2D & { t?: number })[];
+      // In-progress placement: [startC1, startC2, finishC1, finishC2]. Complete
+      // pairs draw as a pending bar; a lone cone draws as a marker until its partner
+      // is placed. Each cone is world-anchored by its own click time.
+      const pending = pendingRef.current;
       if (pending && pending.length) {
-        pending.forEach((pt, i) => drawGate(pt.x, pt.t, COLORS.calibrationPending, i === 0 ? "A" : "B"));
+        const pc = COLORS.calibrationPending;
+        const drawPendingCone = (c: PendingCone) => {
+          const rx = gateFrameXAt(c.x, c.t, cameraTrack, currentTime);
+          if (rx != null) drawCone(project({ x: rx, y: c.y }), pc);
+        };
+        if (pending.length >= 2) drawBar(pending[0], pending[1], pending[0].t, pc, "Start");
+        else if (pending.length === 1) drawPendingCone(pending[0]);
+        if (pending.length >= 4) drawBar(pending[2], pending[3], pending[2].t, pc, "Finish");
+        else if (pending.length === 3) drawPendingCone(pending[2]);
       }
 
       animationRef.current = requestAnimationFrame(draw);

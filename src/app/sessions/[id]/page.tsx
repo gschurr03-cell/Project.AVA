@@ -27,6 +27,7 @@ import { applyFpsOverride, isValidFps } from "@/lib/video/fps";
 import { detectStepMarks, type StepDistanceScale } from "@/lib/video/steps";
 import { stepFrequencyFromContacts } from "@/lib/video/cadence";
 import type { ManualCalibrationPoints } from "@/lib/calibration";
+import { calibrationGatesSchema, type CalibrationGates } from "@/lib/calibration/gates";
 import { computeSprintMeasurements } from "@/lib/benchmark/measurements";
 import {
   assembleAvaValues,
@@ -88,7 +89,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -187,6 +188,15 @@ export default async function SessionPage({
           bTimeS: session.calibration_point_b_time_s ?? null,
         }
       : null;
+
+  // Timing-gate BAR calibration (Day 66): the full cone-to-cone geometry, used to
+  // draw the gates as real bars on the overlay. Its reduction to the two midpoint
+  // points above is what every measurement engine consumes; this is render-only.
+  const calibrationGates: CalibrationGates | null = (() => {
+    if (session.calibration_gates == null) return null;
+    const parsed = calibrationGatesSchema.safeParse(session.calibration_gates);
+    return parsed.success ? parsed.data : null;
+  })();
 
   // Calibration: real-world estimates (with confidence) derived from the pose
   // overlay + athlete profile + optional known-distance zone + manual ground
@@ -475,6 +485,7 @@ export default async function SessionPage({
                       stepContactCount={overlayStepMarks.length}
                       sessionId={session.id}
                       manualCalibration={manualPoints}
+                      calibrationGates={calibrationGates}
                     />
                   ) : (
                     <p className="text-sm text-gray-500">

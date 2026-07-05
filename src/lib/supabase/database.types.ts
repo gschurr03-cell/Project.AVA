@@ -173,6 +173,7 @@ export type Database = {
         Row: {
           athlete_id: string
           benchmark_id: string | null
+          calibration_gates: Json | null
           calibration_known_distance_m: number | null
           calibration_point_a_time_s: number | null
           calibration_point_b_time_s: number | null
@@ -204,6 +205,7 @@ export type Database = {
         Insert: {
           athlete_id: string
           benchmark_id?: string | null
+          calibration_gates?: Json | null
           calibration_known_distance_m?: number | null
           calibration_point_a_time_s?: number | null
           calibration_point_ax?: number | null
@@ -235,6 +237,7 @@ export type Database = {
         Update: {
           athlete_id?: string
           benchmark_id?: string | null
+          calibration_gates?: Json | null
           calibration_known_distance_m?: number | null
           calibration_point_a_time_s?: number | null
           calibration_point_ax?: number | null

@@ -96,6 +96,7 @@ try {
     cameraOffsetAtTime,
     frameToWorldAt,
     worldToFrameAt,
+    gateFrameXAt,
     CAMERA_UNAVAILABLE_WARNING,
   } = require(path.join(out, "lib/video/camera.js"));
 
@@ -145,6 +146,57 @@ try {
   check("unavailable track carries the standard warning", typeof none.warning === "string" && none.warning.includes(CAMERA_UNAVAILABLE_WARNING));
   check("unavailable → world == frame (no fabricated compensation)", approx(cameraOffsetAtTime(none, frames[20].time).x, 0, 1e-12));
   check("too few frames → unavailable", estimateCameraMotion(frames.slice(0, 2)).available === false);
+
+  // (5) Static camera: athlete crosses the frame → world == frame (no phantom pan)
+  function crossStaticFrames({ N = 60, fps = 60 } = {}) {
+    const arr = [];
+    for (let i = 0; i < N; i++) {
+      const adv = 0.2 + 0.6 * (i / (N - 1)); // COM traverses 0.2 → 0.8 (static camera)
+      arr.push({
+        frame: i,
+        time: i / fps,
+        landmarks: { ...foot("left", adv - 0.03, 0.9), ...foot("right", adv + 0.03, 0.72) },
+        angles: {},
+        centerOfMass: { x: adv, y: 0.5 },
+        velocity: null,
+        footContact: { left: false, right: false },
+      });
+    }
+    return arr;
+  }
+  const stat = estimateCameraMotion(crossStaticFrames());
+  check(
+    "athlete crossing the frame → static track (cum stays 0)",
+    stat.available && stat.method.includes("static") && stat.offsets[stat.offsets.length - 1].cumX === 0,
+  );
+  check("static track → world == frame everywhere", approx(cameraOffsetAtTime(stat, 0.5).x, 0, 1e-12));
+
+  // (6) gateFrameXAt: a gate placed at worldX stays FIXED while camera offset changes.
+  const gTrack = track; // the panning track from (1)
+  const cumAt = (t) => cameraOffsetAtTime(gTrack, t).x;
+  const gPlaceT = frames[40].time;
+  const gFrameX = 0.4;
+  const gWorld = gFrameX + cumAt(gPlaceT); // the gate's fixed world x
+  let anchoredEverywhere = true;
+  let cameraOffsetChanged = false;
+  for (const tt of [frames[10].time, frames[30].time, frames[55].time]) {
+    const r = gateFrameXAt(gFrameX, gPlaceT, gTrack, tt);
+    if (r == null) continue;
+    // Its WORLD position (rendered + camera offset now) must equal the fixed gWorld.
+    if (!approx(r + cumAt(tt), gWorld, 1e-9)) anchoredEverywhere = false;
+    if (Math.abs(cumAt(tt) - cumAt(gPlaceT)) > 1e-6) cameraOffsetChanged = true;
+  }
+  check("gate world position stays fixed while camera offset changes", anchoredEverywhere && cameraOffsetChanged);
+  check(
+    "gate frame position tracks the ground (render = world − cum(t))",
+    approx(gateFrameXAt(gFrameX, gPlaceT, gTrack, frames[10].time), gWorld - cumAt(frames[10].time), 1e-9),
+  );
+  check("gate whose world location is off-frame is NOT drawn (null)", gateFrameXAt(5.0, frames[0].time, gTrack, frames[0].time) === null);
+  check("gate inside the frame IS drawn (non-null)", gateFrameXAt(0.5, frames[0].time, gTrack, frames[0].time) != null);
+  check(
+    "on a static camera the gate stays at its fixed frame x for all times",
+    gateFrameXAt(0.3, 0.1, stat, 0.1) === 0.3 && gateFrameXAt(0.3, 0.1, stat, 5.0) === 0.3,
+  );
 
   console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");
 } finally {

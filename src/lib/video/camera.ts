@@ -82,6 +82,23 @@ export interface CameraConfig {
    * frame is skipped rather than inventing camera motion.
    */
   stanceSpeedRatio: number;
+  /**
+   * Per-frame camera-motion dead-band (normalized). Foot keypoints jitter by a
+   * pixel or two even when planted, and on a (near-)static camera that noise would
+   * otherwise ACCUMULATE into a large phantom pan — dragging "world-anchored"
+   * marks/gates along with the athlete. Below this magnitude a frame's estimated
+   * motion is treated as zero, so a static camera stays at cum≈0 while a genuine
+   * pan (per-frame motion well above the noise floor) still accumulates.
+   */
+  minFrameDelta: number;
+  /**
+   * If the athlete's body traverses at least this fraction of the frame width, the
+   * camera is treated as STATIC (world == frame) — you can't both have the athlete
+   * cross the frame AND a camera that pans to follow them. This is the decisive
+   * guard against a biased stance-foot estimate (foot rolls forward through stance)
+   * dragging gates/marks along with a runner on tripod-ish footage.
+   */
+  staticTravelFraction: number;
 }
 
 export const DEFAULT_CAMERA_CONFIG: CameraConfig = {
@@ -89,6 +106,8 @@ export const DEFAULT_CAMERA_CONFIG: CameraConfig = {
   smoothingWindow: 5,
   maxStepDelta: 0.15,
   stanceSpeedRatio: 0.6,
+  minFrameDelta: 0.0025,
+  staticTravelFraction: 0.4,
 };
 
 /** The standard UI warning when spatial compensation can't be trusted. */
@@ -150,6 +169,49 @@ function unavailableTrack(frames: OverlayFrame[], reason: string): CameraTrack {
   };
 }
 
+/** A zero-motion track: world == frame, exactly right for a static camera. */
+function staticTrack(frames: OverlayFrame[], method: string): CameraTrack {
+  return {
+    offsets: frames.map((f) => ({
+      frame: f.frame,
+      time: f.time,
+      dx: 0,
+      dy: 0,
+      cumX: 0,
+      cumY: 0,
+      confidence: 1,
+    })),
+    available: true,
+    confidence: "high",
+    coverage: 1,
+    meanConfidence: 1,
+    method,
+    warning: null,
+  };
+}
+
+/**
+ * How far the athlete's body centre travels across the frame (x-range), using the
+ * tracked centre of mass when available, else the mean foot position. A large
+ * value means the athlete crosses the frame — i.e. the camera is (near) static.
+ */
+function athleteFrameTravel(frames: OverlayFrame[], minVis: number): number {
+  const xs: number[] = [];
+  for (const f of frames) {
+    if (f.centerOfMass) {
+      xs.push(f.centerOfMass.x);
+      continue;
+    }
+    const l = footSample(f, FOOT_JOINTS.left, minVis);
+    const r = footSample(f, FOOT_JOINTS.right, minVis);
+    if (l && r) xs.push((l.x + r.x) / 2);
+    else if (l) xs.push(l.x);
+    else if (r) xs.push(r.x);
+  }
+  if (xs.length < 2) return 0;
+  return Math.max(...xs) - Math.min(...xs);
+}
+
 /**
  * Estimate the camera translation path from a pose sequence. Returns a per-frame
  * dx/dy + cumulative offset and an overall confidence. When too little foot data
@@ -162,6 +224,13 @@ export function estimateCameraMotion(
 ): CameraTrack {
   const n = frames.length;
   if (n < 3) return unavailableTrack(frames, "too few frames");
+
+  // Static-camera guard: if the athlete crosses a large fraction of the frame, the
+  // camera can't also be following them — treat it as static (world == frame). This
+  // prevents a biased stance-foot estimate from dragging gates/marks with the runner.
+  if (athleteFrameTravel(frames, config.minVisibility) >= config.staticTravelFraction) {
+    return staticTrack(frames, "static-camera (athlete crosses frame)");
+  }
 
   const rawDx: (number | null)[] = new Array(n).fill(null);
   const rawDy: (number | null)[] = new Array(n).fill(null);
@@ -215,12 +284,16 @@ export function estimateCameraMotion(
   const smoothDx = medianSmooth(filledDx, config.smoothingWindow);
   const smoothDy = medianSmooth(filledDy, config.smoothingWindow);
 
+  // Dead-band: below the noise floor, treat a frame's motion as zero so foot
+  // jitter on a (near-)static camera can't accumulate into a phantom pan.
+  const band = (v: number) => (Math.abs(v) < config.minFrameDelta ? 0 : v);
+
   const offsets: CameraFrameOffset[] = [];
   let cumX = 0;
   let cumY = 0;
   for (let i = 0; i < n; i++) {
-    const dx = i === 0 ? 0 : smoothDx[i];
-    const dy = i === 0 ? 0 : smoothDy[i];
+    const dx = i === 0 ? 0 : band(smoothDx[i]);
+    const dy = i === 0 ? 0 : band(smoothDy[i]);
     cumX += dx;
     cumY += dy;
     offsets.push({
@@ -314,4 +387,28 @@ export function frameToWorldAt(point: Vec2, track: CameraTrack, time: number): V
 export function worldToFrameAt(world: Vec2, track: CameraTrack, time: number): Vec2 {
   const off = cameraOffsetAtTime(track, time);
   return { x: world.x - off.x, y: world.y - off.y };
+}
+
+/**
+ * Where a calibration gate — placed at frame-x `gateFrameX` at `placementTime` —
+ * appears in the frame at `time`, as a normalized x. The gate is first lifted to a
+ * FIXED WORLD position (`gateFrameX + cameraOffset(placementTime)`) and then
+ * projected back into the current frame view (`worldX − cameraOffset(time)`), so a
+ * gate stays planted on the track while the camera moves. Returns `null` when the
+ * gate's world location has panned outside the frame `[0,1]` (± `margin`) — the
+ * caller should then NOT draw it. With no placement time the gate is treated as a
+ * fixed frame position (static-camera / legacy).
+ */
+export function gateFrameXAt(
+  gateFrameX: number,
+  placementTime: number | null | undefined,
+  track: CameraTrack,
+  time: number,
+  margin = 0,
+): number | null {
+  const rendered =
+    placementTime == null
+      ? gateFrameX
+      : gateFrameX + cameraOffsetAtTime(track, placementTime).x - cameraOffsetAtTime(track, time).x;
+  return rendered >= -margin && rendered <= 1 + margin ? rendered : null;
 }

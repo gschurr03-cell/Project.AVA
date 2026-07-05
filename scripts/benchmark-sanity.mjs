@@ -219,8 +219,24 @@ try {
   // assembleAvaValues wires measurements + biomech + active FPS into the vocabulary.
   const values = assembleAvaValues(m, { groundContactTimeMs: 90, flightTimeMs: 120 }, { activeFps: 60 });
   check("assemble maps zone velocity → avgVelocityMps", approx(values.avgVelocityMps, m.zoneVelocityMps, 1e-9));
-  check("assemble maps biomech contact/flight to both sides", values.groundContactLeftMs === 90 && values.flightRightMs === 120);
   check("assemble includes active FPS", values.activeFps === 60);
+
+  // Day 68: assemble PREFERS the measurement's per-foot contact/flight over the
+  // worker's single value, and falls back to the worker only when they're absent.
+  const mPerFoot = { ...m, groundContactLeftMs: 82, groundContactRightMs: 78, flightLeftMs: 118, flightRightMs: 128 };
+  const vPerFoot = assembleAvaValues(mPerFoot, { groundContactTimeMs: 90, flightTimeMs: 120 });
+  check(
+    "assemble prefers measurement per-foot contact/flight",
+    vPerFoot.groundContactLeftMs === 82 && vPerFoot.groundContactRightMs === 78 &&
+      vPerFoot.flightLeftMs === 118 && vPerFoot.flightRightMs === 128,
+  );
+  const mNull = { ...m, groundContactLeftMs: null, groundContactRightMs: null, flightLeftMs: null, flightRightMs: null };
+  const vFallback = assembleAvaValues(mNull, { groundContactTimeMs: 90, flightTimeMs: 120 });
+  check(
+    "assemble falls back to worker contact/flight when measurement is null",
+    vFallback.groundContactLeftMs === 90 && vFallback.groundContactRightMs === 90 &&
+      vFallback.flightLeftMs === 120 && vFallback.flightRightMs === 120,
+  );
 
   // AVA Calab Vid 1 benchmark validation: the required metrics all appear as rows.
   const calabRef = {

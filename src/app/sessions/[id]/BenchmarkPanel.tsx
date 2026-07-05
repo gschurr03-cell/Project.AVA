@@ -12,6 +12,8 @@ import type { AccuracyRow, BenchmarkComparisonRow, ComparisonStatus } from "@/li
 const n2 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
 const n1 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(1));
 const int = (v: number | null | undefined) => (v == null ? "—" : String(v));
+const fmtMs = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v)} ms`);
+const fmtFr = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(1));
 
 const CONF_BADGE: Record<string, string> = {
   high: "bg-green-100 text-green-700",
@@ -145,6 +147,27 @@ export default function BenchmarkPanel({
           <dd className="font-mono text-gray-800">
             {m.diagnostics.includedContacts} of {m.totalContacts} detected
           </dd>
+          {m.diagnostics.timing && (
+            <>
+              <dt className="text-gray-500">Active FPS / frame</dt>
+              <dd className="font-mono text-gray-800">
+                {m.diagnostics.timing.activeFps != null ? m.diagnostics.timing.activeFps.toFixed(1) : "—"} fps ·{" "}
+                {m.diagnostics.timing.frameMs != null ? `${m.diagnostics.timing.frameMs.toFixed(1)} ms/frame` : "—"}
+              </dd>
+              <dt className="text-gray-500">Ground contact L / R</dt>
+              <dd className="font-mono text-gray-800">
+                {fmtMs(m.diagnostics.timing.groundContactLeftMs)} / {fmtMs(m.diagnostics.timing.groundContactRightMs)}{" "}
+                <span className="text-gray-400">
+                  ({fmtFr(m.diagnostics.timing.contactFramesLeft)}/{fmtFr(m.diagnostics.timing.contactFramesRight)} frames,{" "}
+                  {m.diagnostics.timing.leftContacts}L/{m.diagnostics.timing.rightContacts}R contacts)
+                </span>
+              </dd>
+              <dt className="text-gray-500">Flight L / R</dt>
+              <dd className="font-mono text-gray-800">
+                {fmtMs(m.diagnostics.timing.flightLeftMs)} / {fmtMs(m.diagnostics.timing.flightRightMs)}
+              </dd>
+            </>
+          )}
         </dl>
         {m.diagnostics.excludedContacts.length > 0 && (
           <p className="mt-2 text-xs text-gray-500">

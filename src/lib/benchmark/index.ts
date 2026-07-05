@@ -157,18 +157,26 @@ export function assembleAvaValues(
     // exactly that. Max velocity is the longest step × cadence.
     avgVelocityMps: m.zoneVelocityMps,
     maxVelocityMps: m.maxVelocityMps,
-    avgStepLengthM: m.avgZoneStepLengthM ?? m.avgIndividualStepLengthM,
+    // Prefer the individual step length (mean of consecutive contact gaps) when it
+    // is reliable — tight, camera-compensated world distances — since the zone
+    // average (distance ÷ whole steps) is count-limited by boundary/partial steps.
+    // Fall back to the zone average when individual gaps aren't trustworthy.
+    avgStepLengthM:
+      m.stepLengthConfidence === "high" && m.avgIndividualStepLengthM != null
+        ? m.avgIndividualStepLengthM
+        : (m.avgZoneStepLengthM ?? m.avgIndividualStepLengthM),
     leftStepLengthM: m.leftStepLengthM,
     rightStepLengthM: m.rightStepLengthM,
     combinedStepFrequencyHz: m.combinedStepFrequencyHz,
     leftStepFrequencyHz: m.leftStepFrequencyHz,
     rightStepFrequencyHz: m.rightStepFrequencyHz,
-    // AVA doesn't split contact/flight per foot yet, so the single measured value
-    // is compared against each side's reference.
-    groundContactLeftMs: biomech?.groundContactTimeMs ?? null,
-    groundContactRightMs: biomech?.groundContactTimeMs ?? null,
-    flightLeftMs: biomech?.flightTimeMs ?? null,
-    flightRightMs: biomech?.flightTimeMs ?? null,
+    // Contact/flight (Day 68): prefer the per-foot values measured from the overlay
+    // foot trajectory over the IN-ZONE contacts; fall back to the worker's single
+    // (non-per-foot) value only when the overlay timing couldn't be computed.
+    groundContactLeftMs: m.groundContactLeftMs ?? biomech?.groundContactTimeMs ?? null,
+    groundContactRightMs: m.groundContactRightMs ?? biomech?.groundContactTimeMs ?? null,
+    flightLeftMs: m.flightLeftMs ?? biomech?.flightTimeMs ?? null,
+    flightRightMs: m.flightRightMs ?? biomech?.flightTimeMs ?? null,
     totalContacts: m.totalContacts,
     leftContacts: m.leftContacts,
     rightContacts: m.rightContacts,

@@ -84,6 +84,12 @@ export interface Measurement {
   value: number | null;
   unit: "m" | "m/s";
   confidence: Confidence | null;
+  /**
+   * Debug-only estimate — not a headline number. The manually-defined zone (start
+   * gate → finish gate → known distance) is the source of truth; whole-clip
+   * quantities like "distance covered in clip" are diagnostics, shown subdued.
+   */
+  debug?: boolean;
 }
 
 /** Everything the calibration UI needs for one analysis. */
@@ -453,12 +459,16 @@ export function computeMeasurements(
         : null,
   });
 
+  // Whole-clip travel is a DEBUG diagnostic only — the manually-defined zone
+  // distance (start gate → finish gate) is the source of truth for accuracy, so
+  // this is shown subdued and never used as a headline number.
   measurements.push({
     key: "distanceCovered",
-    label: "Distance covered (in clip)",
+    label: "Distance covered in clip (debug)",
     value: netDistanceM,
     unit: "m",
     confidence: netDistanceM != null ? velConf : null,
+    debug: true,
   });
 
   // Segment (zone) velocity: a known distance over a known elapsed time is a

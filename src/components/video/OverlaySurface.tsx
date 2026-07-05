@@ -22,19 +22,27 @@ import {
 import VideoOverlay, {
   type OverlayToggles,
   type OverlayCalibrationPoints,
+  type PendingCone,
 } from "./VideoOverlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
+import type { CalibrationGates } from "@/lib/calibration/gates";
 
 /**
- * Optional manual-calibration wiring for the single-player surface: the coach
- * clicks two ground points a known distance apart to set a high-confidence scale.
- * The two server actions persist / clear those points for the session.
+ * Optional timing-gate calibration wiring for the single-player surface (Day 66):
+ * the coach marks two timing-gate BARS (each two cones, cone-to-cone across the
+ * lane) a known distance apart, setting a high-confidence scale AND the timing
+ * zone. The server actions persist / clear those gates for the session.
  */
 export type SurfaceCalibration = {
   sessionId: string;
+  /** Saved timing-gate bars (Day 66), for rendering the bars. */
+  savedGates: CalibrationGates | null;
+  /** Legacy two-point calibration (pre-Day-66), still rendered for old sessions. */
   saved: OverlayCalibrationPoints | null;
   onSave: (formData: FormData) => void | Promise<void>;
   onClear: (formData: FormData) => void | Promise<void>;
+  /** Recompute the zone-derived metrics from the saved gates (no worker rerun). */
+  onRecompute: (formData: FormData) => void | Promise<void>;
 };
 
 /** Playback rates offered by the shared controls. */
@@ -169,13 +177,12 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   const [hoveredJoint, setHoveredJoint] = useState<string | null>(null);
   const [selectedJoint, setSelectedJoint] = useState<string | null>(null);
   const [autoFollow, setAutoFollow] = useState(false);
-  // Manual calibration: while `calibrationMode` is on, clicks drop ground points
-  // (A then B) instead of selecting joints. `pendingPoints` holds the 0–2 points
-  // placed so far, normalized to the source frame.
+  // Gate calibration (Day 66): while `calibrationMode` is on, clicks drop cones
+  // instead of selecting joints, in order [startC1, startC2, finishC1, finishC2].
+  // `pendingCones` holds the 0–4 cones placed so far, normalized to the source
+  // frame; each carries its clip time `t` for world-coordinate anchoring under pan.
   const [calibrationMode, setCalibrationMode] = useState(false);
-  // Each pending gate carries its clip time `t`, so world-coordinate calibration
-  // can account for camera pan between the two placements.
-  const [pendingPoints, setPendingPoints] = useState<(Point2D & { t: number })[]>([]);
+  const [pendingCones, setPendingCones] = useState<PendingCone[]>([]);
 
   // Live copies for the rAF follow loop, so toggling/replaying doesn't restart it.
   const autoFollowRef = useRef(autoFollow);
@@ -366,8 +373,9 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     if (calibrationMode) {
       const point = groundPointAtPointer(event.clientX, event.clientY);
       if (!point) return;
-      const gate = { ...point, t: videoRef.current?.currentTime ?? 0 };
-      setPendingPoints((prev) => (prev.length >= 2 ? [gate] : [...prev, gate]));
+      const cone: PendingCone = { ...point, t: videoRef.current?.currentTime ?? 0 };
+      // Four cones make the two bars; a fifth click starts a fresh set.
+      setPendingCones((prev) => (prev.length >= 4 ? [cone] : [...prev, cone]));
       return;
     }
     const hit = jointAtPointer(event.clientX, event.clientY);
@@ -386,6 +394,9 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     selectedJoint && previousFrame ? (previousFrame.angles[selectedJoint] ?? null) : null;
   const deltaAngle =
     selectedAngle != null && previousAngle != null ? selectedAngle - previousAngle : null;
+
+  // Known gate distance to display, from the new gate bars or a legacy calibration.
+  const savedDistanceM = calibration?.savedGates?.distanceM ?? calibration?.saved?.distanceM ?? null;
 
   return (
     <div className="space-y-3">
@@ -423,7 +434,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             selectedJoint={selectedJoint}
             stepScale={stepScale}
             calibrationPoints={calibration?.saved ?? null}
-            pendingCalibration={calibrationMode ? pendingPoints : []}
+            calibrationGates={calibration?.savedGates ?? null}
+            pendingGates={calibrationMode ? pendingCones : []}
           />
           {overlaySlot}
         </div>
@@ -477,82 +489,113 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
               type="button"
               onClick={() => {
                 setCalibrationMode((prev) => !prev);
-                setPendingPoints([]);
+                setPendingCones([]);
                 setHoveredJoint(null);
               }}
               aria-pressed={calibrationMode}
-              title="Click two ground points a known distance apart to set the scale"
+              title="Mark two timing-gate bars (cone to cone) a known distance apart"
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 calibrationMode
                   ? "border-lane bg-lane text-white"
                   : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
               }`}
             >
-              {calibrationMode ? "◉" : "○"} Calibration gates
+              {calibrationMode ? "◉" : "○"} Timing gates
             </button>
-            {calibration.saved ? (
+            {savedDistanceM != null ? (
               <span className="text-xs text-gray-500">
-                Calibrated: {calibration.saved.distanceM} m between two gates.
+                Calibrated: {savedDistanceM} m between the start and finish gate bars.
               </span>
             ) : (
               <span className="text-xs text-gray-400">
-                No calibration gates set — distances show as relative units.
+                No timing gates set — distances show as relative units.
               </span>
             )}
-            {calibration.saved && (
-              <form
-                action={calibration.onClear}
-                className="ml-auto"
-                onSubmit={() => {
-                  // Also clear any in-progress placement so the UI resets fully.
-                  setPendingPoints([]);
-                  setCalibrationMode(false);
-                }}
-              >
-                <input type="hidden" name="id" value={calibration.sessionId} />
-                <button
-                  type="submit"
-                  title="Delete both gates, the known distance, and the calibration zone so you can re-add from scratch"
-                  className="rounded-full border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+            {(calibration.savedGates || calibration.saved) && (
+              <div className="ml-auto flex items-center gap-2">
+                <form action={calibration.onRecompute}>
+                  <input type="hidden" name="id" value={calibration.sessionId} />
+                  <button
+                    type="submit"
+                    title="Recalculate the zone metrics from the saved gates + known distance, using the existing pose — no re-upload, no re-analysis"
+                    className="rounded-full border border-lane bg-lane px-3 py-1 text-xs font-medium text-white transition-colors hover:opacity-90"
+                  >
+                    ↻ Recompute from zone
+                  </button>
+                </form>
+                <form
+                  action={calibration.onClear}
+                  onSubmit={() => {
+                    // Also clear any in-progress placement so the UI resets fully.
+                    setPendingCones([]);
+                    setCalibrationMode(false);
+                  }}
                 >
-                  ✕ Remove calibration
-                </button>
-              </form>
+                  <input type="hidden" name="id" value={calibration.sessionId} />
+                  <button
+                    type="submit"
+                    title="Delete both gate bars, the known distance, and the calibration zone so you can re-add from scratch"
+                    className="rounded-full border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
+                  >
+                    ✕ Remove calibration
+                  </button>
+                </form>
+              </div>
             )}
           </div>
+
+          {savedDistanceM != null && !calibrationMode && (
+            <p className="text-xs text-gray-400">
+              Zone metrics recompute from these gates automatically when you save. To adjust the
+              zone, click <span className="font-medium">Timing gates</span>, re-mark the bars, and
+              save — or use <span className="font-medium">↻ Recompute from zone</span> to force a
+              fresh pass from the saved gates. Both use the existing pose; no re-upload. (To
+              re-detect the pose itself, rerun the full analysis from the session controls.)
+            </p>
+          )}
 
           {calibrationMode && (
             <div className="rounded-lg border bg-gray-50 p-3">
               <p className="text-xs text-gray-600">
-                Click the <span className="font-semibold">start gate</span> (a line drops across the
-                lane), scrub to the end of the zone, then click the{" "}
-                <span className="font-semibold">finish gate</span>. The athlete runs through the two
-                gates like timing lasers. Then enter the known distance and save.
+                Mark the <span className="font-semibold">start gate</span>: click{" "}
+                <span className="font-semibold">cone 1</span> then{" "}
+                <span className="font-semibold">cone 2</span> (a bar is drawn between them). Scrub to
+                the finish, then mark the <span className="font-semibold">finish gate</span> the same
+                way. The athlete&apos;s torso crossing each bar starts/stops the timer. Enter the
+                known distance (e.g. 20) and save.
               </p>
-              <p className="mt-2 text-xs text-gray-500">
-                Gate A:{" "}
-                <span className="font-mono text-gray-700">
-                  {pendingPoints[0]
-                    ? `x ${pendingPoints[0].x.toFixed(3)} @ ${pendingPoints[0].t.toFixed(2)}s`
-                    : "— click to set"}
-                </span>
-                {"  ·  "}
-                Gate B:{" "}
-                <span className="font-mono text-gray-700">
-                  {pendingPoints[1]
-                    ? `x ${pendingPoints[1].x.toFixed(3)} @ ${pendingPoints[1].t.toFixed(2)}s`
-                    : "— click to set"}
-                </span>
-              </p>
+              <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-500">
+                {(
+                  [
+                    ["Start · cone 1", 0],
+                    ["Start · cone 2", 1],
+                    ["Finish · cone 1", 2],
+                    ["Finish · cone 2", 3],
+                  ] as const
+                ).map(([label, i]) => (
+                  <span key={label}>
+                    {label}:{" "}
+                    <span className="font-mono text-gray-700">
+                      {pendingCones[i]
+                        ? `x ${pendingCones[i].x.toFixed(3)} @ ${pendingCones[i].t.toFixed(2)}s`
+                        : "— click to set"}
+                    </span>
+                  </span>
+                ))}
+              </div>
 
               <form action={calibration.onSave} className="mt-3 flex flex-wrap items-end gap-3">
                 <input type="hidden" name="id" value={calibration.sessionId} />
-                <input type="hidden" name="calibration_point_ax" value={pendingPoints[0]?.x ?? ""} />
-                <input type="hidden" name="calibration_point_ay" value={pendingPoints[0]?.y ?? ""} />
-                <input type="hidden" name="calibration_point_bx" value={pendingPoints[1]?.x ?? ""} />
-                <input type="hidden" name="calibration_point_by" value={pendingPoints[1]?.y ?? ""} />
-                <input type="hidden" name="calibration_point_a_time_s" value={pendingPoints[0]?.t ?? ""} />
-                <input type="hidden" name="calibration_point_b_time_s" value={pendingPoints[1]?.t ?? ""} />
+                <input type="hidden" name="gate_start_c1x" value={pendingCones[0]?.x ?? ""} />
+                <input type="hidden" name="gate_start_c1y" value={pendingCones[0]?.y ?? ""} />
+                <input type="hidden" name="gate_start_c2x" value={pendingCones[1]?.x ?? ""} />
+                <input type="hidden" name="gate_start_c2y" value={pendingCones[1]?.y ?? ""} />
+                <input type="hidden" name="gate_finish_c1x" value={pendingCones[2]?.x ?? ""} />
+                <input type="hidden" name="gate_finish_c1y" value={pendingCones[2]?.y ?? ""} />
+                <input type="hidden" name="gate_finish_c2x" value={pendingCones[3]?.x ?? ""} />
+                <input type="hidden" name="gate_finish_c2y" value={pendingCones[3]?.y ?? ""} />
+                <input type="hidden" name="gate_start_time_s" value={pendingCones[0]?.t ?? ""} />
+                <input type="hidden" name="gate_finish_time_s" value={pendingCones[2]?.t ?? ""} />
                 <div>
                   <label
                     htmlFor="calibration_known_distance_m"
@@ -567,23 +610,23 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                     inputMode="decimal"
                     step="0.01"
                     min={0}
-                    placeholder="e.g. 30"
+                    placeholder="e.g. 20"
                     className="mt-1 w-32 rounded border px-3 py-2 text-sm"
                   />
                 </div>
                 <button
                   type="submit"
-                  disabled={pendingPoints.length < 2}
+                  disabled={pendingCones.length < 4}
                   className="rounded bg-lane px-4 py-2 text-sm text-white disabled:opacity-50"
                 >
                   Save calibration
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPendingPoints([])}
+                  onClick={() => setPendingCones([])}
                   className="text-xs text-gray-400 hover:text-gray-700"
                 >
-                  Reset points
+                  Reset cones
                 </button>
               </form>
             </div>

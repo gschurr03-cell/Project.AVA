@@ -51,18 +51,32 @@ export default function CalibrationPanel({ report }: { report: CalibrationReport
       ) : (
         <>
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {report.measurements.map((m) => (
-              <div key={m.key} className="rounded-md border bg-white p-3 shadow-sm">
-                <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                  {m.label}
-                </dt>
-                <dd className="mt-1 flex items-baseline justify-between gap-2">
-                  <span className="text-2xl font-bold text-gray-800">{formatValue(m)}</span>
-                  {m.confidence && <ConfidenceBadge confidence={m.confidence} />}
-                </dd>
-              </div>
-            ))}
+            {report.measurements
+              .filter((m) => !m.debug)
+              .map((m) => (
+                <div key={m.key} className="rounded-md border bg-white p-3 shadow-sm">
+                  <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    {m.label}
+                  </dt>
+                  <dd className="mt-1 flex items-baseline justify-between gap-2">
+                    <span className="text-2xl font-bold text-gray-800">{formatValue(m)}</span>
+                    {m.confidence && <ConfidenceBadge confidence={m.confidence} />}
+                  </dd>
+                </div>
+              ))}
           </dl>
+
+          {/* Debug-only diagnostics (e.g. whole-clip travel) — never a headline number;
+              the manually-defined zone distance is the source of truth. */}
+          {report.measurements.some((m) => m.debug) && (
+            <p className="mt-3 text-xs text-gray-400">
+              <span className="font-medium uppercase tracking-wide">Debug:</span>{" "}
+              {report.measurements
+                .filter((m) => m.debug)
+                .map((m) => `${m.label} ${formatValue(m)}`)
+                .join(" · ")}
+            </p>
+          )}
 
           {report.scale && (
             <p className="mt-3 text-xs text-gray-500">

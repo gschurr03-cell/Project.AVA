@@ -2,20 +2,20 @@
 //
 //   npm run dev:seed
 //
-// Creates — or idempotently updates — one permanent local dev account and a
-// complete, analyzed demo session, so you never have to hand-make a verify user
-// again. Re-running it is safe: every row is keyed by a fixed id and every
-// storage object is overwritten, so nothing is ever duplicated.
+// Creates — or idempotently updates — one permanent local dev account, athlete,
+// and the permanent 20 m benchmark reference, so you never have to hand-make a
+// verify user again. Re-running it is safe: every row is keyed by a fixed id.
 //
-// What it seeds (the whole session-page data chain):
+// What it seeds:
 //   • auth user  dev@projectava.local  (email pre-confirmed)
 //   • its profile (coach) + one athlete with a complete physical/PB/goal profile
-//   • one `complete` session with real video metadata
-//   • one `complete` analysis with realistic sprint metrics
-//   • the real sample video (→ sprint-videos) and its aligned MediaPipe pose
-//     artifact (→ pose-artifacts), so the interactive overlay, calibration,
-//     PB prediction, sprint phases, and sprint intelligence panels all populate
-//     from real, aligned pose data.
+//   • the permanent AVA Calab Vid 1 (VueMotion 20 m) benchmark reference row
+//
+// Day 66: the seed no longer creates the retired "30 m fly" demo session — the
+// dev dataset now focuses solely on the static 20 m benchmark. Any previously
+// seeded 30 m fly session (+ its analysis and storage objects) is DELETED here
+// so the environment stays clean. The real, coach-uploaded 20 m session is a
+// separate row and is never touched.
 //
 // Password: read from DEV_SEED_PASSWORD if set, otherwise the documented local
 // default below. This is a throwaway LOCAL credential — never a production
@@ -26,13 +26,7 @@
 //
 // NEVER deploy or run this against production. It uses the service-role key.
 
-import { readFileSync, statSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
-
 import { createClient } from "@supabase/supabase-js";
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // --- Fixed identity (stable across runs → idempotent, never duplicated) -------
 const EMAIL = "dev@projectava.local";
@@ -64,22 +58,9 @@ const BENCHMARK_REFERENCE = {
   flightRightMs: 130,
 };
 
-// Committed, aligned demo fixtures. The video is the H.264 copy (see
-// `npm run sample:transcode`) so it plays reliably in Chrome; it keeps the
-// source's dimensions, so the pose artifact stays aligned.
-const VIDEO_FILE = path.join(root, "samples/seed/demo-sprint.mp4");
-const POSE_FILE = path.join(root, "samples/seed/demo-sprint.pose.json");
-
-// Intrinsic metadata of samples/seed/demo-sprint.mp4 (matches the pose artifact).
-const VIDEO_META = {
-  width: 1044,
-  height: 596,
-  fps: 29.97,
-  duration_s: 6.173,
-  codec: "h264",
-};
-
-// Storage object paths follow the ownership convention (first segment = athlete).
+// Storage object paths of the RETIRED 30 m fly demo (follow the ownership
+// convention: first segment = athlete). Kept only so the cleanup below can remove
+// any objects a previous seed uploaded.
 const VIDEO_PATH = `${ATHLETE_ID}/${SESSION_ID}.mp4`;
 const POSE_PATH = `${ATHLETE_ID}/${SESSION_ID}/${ANALYSIS_ID}.pose.json`;
 const VIDEO_BUCKET = "sprint-videos";
@@ -99,17 +80,6 @@ const ATHLETE_PROFILE = {
   goal_60m: 7.15,
   goal_100m: 11.1,
   goal_200m: 22.9,
-};
-
-// Realistic sprint metrics for the analysis (SI unless the name says otherwise).
-const METRICS = {
-  topSpeedMps: 9.8,
-  avgStrideLengthM: 2.18,
-  strideFrequencyHz: 4.45, // slightly below target → a coaching limiter to show
-  groundContactTimeMs: 104,
-  flightTimeMs: 122,
-  peakKneeFlexionDeg: 116.5,
-  avgTrunkLeanDeg: 7.8,
 };
 
 const {
@@ -191,26 +161,7 @@ async function upsertUser() {
   return data.user.id;
 }
 
-/** Upload a local file to a private bucket, overwriting any existing object. */
-async function uploadObject(bucket, objectPath, filePath, contentType) {
-  const body = readFileSync(filePath);
-  const { error } = await supabase.storage
-    .from(bucket)
-    .upload(objectPath, body, { contentType, upsert: true });
-  if (error) throw new Error(`upload ${bucket}/${objectPath}: ${error.message}`);
-  log(`uploaded ${bucket}/${objectPath} (${body.length} bytes)`);
-}
-
 async function main() {
-  // Fail early with a clear message if the demo assets are missing.
-  for (const f of [VIDEO_FILE, POSE_FILE]) {
-    try {
-      statSync(f);
-    } catch {
-      fail(`missing demo asset: ${path.relative(root, f)}`);
-    }
-  }
-
   const userId = await upsertUser();
 
   // benchmarks: the AVA Calab Vid 1 (VueMotion 20 m) reference must ALWAYS exist
@@ -254,56 +205,18 @@ async function main() {
     log(`athlete upserted (${ATHLETE_PROFILE.full_name})`);
   }
 
-  // Storage: real sample video + its aligned pose artifact (before the rows that
-  // reference their paths).
-  await uploadObject(VIDEO_BUCKET, VIDEO_PATH, VIDEO_FILE, "video/mp4");
-  await uploadObject(POSE_BUCKET, POSE_PATH, POSE_FILE, "application/json");
-
-  // sessions: one completed sprint with real video metadata.
+  // Day 66 cleanup: remove the retired 30 m fly demo so the dev dataset focuses
+  // solely on the static 20 m benchmark. Idempotent + best-effort: delete the old
+  // analysis + session rows and their storage objects if a previous seed left them.
+  // The account, athlete, and benchmark above are kept; the real coach-uploaded
+  // 20 m session (a separate id) is never touched.
   {
-    const size = statSync(VIDEO_FILE).size;
-    const { error } = await supabase.from("sessions").upsert(
-      {
-        id: SESSION_ID,
-        athlete_id: ATHLETE_ID,
-        created_by: userId,
-        name: "Demo sprint — 30 m fly",
-        status: "complete",
-        distance_m: 30,
-        video_path: VIDEO_PATH,
-        original_filename: "demo-sprint.mp4",
-        width: VIDEO_META.width,
-        height: VIDEO_META.height,
-        fps: VIDEO_META.fps,
-        duration_s: VIDEO_META.duration_s,
-        codec: VIDEO_META.codec,
-        size_bytes: size,
-        notes: "Seeded demo session. Re-run `npm run dev:seed` to reset.",
-      },
-      { onConflict: "id" },
-    );
-    if (error) throw new Error(`sessions upsert: ${error.message}`);
-    log("session upserted (complete)");
-  }
-
-  // analyses: the completed AI output, pointing at the uploaded pose artifact so
-  // the overlay + all pose-derived panels render.
-  {
-    const now = new Date().toISOString();
-    const { error } = await supabase.from("analyses").upsert(
-      {
-        id: ANALYSIS_ID,
-        session_id: SESSION_ID,
-        model_version: "dev-seed-v1",
-        status: "complete",
-        metrics: METRICS,
-        keypoints_path: POSE_PATH,
-        completed_at: now,
-      },
-      { onConflict: "id" },
-    );
-    if (error) throw new Error(`analyses upsert: ${error.message}`);
-    log("analysis upserted (complete, with overlay pose artifact)");
+    await supabase.from("analyses").delete().eq("session_id", SESSION_ID);
+    const { error } = await supabase.from("sessions").delete().eq("id", SESSION_ID);
+    if (error) throw new Error(`sessions delete (30 m fly): ${error.message}`);
+    await supabase.storage.from(VIDEO_BUCKET).remove([VIDEO_PATH]);
+    await supabase.storage.from(POSE_BUCKET).remove([POSE_PATH]);
+    log("removed retired 30 m fly demo session + storage (if present)");
   }
 
   console.log(
@@ -315,8 +228,9 @@ async function main() {
       `    email:    ${EMAIL}`,
       `    password: ${PASSWORD}${PASSWORD === DEFAULT_PASSWORD ? "  (local default — set DEV_SEED_PASSWORD to change)" : "  (from DEV_SEED_PASSWORD)"}`,
       "",
-      `  Open the demo session directly: /sessions/${SESSION_ID}`,
-      "  Re-run `npm run dev:seed` any time to reset it (idempotent).",
+      "  The static 20 m benchmark is the accuracy reference; upload the 20 m",
+      "  Calab video as a session and link it to the AVA Calab Vid 1 benchmark.",
+      "  Re-run `npm run dev:seed` any time (idempotent).",
       "",
     ].join("\n"),
   );

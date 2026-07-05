@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
-import { saveManualCalibration, removeCalibration } from "@/app/sessions/actions";
+import { saveGateCalibration, removeCalibration, recomputeFromZone } from "@/app/sessions/actions";
 import OverlaySurface, {
   SPEEDS,
   frameIndexForTime,
@@ -13,6 +13,7 @@ import OverlaySurface, {
   type SurfaceCalibration,
 } from "./OverlaySurface";
 import type { OverlayCalibrationPoints } from "./VideoOverlay";
+import type { CalibrationGates } from "@/lib/calibration/gates";
 import PlayerControls from "./PlayerControls";
 import TelestrationCanvas from "./TelestrationCanvas";
 
@@ -27,8 +28,10 @@ type Props = {
   stepContactCount?: number;
   /** Session id — enables the manual click-to-calibrate controls when present. */
   sessionId?: string;
-  /** Saved manual calibration line for this session, if any. */
+  /** Saved legacy two-point calibration for this session, if any. */
   manualCalibration?: OverlayCalibrationPoints | null;
+  /** Saved timing-gate bars (Day 66) for this session, if any. */
+  calibrationGates?: CalibrationGates | null;
 };
 
 /**
@@ -44,13 +47,16 @@ export default function OverlayVideoPlayer({
   stepContactCount = 0,
   sessionId,
   manualCalibration = null,
+  calibrationGates = null,
 }: Props) {
   const calibration: SurfaceCalibration | undefined = sessionId
     ? {
         sessionId,
+        savedGates: calibrationGates,
         saved: manualCalibration,
-        onSave: saveManualCalibration,
+        onSave: saveGateCalibration,
         onClear: removeCalibration,
+        onRecompute: recomputeFromZone,
       }
     : undefined;
   const surfaceRef = useRef<OverlaySurfaceHandle>(null);

@@ -27,6 +27,8 @@
     "benchmark:sanity": "node scripts/benchmark-sanity.mjs",
     "benchmark:reference": "node scripts/benchmark-reference-sanity.mjs",
     "camera:sanity": "node scripts/camera-sanity.mjs",
+    "gates:sanity": "node scripts/gates-sanity.mjs",
+    "contacts:sanity": "node scripts/contacts-sanity.mjs",
     "follow:sanity": "node scripts/follow-sanity.mjs",
     "calibration:sanity": "node scripts/calibration-sanity.mjs",
     "prediction:sanity": "node scripts/prediction-sanity.mjs",

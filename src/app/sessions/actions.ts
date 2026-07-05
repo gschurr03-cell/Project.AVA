@@ -7,6 +7,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { MIN_FPS, MAX_FPS } from "@/lib/video/fps";
+import { calibrationGatesSchema, gatesToManualPoints } from "@/lib/calibration/gates";
 
 /**
  * Rename a session (sets the editable display `name`). RLS scopes the update to
@@ -313,6 +314,108 @@ export async function saveManualCalibration(formData: FormData) {
   revalidatePath(`/sessions/${id}`);
 }
 
+/** Parse a form coordinate/number field (blank → NaN so validation rejects it). */
+const numField = (formData: FormData, key: string): number => Number(formData.get(key) ?? "");
+
+/**
+ * Save timing-gate BAR calibration (Day 66). The coach marks two physical timing
+ * gates, each a bar drawn cone-to-cone across the lane (start gate + finish gate),
+ * a known distance apart. We store the full bar geometry in `calibration_gates`
+ * (jsonb, for rendering the bars) AND its reduction to the existing two-point
+ * midpoint columns (`calibration_point_*` + times), so every downstream engine
+ * (scale, zone, timing, benchmark) keeps working unchanged — only the INPUT is
+ * richer. RLS scopes the update to sessions the coach owns.
+ */
+export async function saveGateCalibration(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const gates = {
+    startGate: {
+      c1: { x: numField(formData, "gate_start_c1x"), y: numField(formData, "gate_start_c1y") },
+      c2: { x: numField(formData, "gate_start_c2x"), y: numField(formData, "gate_start_c2y") },
+      timeS: numField(formData, "gate_start_time_s"),
+    },
+    finishGate: {
+      c1: { x: numField(formData, "gate_finish_c1x"), y: numField(formData, "gate_finish_c1y") },
+      c2: { x: numField(formData, "gate_finish_c2x"), y: numField(formData, "gate_finish_c2y") },
+      timeS: numField(formData, "gate_finish_time_s"),
+    },
+    distanceM: numField(formData, "calibration_known_distance_m"),
+  };
+
+  const parsed = calibrationGatesSchema.safeParse(gates);
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? "Invalid calibration gates";
+    redirect(`/sessions/${id}?error=${encodeURIComponent(message)}`);
+  }
+
+  // Reduce the two bars to the two midpoint points the math already consumes.
+  const points = gatesToManualPoints(parsed.data);
+  if (points.ax === points.bx && points.ay === points.by) {
+    redirect(
+      `/sessions/${id}?error=${encodeURIComponent("The start and finish gates must be in different places.")}`,
+    );
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sessions")
+    .update({
+      calibration_gates: parsed.data,
+      calibration_point_ax: points.ax,
+      calibration_point_ay: points.ay,
+      calibration_point_bx: points.bx,
+      calibration_point_by: points.by,
+      calibration_known_distance_m: points.distanceM,
+      calibration_point_a_time_s: points.aTimeS ?? null,
+      calibration_point_b_time_s: points.bTimeS ?? null,
+    })
+    .eq("id", id);
+
+  if (error) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  // Revalidate in place (no happy-path redirect) so the gate bars appear
+  // immediately without the Next.js dev error-overlay redirect crash.
+  revalidatePath(`/sessions/${id}`);
+}
+
+/**
+ * Recompute the zone-derived metrics from the session's SAVED timing gates
+ * (Day 67). AVA's benchmark/measurement layer is derived LIVE from the pose
+ * artifact + the current `calibration_gates` (and known distance), so
+ * "recomputing from the zone" needs no worker rerun and no re-upload — it just
+ * re-runs the server render against the EXISTING pose with the latest gates. The
+ * original pose artifact is untouched; a full re-detection is a separate action
+ * (`queueAnalysis`). Requires a zone to be set. Revalidates in place (no redirect,
+ * so it can't trip the Next.js dev error-overlay crash on NEXT_REDIRECT).
+ */
+export async function recomputeFromZone(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const supabase = await createClient();
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("id, calibration_gates, calibration_point_ax, calibration_known_distance_m")
+    .eq("id", id)
+    .single();
+  if (!session) redirect("/dashboard");
+
+  const hasZone =
+    session.calibration_gates != null ||
+    (session.calibration_point_ax != null && session.calibration_known_distance_m != null);
+  if (!hasZone) {
+    redirect(
+      `/sessions/${id}?error=${encodeURIComponent("Set the timing gates and known distance first, then recompute.")}`,
+    );
+  }
+
+  revalidatePath(`/sessions/${id}`);
+}
+
 /**
  * Link (or unlink) a session to a benchmark reference (Day 62). An empty value
  * clears the link. The `benchmarks` FK rejects unknown ids at the DB level; RLS
@@ -357,6 +460,7 @@ export async function removeCalibration(formData: FormData) {
   const { error } = await supabase
     .from("sessions")
     .update({
+      calibration_gates: null,
       calibration_point_ax: null,
       calibration_point_ay: null,
       calibration_point_bx: null,
