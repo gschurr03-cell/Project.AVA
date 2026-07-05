@@ -639,6 +639,10 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
         <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">
           Overlays
         </span>
+        <span className="basis-full text-xs text-gray-400">
+          Skeleton overlay is available only at <span className="font-medium text-gray-500">0.25×</span>{" "}
+          (or paused) for maximum visual accuracy.
+        </span>
         {TOGGLE_ITEMS.map(({ key, label: toggleLabel }) => {
           const on = toggles[key];
           return (

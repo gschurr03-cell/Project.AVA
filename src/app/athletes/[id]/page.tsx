@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { buildAthleteHistory } from "@/lib/coaching/athlete";
-import { buildAthleteTrends } from "@/lib/coaching/trends";
+import { buildAthleteTrends, analyzeTrend, type TrendDirection } from "@/lib/coaching/trends";
 import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { createClient } from "@/lib/supabase/server";
 import { sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
@@ -29,22 +29,48 @@ function formatTrendNumber(value: number) {
   return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
 }
 
-/** Text-only trend card: latest value, change first→latest, and point count. */
-function TrendCard({ title, values, unit }: { title: string; values: number[]; unit?: string }) {
+const TREND_STYLE: Record<TrendDirection, { chip: string; arrow: string }> = {
+  improving: { chip: "bg-green-100 text-green-700", arrow: "↑" },
+  declining: { chip: "bg-red-100 text-red-700", arrow: "↓" },
+  plateauing: { chip: "bg-gray-100 text-gray-600", arrow: "→" },
+  insufficient: { chip: "bg-gray-100 text-gray-500", arrow: "·" },
+};
+
+/**
+ * Trend card (Day 76): the latest value plus a MEANINGFUL read — direction, rate,
+ * and confidence — from {@link analyzeTrend}, not just a raw first→latest delta.
+ */
+function TrendCard({
+  title,
+  values,
+  unit,
+  higherIsBetter,
+}: {
+  title: string;
+  values: number[];
+  unit?: string;
+  higherIsBetter: boolean;
+}) {
   const latest = values[values.length - 1];
-  const change = latest - values[0];
-  const changeText = `${change > 0 ? "+" : ""}${formatTrendNumber(change)}`;
+  const signal = analyzeTrend(values, { higherIsBetter, unit });
+  const style = TREND_STYLE[signal.direction];
 
   return (
     <div className="rounded border bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+        <span className={`rounded px-2 py-0.5 text-xs font-medium ${style.chip}`}>
+          {style.arrow} {signal.direction}
+        </span>
+      </div>
       <p className="mt-2 text-3xl font-bold text-gray-800">
         {formatTrendNumber(latest)}
         {unit ? <span className="ml-1 text-base font-medium text-gray-400">{unit}</span> : null}
       </p>
-      <p className="mt-1 text-xs text-gray-500">
-        {changeText} from first · {values.length} points
-      </p>
+      <p className="mt-1 text-xs text-gray-500">{signal.summary}</p>
+      {signal.direction !== "insufficient" && (
+        <p className="mt-0.5 text-[11px] text-gray-400">{signal.confidence} confidence · {values.length} sessions</p>
+      )}
     </div>
   );
 }
@@ -195,33 +221,57 @@ export default async function AthletePage({
         </div>
       </section>
 
-      <section className="mb-8 rounded border bg-white p-4 shadow-sm">
-        <h2 className="mb-1 text-lg font-semibold">Physical &amp; Performance Profile</h2>
-        <p className="mb-4 text-xs text-gray-500">
-          Reference measurements and target times. Stored for future calibration and personal-best
-          prediction — not yet used in any metric calculation.
-        </p>
+      {/* Physical & Performance Profile — collapsed by default (Day 75) to reduce
+          page clutter; all fields + the edit form remain inside. */}
+      <details className="group mb-8 rounded border bg-white p-4 shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="text-lg font-semibold">
+            Physical &amp; Performance Profile
+            <span className="ml-2 text-xs font-normal text-gray-400">
+              {hasAnyProfile ? "reference measurements &amp; targets" : "not set yet"}
+            </span>
+          </span>
+          <svg
+            className="h-4 w-4 shrink-0 text-gray-400 transition-transform duration-150 group-open:rotate-90"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fillRule="evenodd"
+              d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </summary>
 
-        {hasAnyProfile ? (
-          <dl className="mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-3">
-            {PROFILE_FIELDS.map((def) => (
-              <div key={def.key} className="flex justify-between gap-2 border-b py-1">
-                <dt className="text-gray-500">{def.label}</dt>
-                <dd className="font-medium text-gray-800">
-                  {formatProfileValue(profileValues[def.key], def.unit)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        ) : (
-          <p className="mb-6 text-sm text-gray-500">
-            No profile details yet. Add them below to have them on hand for upcoming calibration and
-            PB-prediction features.
+        <div className="mt-3 border-t pt-3">
+          <p className="mb-4 text-xs text-gray-500">
+            Reference measurements and target times. Stored for future calibration and personal-best
+            prediction — not yet used in any metric calculation.
           </p>
-        )}
 
-        <AthleteProfileForm athleteId={athlete.id} values={profileValues} />
-      </section>
+          {hasAnyProfile ? (
+            <dl className="mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-3">
+              {PROFILE_FIELDS.map((def) => (
+                <div key={def.key} className="flex justify-between gap-2 border-b py-1">
+                  <dt className="text-gray-500">{def.label}</dt>
+                  <dd className="font-medium text-gray-800">
+                    {formatProfileValue(profileValues[def.key], def.unit)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="mb-6 text-sm text-gray-500">
+              No profile details yet. Add them below to have them on hand for upcoming calibration and
+              PB-prediction features.
+            </p>
+          )}
+
+          <AthleteProfileForm athleteId={athlete.id} values={profileValues} />
+        </div>
+      </details>
 
       <section className="mb-8 rounded border bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-lg font-semibold">Recent Progress</h2>
@@ -280,10 +330,10 @@ export default async function AthletePage({
         <h2 className="mb-3 text-lg font-semibold">Performance Trends</h2>
         {trends.techniqueScores.length >= 2 ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <TrendCard title="Technique Score" values={trends.techniqueScores} />
-            <TrendCard title="Ground Contact" values={trends.groundContactTimes} unit="ms" />
-            <TrendCard title="Flight Time" values={trends.flightTimes} unit="ms" />
-            <TrendCard title="Stride Frequency" values={trends.strideFrequencies} unit="Hz" />
+            <TrendCard title="Technique Score" values={trends.techniqueScores} higherIsBetter />
+            <TrendCard title="Ground Contact" values={trends.groundContactTimes} unit="ms" higherIsBetter={false} />
+            <TrendCard title="Flight Time" values={trends.flightTimes} unit="ms" higherIsBetter />
+            <TrendCard title="Stride Frequency" values={trends.strideFrequencies} unit="Hz" higherIsBetter />
           </div>
         ) : (
           <p className="text-sm text-gray-500">

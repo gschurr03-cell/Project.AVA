@@ -269,12 +269,25 @@ export default function VideoOverlay({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, picture.width, picture.height);
 
-      const currentTime = video.currentTime;
+      // Sync (Day 75): the canvas paints ~one animation frame AFTER we read the
+      // video clock, during which the video advances by playbackRate × a frame — so
+      // at fast playback (e.g. 2.5×) the skeleton visibly trails the runner. Lead the
+      // clock by that amount to land the pose on the frame the video is about to
+      // show, and pick the NEAREST pose frame (not the last one at/before), which
+      // halves the residual lag. Display-only — analysis uses the frames' own clock.
+      const lead = (video.playbackRate || 1) / 60;
+      const currentTime = video.currentTime + lead;
       let frame = frames[0];
-
-      for (const candidate of frames) {
-        if (candidate.time <= currentTime) frame = candidate;
-        else break;
+      for (let i = 0; i < frames.length; i++) {
+        if (frames[i].time <= currentTime) {
+          frame = frames[i];
+        } else {
+          // First frame after currentTime — keep whichever of the two is nearer.
+          if (Math.abs(frames[i].time - currentTime) < Math.abs(frame.time - currentTime)) {
+            frame = frames[i];
+          }
+          break;
+        }
       }
 
       // Camera offset at the current time; ground points captured at `atTime` are
@@ -292,8 +305,15 @@ export default function VideoOverlay({
       ctx.textBaseline = "middle";
       ctx.textAlign = "left";
 
+      // Skeleton sync (Day 76): the per-frame pose layers (skeleton, arms, angles,
+      // COM, velocity, foot labels) track the MOVING athlete, so they trail slightly
+      // at fast playback. We only draw them when the video is PAUSED (no motion to
+      // trail) or at 0.25× — where sync is exact — for a clean, trustworthy overlay.
+      // Ground-anchored layers (step marks, gates) are unaffected and always drawn.
+      const showPose = video.paused || video.playbackRate < 0.4;
+
       // --- Skeleton (bones + joints) ---
-      if (show.skeleton) {
+      if (show.skeleton && showPose) {
         for (const [aName, bName] of bones) {
           const a = frame.landmarks[aName];
           const b = frame.landmarks[bName];
@@ -322,7 +342,7 @@ export default function VideoOverlay({
           if (!point) continue;
           const p = project(point);
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, 1, 0, Math.PI * 2);
           ctx.fillStyle = COLORS.jointFillSoft;
           ctx.fill();
           ctx.strokeStyle = COLORS.jointStrokeSoft;
@@ -334,7 +354,7 @@ export default function VideoOverlay({
       // segments and the shoulder line in a distinct colour, on top of the base
       // skeleton, so arm drive reads clearly during playback. Angle labels for
       // the arms are drawn later, alongside the other angle labels. ---
-      if (show.arms) {
+      if (show.arms && showPose) {
         // Shoulder line, then each arm's upper-arm + forearm segments.
         const armSegments: [string, string][] = [["leftShoulder", "rightShoulder"]];
         for (const [shoulder, elbow, wrist] of armChains) {
@@ -364,7 +384,7 @@ export default function VideoOverlay({
             if (!pt) continue;
             const p = project(pt);
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+            ctx.arc(p.x, p.y, 1.25, 0, Math.PI * 2);
             ctx.fillStyle = COLORS.jointFillSoft;
             ctx.fill();
             ctx.strokeStyle = COLORS.arm;
@@ -405,7 +425,7 @@ export default function VideoOverlay({
       if (frame.centerOfMass) {
         const com = project(frame.centerOfMass);
 
-        if (show.comTrail) {
+        if (show.comTrail && showPose) {
           const trail = frames
             .filter((f) => f.frame <= frame.frame && f.frame >= frame.frame - 30)
             .map((f) => f.centerOfMass)
@@ -427,7 +447,7 @@ export default function VideoOverlay({
           ctx.fill();
         }
 
-        if (show.velocity && frame.velocity) {
+        if (show.velocity && frame.velocity && showPose) {
           const tipX = com.x + frame.velocity.x * 0.08;
           const tipY = com.y + frame.velocity.y * 0.08;
 
@@ -465,7 +485,7 @@ export default function VideoOverlay({
       // labels are nudged to stay readable.
       const placedLabels: LabelBox[] = [];
 
-      if (show.angles) {
+      if (show.angles && showPose) {
         const angleLabels = [
           ["leftKnee", frame.angles.leftKnee],
           ["rightKnee", frame.angles.rightKnee],
@@ -487,7 +507,7 @@ export default function VideoOverlay({
 
       // Elbow + shoulder angles, part of the arm layer. Placed with overlap
       // avoidance so both arms' labels stay legible even when they cross.
-      if (show.arms) {
+      if (show.arms && showPose) {
         const armAngleLabels = [
           ["leftElbow", frame.angles.leftElbow],
           ["rightElbow", frame.angles.rightElbow],
@@ -504,7 +524,7 @@ export default function VideoOverlay({
       }
 
       // --- Foot-contact labels ---
-      if (show.footLabels) {
+      if (show.footLabels && showPose) {
         for (const side of ["left", "right"] as const) {
           const key = side === "left" ? "leftFootIndex" : "rightFootIndex";
           const foot = frame.landmarks[key];

@@ -4,6 +4,8 @@ import type {
   Limiter,
   SprintIntelligenceReport,
 } from "@/lib/intelligence";
+import { buildCoachingInsights, type CoachingInsight, type InsightPriority } from "@/lib/coaching/insights";
+import type { SprintMeasurements } from "@/lib/benchmark/measurements";
 
 /**
  * Sprint Intelligence 2.0 (Day 70) — presentation only. Reads like a sprint coach:
@@ -82,8 +84,73 @@ function ConfidenceBadge({ confidence }: { confidence: IntelligenceConfidence })
   );
 }
 
-export default function SprintIntelligencePanel({ report }: { report: SprintIntelligenceReport }) {
+const PRIORITY_BADGE: Record<InsightPriority, string> = {
+  high: "bg-red-100 text-red-700",
+  medium: "bg-amber-100 text-amber-700",
+  low: "bg-gray-100 text-gray-600",
+};
+
+/**
+ * One structured coaching insight (Sprint Intelligence v2): observation →
+ * biomechanical explanation → performance consequence → corrective focus → drills →
+ * priority. Reads like an elite coach reviewing the run.
+ */
+function InsightCard({ insight }: { insight: CoachingInsight }) {
+  return (
+    <div className="rounded-lg border bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-semibold text-gray-800">{insight.metric}</p>
+        <div className="flex items-center gap-2">
+          <span className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${PRIORITY_BADGE[insight.priority]}`}>
+            {insight.priority} priority
+          </span>
+          {insight.confidence !== "high" && (
+            <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-600">
+              directional
+            </span>
+          )}
+        </div>
+      </div>
+
+      <p className={`mt-3 ${LABEL}`}>Observation</p>
+      <p className="text-sm text-gray-700">{insight.observation}</p>
+
+      <p className={`mt-2 ${LABEL}`}>Why</p>
+      <p className="text-sm text-gray-600">{insight.explanation}</p>
+
+      <p className={`mt-2 ${LABEL}`}>Performance effect</p>
+      <p className="text-sm text-gray-600">{insight.consequence}</p>
+
+      <p className={`mt-2 ${LABEL}`}>Corrective focus</p>
+      <p className="text-sm text-gray-600">{insight.correctiveFocus}</p>
+
+      <p className={`mt-2 ${LABEL}`}>Suggested drills</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-gray-600">
+        {insight.drills.map((d) => (
+          <li key={d}>{d}</li>
+        ))}
+      </ul>
+
+      <p className="mt-2 text-xs text-gray-400">{insight.confidenceNote}</p>
+    </div>
+  );
+}
+
+export default function SprintIntelligencePanel({
+  report,
+  measurements = null,
+  timingReliable = true,
+  legLengthCm = null,
+}: {
+  report: SprintIntelligenceReport;
+  measurements?: SprintMeasurements | null;
+  timingReliable?: boolean;
+  legLengthCm?: number | null;
+}) {
   const primary = report.primaryLimiter;
+  const insights = measurements
+    ? buildCoachingInsights({ measurements, timingReliable, legLengthCm })
+    : [];
   const allLimiters = [primary, ...report.secondaryLimiters].filter((l): l is Limiter => !!l);
   const comparative = primary ? comparativeLine(primary, allLimiters) : null;
   const observedGaps = primary?.affectedPhases.filter((p) => !p.observed) ?? [];
@@ -192,6 +259,18 @@ export default function SprintIntelligencePanel({ report }: { report: SprintInte
             Keep building overall speed and revisit as the training block progresses.
           </p>
         </div>
+      )}
+
+      {/* Coaching insights (Day 76) — metric-driven, elite-coach structured advice:
+          observation → why → performance effect → corrective focus → drills → priority. */}
+      {insights.length > 0 && (
+        <Section title="Coaching insights">
+          <div className="mt-1 space-y-3">
+            {insights.map((i) => (
+              <InsightCard key={i.id} insight={i} />
+            ))}
+          </div>
+        </Section>
       )}
 
       {/* What would sharpen this analysis (data gaps, coach-voiced) */}

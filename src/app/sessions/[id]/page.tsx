@@ -538,10 +538,15 @@ export default async function SessionPage({
 
                 <section className="mb-8 rounded-xl border bg-white p-5 shadow-sm">
                   <h2 className="mb-3 text-xl font-bold text-lane">Interactive Overlay</h2>
+                  {/* Sync (Day 75): the overlay renders against the video's OWN timeline
+                      (raw frame timestamps), not the FPS-normalized clock used for
+                      metrics — so the skeleton stays glued to the runner at 1× and 2.5×.
+                      Analysis below still uses the normalized frames, so benchmark
+                      numbers are unchanged. */}
                   {signedVideo?.signedUrl && overlayFrames.length > 0 ? (
                     <OverlayVideoPlayer
                       videoUrl={signedVideo.signedUrl}
-                      frames={overlayFrames}
+                      frames={rawOverlayFrames}
                       stepScale={stepScale}
                       stepCadenceHz={stepCadenceHz}
                       stepContactCount={overlayStepMarks.length}
@@ -558,7 +563,14 @@ export default async function SessionPage({
                 </section>
 
                 {/* Second focal point: the coaching read. */}
-                {intelligence && <SprintIntelligencePanel report={intelligence} />}
+                {intelligence && (
+                  <SprintIntelligencePanel
+                    report={intelligence}
+                    measurements={measurements}
+                    timingReliable={!precisionLimited}
+                    legLengthCm={session.athletes?.leg_length_cm ?? null}
+                  />
+                )}
 
                 {measurements && (
                   <BenchmarkPanel
