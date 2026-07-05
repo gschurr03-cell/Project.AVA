@@ -87,6 +87,7 @@ export const ACCURACY_TARGETS: { key: string; label: string; unit: string; maxEr
   { key: "combinedStepFrequencyHz", label: "Combined step frequency", unit: "steps/s", maxErrorPct: 5 },
   { key: "zoneTimeS", label: "Zone time (20 m)", unit: "s", maxErrorPct: 5 },
   { key: "avgVelocityMps", label: "Average velocity", unit: "m/s", maxErrorPct: 5 },
+  { key: "maxVelocityMps", label: "Max velocity", unit: "m/s", maxErrorPct: 5 },
   { key: "avgStepLengthM", label: "Average step length", unit: "m", maxErrorPct: 10 },
 ];
 

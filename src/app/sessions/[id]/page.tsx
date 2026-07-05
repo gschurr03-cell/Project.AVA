@@ -37,6 +37,7 @@ import {
   type BenchmarkComparisonRow,
   type AccuracyRow,
 } from "@/lib/benchmark";
+import { isPrecisionLimited } from "@/lib/benchmark/precision";
 import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
 import MetricsPanel from "./MetricsPanel";
@@ -49,6 +50,9 @@ import SprintIntelligencePanel from "./SprintIntelligencePanel";
 import CalibrationControlsForm from "./CalibrationControlsForm";
 import BenchmarkPanel from "./BenchmarkPanel";
 import CoachNotesForm from "./CoachNotesForm";
+import RecordingQualityCard from "./RecordingQualityCard";
+import PerformanceSummaryCard from "./PerformanceSummaryCard";
+import { buildRecordingQuality, summarisePoseQuality } from "@/lib/recording/quality";
 
 /** Pull a calibrated measurement value by key from a calibration report. */
 function calibratedValue(report: CalibrationReport | null, key: string): number | null {
@@ -236,6 +240,42 @@ export default async function SessionPage({
       ? "detected"
       : "none";
 
+  // Precision mode (Day 69): below ~120 fps, temporal metrics (contact/flight) are
+  // frame-quantized too coarsely to be trusted as high-confidence — so we neither
+  // headline them nor let them drive PB prediction / Sprint Intelligence as if they
+  // were reliable. Spatial/zone metrics are unaffected.
+  const precisionLimited = isPrecisionLimited(activeFps);
+
+  // Recording Quality (Day 70): inspect this recording and judge which metrics AVA
+  // can certify, estimate, or not measure at all — the trust indicator at the top of
+  // the page. Pure/derived from data already computed above; no new I/O.
+  const poseQuality = overlayFrames.length ? summarisePoseQuality(overlayFrames) : null;
+  const camMethod = measurements?.cameraCompensation.method ?? "";
+  const recordingQuality =
+    overlayFrames.length && measurements
+      ? buildRecordingQuality({
+          fps: activeFps,
+          width: effectiveWidth,
+          height: effectiveHeight,
+          codec: session.codec ?? null,
+          cameraStatic: camMethod.includes("static")
+            ? true
+            : measurements.cameraCompensation.available
+              ? false
+              : null,
+          cameraConfidence:
+            measurements.cameraCompensation.confidence === "none"
+              ? "unavailable"
+              : measurements.cameraCompensation.confidence,
+          cameraAvailable: measurements.cameraCompensation.available,
+          calibrationPresent: !!(calibrationGates || manualPoints),
+          athleteFillFraction: poseQuality?.athleteFillFraction ?? null,
+          trackingCoverage: measurements.diagnostics.trackingCoverage,
+          poseConfidence: poseQuality?.poseConfidence ?? null,
+          missingFrameFraction: poseQuality?.missingFrameFraction ?? null,
+        })
+      : null;
+
   // Benchmark validation: the list of available benchmarks (for the link selector)
   // and, when this session is explicitly linked to one, the AVA-vs-reference
   // percent-error comparison. Reference data is global (RLS: readable by any
@@ -302,8 +342,10 @@ export default async function SessionPage({
         personalBests: { 60: pb(60), 100: pb(100), 200: pb(200) },
         goals: { 60: goal(60), 100: goal(100), 200: goal(200) },
         strideFrequencyHz: parsedMetrics.data.strideFrequencyHz,
-        groundContactTimeMs: parsedMetrics.data.groundContactTimeMs,
-        flightTimeMs: parsedMetrics.data.flightTimeMs,
+        // Precision mode: withhold frame-quantized contact/flight below ~120 fps so
+        // they don't appear as trusted context in the prediction.
+        groundContactTimeMs: precisionLimited ? null : parsedMetrics.data.groundContactTimeMs,
+        flightTimeMs: precisionLimited ? null : parsedMetrics.data.flightTimeMs,
         metricsTopSpeedMps: parsedMetrics.data.topSpeedMps,
         metricsStrideLengthM: parsedMetrics.data.avgStrideLengthM,
         calibratedStepLengthM: calibratedValue(calibrationReport, "stepLength"),
@@ -338,6 +380,9 @@ export default async function SessionPage({
         prediction,
         phases: phaseReport,
         trainingFocus,
+        // Precision mode: don't let low-confidence 60 fps contact/flight be flagged
+        // as limiters as if they were reliable measurements.
+        timingReliable: !precisionLimited,
       })
     : null;
 
@@ -474,7 +519,11 @@ export default async function SessionPage({
             </p>
             {parsedMetrics?.success ? (
               <>
-                <section className="mt-6 rounded-lg border bg-gray-50 p-5">
+                {/* Trust indicator first, then the focal performance summary. */}
+                {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
+                {measurements && <PerformanceSummaryCard measurements={measurements} />}
+
+                <section className="mb-8 rounded-xl border bg-white p-5 shadow-sm">
                   <h2 className="mb-3 text-xl font-bold text-lane">Interactive Overlay</h2>
                   {signedVideo?.signedUrl && overlayFrames.length > 0 ? (
                     <OverlayVideoPlayer
@@ -494,17 +543,10 @@ export default async function SessionPage({
                     </p>
                   )}
                 </section>
-                <MetricsPanel metrics={parsedMetrics.data} />
+
+                {/* Second focal point: the coaching read. */}
                 {intelligence && <SprintIntelligencePanel report={intelligence} />}
-                {calibrationReport && <CalibrationPanel report={calibrationReport} />}
-                <CalibrationControlsForm
-                  sessionId={session.id}
-                  detectedFps={detectedFps}
-                  fpsOverride={session.fps_override ?? null}
-                  zoneStartS={session.calibration_zone_start_s ?? null}
-                  zoneEndS={session.calibration_zone_end_s ?? null}
-                  zoneDistanceM={session.calibration_zone_distance_m ?? null}
-                />
+
                 {measurements && (
                   <BenchmarkPanel
                     sessionId={session.id}
@@ -518,14 +560,35 @@ export default async function SessionPage({
                     comparison={benchmarkComparison}
                   />
                 )}
-                {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
-                {prediction && <PerformancePredictionPanel prediction={prediction} />}
-                {coachingReport && (
-                  <InsightPanel report={coachingReport} comparison={comparisonReport} />
-                )}
-                {recommendations && (
-                  <RecommendationsPanel recommendations={recommendations} />
-                )}
+
+                {/* Detailed analysis — secondary, kept below the focal cards. */}
+                <details className="mt-8 rounded-xl border bg-gray-50 p-5">
+                  <summary className="cursor-pointer text-lg font-semibold text-gray-700">
+                    Detailed analysis
+                    <span className="ml-2 text-xs font-normal text-gray-400">
+                      raw metrics, calibration, phases, prediction &amp; coaching detail
+                    </span>
+                  </summary>
+                  <div className="mt-4 space-y-2">
+                    <MetricsPanel metrics={parsedMetrics.data} activeFps={activeFps} />
+                    {calibrationReport && <CalibrationPanel report={calibrationReport} />}
+                    <CalibrationControlsForm
+                      sessionId={session.id}
+                      detectedFps={detectedFps}
+                      fpsOverride={session.fps_override ?? null}
+                      zoneStartS={session.calibration_zone_start_s ?? null}
+                      zoneEndS={session.calibration_zone_end_s ?? null}
+                      zoneDistanceM={session.calibration_zone_distance_m ?? null}
+                    />
+                    {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
+                    {prediction && <PerformancePredictionPanel prediction={prediction} />}
+                    {coachingReport && (
+                      <InsightPanel report={coachingReport} comparison={comparisonReport} />
+                    )}
+                    {recommendations && <RecommendationsPanel recommendations={recommendations} />}
+                  </div>
+                </details>
+
                 <CoachNotesForm sessionId={session.id} defaultNotes={session.notes} />
               </>
             ) : (

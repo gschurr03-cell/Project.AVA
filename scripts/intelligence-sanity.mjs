@@ -143,6 +143,22 @@ try {
   check("grinder → primary reasoning folds in the goal gap", grinder.primaryLimiter?.reasoning.some((r) => /goal/i.test(r) && /0\.35s/.test(r)));
   check("grinder → persistent-limiter note from training focus", grinder.primaryLimiter?.reasoning.some((r) => /recurs across 3 of 4/i.test(r)));
 
+  // Day 69 precision mode: with timingReliable=false (≤60 fps), the frame-quantized
+  // contact/flight limiters must NOT be evaluated — a bad ground-contact number can't
+  // be flagged as the limiter as if it were reliable. Same inputs, but timing withheld.
+  const precision = buildSprintIntelligence({
+    metrics: metrics({ groundContactTimeMs: 135 }),
+    calibration: calibration({ strideM: 2.1 }),
+    prediction: prediction({ goal100: 11.0, estimate100: 11.35 }),
+    phases: phases(),
+    trainingFocus: trainingFocus(),
+    timingReliable: false,
+  });
+  const precisionLimiters = [precision.primaryLimiter, ...precision.secondaryLimiters].filter(Boolean);
+  check("precision → ground-contact limiter dropped at low FPS", !precisionLimiters.some((l) => l.metricId === "groundContactTime"));
+  check("precision → no flight-time limiter at low FPS", !precisionLimiters.some((l) => l.metricId === "flightTime"));
+  check("precision → primary is no longer ground contact", precision.primaryLimiter?.metricId !== "groundContactTime");
+
   // (2) All-clear: every scored metric within target → no limiter, honest headline.
   const clear = buildSprintIntelligence({
     metrics: metrics({ groundContactTimeMs: 90, strideFrequencyHz: 4.9, flightTimeMs: 120 }),

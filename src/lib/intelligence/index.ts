@@ -123,6 +123,13 @@ export interface IntelligenceInputs {
   phases: PhaseReport | null;
   /** Longitudinal focus across the athlete's recent sessions, if computed. */
   trainingFocus: TrainingFocus | null;
+  /**
+   * Whether temporal metrics (ground contact / flight) are frame-rate-trustworthy
+   * (Day 69). Defaults to true. When false (e.g. ≤60 fps precision mode), the
+   * contact/flight limiters are NOT evaluated — a frame-quantized value must not be
+   * flagged as a limiter as if it were a reliable measurement.
+   */
+  timingReliable?: boolean;
 }
 
 const METHOD =
@@ -257,12 +264,16 @@ function resolveMetricValues(inputs: IntelligenceInputs): {
   const workerStride = m && m.avgStrideLengthM > 0 ? m.avgStrideLengthM : null;
   const strideFromCalibration = calibratedStride != null;
 
+  // Precision mode (Day 69): when timing isn't frame-rate-trustworthy, withhold the
+  // temporal metrics so their limiters aren't evaluated (a null value → no limiter).
+  const timingReliable = inputs.timingReliable !== false;
+
   return {
     values: {
-      groundContactTime: m ? m.groundContactTimeMs : null,
+      groundContactTime: timingReliable && m ? m.groundContactTimeMs : null,
       strideLength: calibratedStride ?? workerStride,
       stepFrequency: m ? m.strideFrequencyHz : null,
-      flightTime: m ? m.flightTimeMs : null,
+      flightTime: timingReliable && m ? m.flightTimeMs : null,
     },
     strideFromCalibration,
   };

@@ -43,6 +43,8 @@ export interface CameraCompensation {
   confidence: CameraConfidence;
   coverage: number;
   warning: string | null;
+  /** The estimator method used (e.g. "static-camera …" or "stance-foot …"). */
+  method: string;
 }
 
 /** Transparency on which frames/contacts fed the measurements (Day 65). */
@@ -316,6 +318,7 @@ export function computeSprintMeasurements(
     confidence: cameraTrack.confidence,
     coverage: cameraTrack.coverage,
     warning: cameraTrack.warning,
+    method: cameraTrack.method,
   };
   if (cameraTrack.warning) warnings.push(cameraTrack.warning);
 

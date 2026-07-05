@@ -1,6 +1,12 @@
 import { setSessionBenchmark } from "@/app/sessions/actions";
 import type { SprintMeasurements } from "@/lib/benchmark/measurements";
 import type { AccuracyRow, BenchmarkComparisonRow, ComparisonStatus } from "@/lib/benchmark";
+import {
+  classifyMetric,
+  isPrecisionLimited,
+  PRECISION_TIMING_MESSAGE,
+  HIGH_PRECISION_TIMING_FPS,
+} from "@/lib/benchmark/precision";
 
 /**
  * Presentation only: AVA's full calibrated sprint measurement set, the active
@@ -47,6 +53,51 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
+/** AVA-vs-benchmark rows as a table. `muted` dims a lower-confidence group. */
+function ComparisonTable({ rows, muted }: { rows: BenchmarkComparisonRow[]; muted?: boolean }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-400">
+            <th className="px-2 py-1">Metric</th>
+            <th className="px-2 py-1 text-right">AVA</th>
+            <th className="px-2 py-1 text-right">Benchmark</th>
+            <th className="px-2 py-1 text-right">% error</th>
+            <th className="px-2 py-1 text-right">Status</th>
+          </tr>
+        </thead>
+        <tbody className={muted ? "text-gray-400" : undefined}>
+          {rows.map((r) => (
+            <tr key={r.key} className="border-b last:border-0">
+              <td className={`px-2 py-1.5 ${muted ? "text-gray-500" : "text-gray-700"}`}>
+                {r.label}
+                {r.unit && <span className="ml-1 text-xs text-gray-400">({r.unit})</span>}
+              </td>
+              <td className={`px-2 py-1.5 text-right font-mono ${muted ? "text-gray-500" : "text-gray-900"}`}>
+                {r.avaValue != null ? r.avaValue.toFixed(2) : "—"}
+              </td>
+              <td className={`px-2 py-1.5 text-right font-mono ${muted ? "text-gray-500" : "text-gray-900"}`}>
+                {r.benchmarkValue != null ? r.benchmarkValue.toFixed(2) : "—"}
+              </td>
+              <td className={`px-2 py-1.5 text-right font-mono ${muted ? "text-gray-500" : "text-gray-900"}`}>
+                {r.percentError != null ? `${r.percentError.toFixed(1)}%` : "—"}
+              </td>
+              <td className="px-2 py-1.5 text-right">
+                <span
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${muted ? "bg-gray-100 text-gray-500" : STATUS_BADGE[r.status]}`}
+                >
+                  {STATUS_LABEL[r.status]}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function BenchmarkPanel({
   sessionId,
   measurements,
@@ -70,6 +121,7 @@ export default function BenchmarkPanel({
 }) {
   const m = measurements;
   const primaryVel = m.velocities.find((v) => v.key === "distanceTime")?.value ?? m.zoneVelocityMps;
+  const precisionLimited = isPrecisionLimited(activeFps);
 
   return (
     <section className="mt-6 rounded-lg border bg-gray-50 p-5">
@@ -78,6 +130,23 @@ export default function BenchmarkPanel({
         Calibrated measurements from verified ground contacts and the manual zone. Step frequency,
         step length, contact time, and flight time are separate metrics and reported as such.
       </p>
+
+      {/* Precision mode (Day 69): explain what's trusted vs downgraded at this FPS. */}
+      {precisionLimited && (
+        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+          <p className="font-semibold">
+            Precision mode — {activeFps ?? "unknown"} fps (high-precision timing needs ≥
+            {HIGH_PRECISION_TIMING_FPS} fps)
+          </p>
+          <p className="mt-1">
+            Headline metrics are the trusted spatial/zone measurements (step length, zone distance,
+            velocity, combined cadence). Ground contact, flight time, and small left/right
+            asymmetries are shown as diagnostics only — one frame (~{Math.round(1000 / (activeFps || 60))}{" "}
+            ms) is too large a share of an ~80 ms contact to trust as a headline number. Capture at
+            120–240 fps for high-precision timing.
+          </p>
+        </div>
+      )}
 
       {/* FPS source */}
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border bg-white p-3 text-sm">
@@ -331,47 +400,54 @@ export default function BenchmarkPanel({
               </p>
             </div>
 
-            <p className="mb-2 text-xs text-gray-500">
-              AVA vs <span className="font-medium">{comparison.benchmarkName}</span> — percent error
-              per metric. Green ≤10%, amber ≤25%, red &gt;25%.
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-400">
-                    <th className="px-2 py-1">Metric</th>
-                    <th className="px-2 py-1 text-right">AVA</th>
-                    <th className="px-2 py-1 text-right">Benchmark</th>
-                    <th className="px-2 py-1 text-right">% error</th>
-                    <th className="px-2 py-1 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {comparison.rows.map((r) => (
-                    <tr key={r.key} className="border-b last:border-0">
-                      <td className="px-2 py-1.5 text-gray-700">
-                        {r.label}
-                        {r.unit && <span className="ml-1 text-xs text-gray-400">({r.unit})</span>}
-                      </td>
-                      <td className="px-2 py-1.5 text-right font-mono text-gray-900">
-                        {r.avaValue != null ? r.avaValue.toFixed(2) : "—"}
-                      </td>
-                      <td className="px-2 py-1.5 text-right font-mono text-gray-900">
-                        {r.benchmarkValue != null ? r.benchmarkValue.toFixed(2) : "—"}
-                      </td>
-                      <td className="px-2 py-1.5 text-right font-mono text-gray-900">
-                        {r.percentError != null ? `${r.percentError.toFixed(1)}%` : "—"}
-                      </td>
-                      <td className="px-2 py-1.5 text-right">
-                        <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[r.status]}`}>
-                          {STATUS_LABEL[r.status]}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {(() => {
+              // Tier the comparison rows by how much the active FPS limits each
+              // metric: trusted spatial/zone (primary), per-side asymmetry
+              // (diagnostic), and frame-quantized timing (requires higher FPS).
+              const primary: BenchmarkComparisonRow[] = [];
+              const diagnostic: BenchmarkComparisonRow[] = [];
+              const timing: BenchmarkComparisonRow[] = [];
+              for (const r of comparison.rows) {
+                const tier = classifyMetric(r.key, activeFps);
+                if (tier === "requiresHigherFps") timing.push(r);
+                else if (tier === "diagnostic") diagnostic.push(r);
+                else primary.push(r);
+              }
+              return (
+                <>
+                  <p className="mb-2 text-xs text-gray-500">
+                    AVA vs <span className="font-medium">{comparison.benchmarkName}</span> — percent
+                    error per metric. Green ≤10%, amber ≤25%, red &gt;25%.
+                  </p>
+                  {primary.length > 0 && <ComparisonTable rows={primary} />}
+
+                  {diagnostic.length > 0 && (
+                    <details className="mt-3 rounded-md border bg-gray-50 p-3">
+                      <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-400">
+                        Per-side detail (diagnostic) — left/right asymmetry
+                      </summary>
+                      <div className="mt-2">
+                        <ComparisonTable rows={diagnostic} muted />
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Small left/right differences are diagnostic detail, not headline numbers —
+                        the per-side spread is near the detection/frame-rate noise floor.
+                      </p>
+                    </details>
+                  )}
+
+                  {timing.length > 0 && (
+                    <div className="mt-3 rounded-md border border-dashed border-amber-300 bg-amber-50/40 p-3">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-amber-700">
+                        Timing — requires higher FPS
+                      </p>
+                      <ComparisonTable rows={timing} muted />
+                      <p className="mt-2 text-xs text-amber-700">{PRECISION_TIMING_MESSAGE}</p>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </>
         ) : (
           <p className="text-xs text-gray-500">

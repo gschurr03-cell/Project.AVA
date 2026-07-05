@@ -208,10 +208,10 @@ try {
   check("percent error is |ava−ref|/ref×100", approx(row("leftStepLengthM").percentError, Number((((2.59 - 2.16) / 2.16) * 100).toFixed(1)), 1e-9));
 
   // evaluateAccuracy: pass when within target, fail when over, unavailable when missing.
-  const accRefExact = { combinedStepFrequencyHz: 4.86, zoneTimeS: 1.93, avgVelocityMps: 10.36, avgStepLengthM: 2.15 };
+  const accRefExact = { combinedStepFrequencyHz: 4.86, zoneTimeS: 1.93, avgVelocityMps: 10.36, maxVelocityMps: 10.74, avgStepLengthM: 2.15 };
   const accPass = evaluateAccuracy({ ...accRefExact }, accRefExact);
   check("accuracy: exact-match metrics all pass their target", accPass.every((r) => r.status === "pass" && r.errorPct === 0));
-  check("accuracy targets cover freq/zoneTime/velocity/stepLength", ACCURACY_TARGETS.map((t) => t.key).join(",") === "combinedStepFrequencyHz,zoneTimeS,avgVelocityMps,avgStepLengthM");
+  check("accuracy targets cover freq/zoneTime/velocity/maxVelocity/stepLength", ACCURACY_TARGETS.map((t) => t.key).join(",") === "combinedStepFrequencyHz,zoneTimeS,avgVelocityMps,maxVelocityMps,avgStepLengthM");
   const accFail = evaluateAccuracy({ combinedStepFrequencyHz: 4.86 * 1.2, zoneTimeS: 1.93, avgVelocityMps: 10.36, avgStepLengthM: 2.15 }, accRefExact);
   check("accuracy: a 20% frequency error fails its 5% target", accFail.find((r) => r.key === "combinedStepFrequencyHz").status === "fail");
   check("accuracy: missing AVA value → unavailable", evaluateAccuracy({}, accRefExact).every((r) => r.status === "unavailable"));
