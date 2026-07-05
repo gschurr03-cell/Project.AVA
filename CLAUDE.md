@@ -24,7 +24,16 @@ supabase start       # boot local Postgres/Auth/Storage stack
 npm run db:reset     # drop + re-apply all migrations in supabase/migrations
 npm run db:push      # push migrations to the linked remote project
 npm run db:types     # regenerate src/lib/supabase/database.types.ts from the live DB
+
+# Benchmark / real-world validation (reporting only — never changes analysis math)
+node scripts/benchmark-breakdown.mjs   # full zone math for the benchmark session
+npm run benchmark:steps                # AVA vs VueMotion per-step diagnostic
+npm run field:validation -- --truth trial.json   # AVA vs timing-gate + tape-grid trial
+npm run field:sanity                   # unit-check the field-validation module
 ```
+
+For the Tuesday testing-day capture + comparison workflow see
+`docs/field-validation-protocol.md`.
 
 There is no test runner wired up yet. When adding tests, also add the script and
 update this section.
