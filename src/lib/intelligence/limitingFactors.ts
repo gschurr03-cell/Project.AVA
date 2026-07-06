@@ -1,100 +1,199 @@
 /**
- * Limiting-Factor Diagnosis (Day 78) — AVA's pivot from "metrics dashboard" to
- * "performance diagnosis platform." This is a presentation-support layer that
- * reframes the already-ranked limiters from {@link buildSprintIntelligence} into
- * the customer-facing "Top 3 Limiting Factors," and estimates the top-speed head-
- * room from correcting them ("Performance Potential").
+ * Limiting-Factor Diagnosis (Day 79 — trusted-source rewrite).
  *
- * It ADDS NO new biomechanics math and modifies nothing upstream:
- *  - Rank, confidence, and the "why" come straight from the intelligence engine.
- *  - Current value, unit, and the elite target range are surfaced from the shared
- *    threshold evaluation the engine already ran (now carried on `Limiter`).
- *  - Elite benchmark edges come from the shared {@link METRIC_THRESHOLDS}.
- *  - Deficits are simple arithmetic (current vs the nearest elite edge).
+ * AVA's primary customer output: a ranked list of what to work on next, plus the
+ * top-speed headroom from doing so. It reads ONLY from {@link TrustedMetrics} — the
+ * single source of truth — so the diagnosis can never disagree with the Trusted
+ * Sprint Metrics card.
  *
- * The ONE modeling layer is the velocity-gain estimate. It uses the exact sprint
- * identity v = L · f (top speed = step length × step frequency), which AVA already
- * uses in `measurements.ts`:
- *  - Cadence and step-length limiters map DIRECTLY onto f and L (coupling = 1.0),
- *    so their gain estimate is first-order exact.
- *  - Ground-contact and flight-time limiters influence speed INDIRECTLY (via
- *    turnover / projection). They use a conservative coupling constant
- *    ({@link INDIRECT_COUPLING}) — flagged as `velocityGainModeled` — pending a
- *    validated velocity-sensitivity model. These are transparent v1 estimates, not
- *    measured values.
+ * Ranking uses the four trusted metrics: Frequency, Step Length, Top Speed, and
+ * Average Velocity. Each is compared to an elite benchmark:
+ *  - If any metric is below its elite target, those are TRUE limiting factors,
+ *    ranked biggest deficit first → "Top Limiting Factors".
+ *  - If every metric is already elite, the metrics closest to their threshold are
+ *    ranked as "Next Performance Unlocks".
+ * Either way AVA ALWAYS returns a ranked #1/#2/#3 — it never says "nothing stands out".
+ *
+ * The one modeling layer is the velocity-gain estimate, from the exact sprint
+ * identity top speed = step length × frequency (v = L·f), which AVA already uses in
+ * `measurements.ts`. Frequency and Step Length are the direct LEVERS of that
+ * identity; Top Speed and Average Velocity are OUTCOMES (results of the levers), so
+ * they never contribute a separate modeled gain — that would double-count.
  *
  * Pure & deterministic: no I/O, inputs read-only, same input → same output.
  */
 
-import type { SprintMeasurements } from "@/lib/benchmark/measurements";
-import { METRIC_THRESHOLDS } from "@/lib/coaching/knowledge/thresholds";
-import type { IntelligenceConfidence, Limiter, SprintIntelligenceReport } from "./index";
+import type { IntelligenceConfidence } from "./index";
+import type { TrustedMetrics } from "./trustedMetrics";
+import { evaluateTrochanterStepLength, type TrochanterEvaluation } from "./trochanterOptimizer";
 
-/** How many limiters we surface as headline "limiting factors". */
+/** How many factors we surface as the headline diagnosis. */
 export const MAX_FACTORS = 3;
 
-/** Cap on the fractional deficit fed into the velocity model, so a wildly
- *  off-target reading can't imply an implausible gain. */
+/** Cap on the fractional deficit fed into the velocity model, so a wildly off-target
+ *  reading can't imply an implausible gain. */
 const DEFICIT_FRACTION_CAP = 0.5;
 
+/** "limiting" when any trusted metric is below elite; "unlocks" when all are elite. */
+export type DiagnosisMode = "limiting" | "unlocks";
+
+/** Coarse impact rating shown instead of an exact m/s figure (Day 79b) — we're not
+ *  yet confident enough in the point estimate to publish it per factor. */
+export type ImpactBand = "high" | "medium" | "low";
+
+/** Band a modeled top-speed gain by its fraction of current top speed. */
+function impactBandFor(gainMps: number | null, base: number | null): ImpactBand | null {
+  if (gainMps == null || gainMps <= 0 || base == null || base <= 0) return null;
+  const fraction = gainMps / base;
+  if (fraction >= 0.04) return "high";
+  if (fraction >= 0.02) return "medium";
+  return "low";
+}
+
 /**
- * Velocity coupling per metric. 1.0 = the metric IS a term of v = L·f (exact,
- * first-order). <1.0 = an INDIRECT influence modeled with a conservative constant
- * (flagged as modeled). These constants are transparent v1 assumptions.
+ * The four trusted metrics AVA ranks, each with its elite benchmark. All are
+ * higher-is-better. LEVERS (frequency, step length) are the direct terms of
+ * v = L·f; OUTCOMES (top speed, average velocity) are the results those levers
+ * produce, surfaced for context but never a modeled velocity gain.
+ *
+ * Elite targets: frequency + step length mirror the shared coaching thresholds;
+ * top speed (~41 km/h) and average velocity are world-class sprint floors.
  */
-const VELOCITY_COUPLING: Record<string, number> = {
-  stepFrequency: 1.0, // f term — direct
-  strideLength: 1.0, // L term — direct
-  groundContactTime: 0.5, // shorter contact → higher turnover (modeled)
-  flightTime: 0.4, // longer flight → more projection (modeled)
-};
-
-/** Metrics where a HIGHER value is better (deficit = target − current). Ground
- *  contact time is the lone lower-is-better metric. */
-const HIGHER_IS_BETTER: Record<string, boolean> = {
-  stepFrequency: true,
-  strideLength: true,
-  flightTime: true,
-  groundContactTime: false,
-};
-
-const CONF_ORDER: IntelligenceConfidence[] = ["low", "medium", "high"];
-const minConf = (a: IntelligenceConfidence, b: IntelligenceConfidence): IntelligenceConfidence =>
-  CONF_ORDER[Math.min(CONF_ORDER.indexOf(a), CONF_ORDER.indexOf(b))];
-const downgrade = (c: IntelligenceConfidence): IntelligenceConfidence =>
-  CONF_ORDER[Math.max(0, CONF_ORDER.indexOf(c) - 1)];
-
-/** One customer-facing limiting factor, ready to render. */
-export interface LimitingFactor {
-  rank: number; // 1 = biggest limiter
+interface TrustedFactorDef {
   key: string;
-  metricId: string;
-  title: string;
-  /** Measured value + unit. */
-  currentValue: number;
+  label: string;
   unit: string;
-  currentText: string; // "112 ms"
-  /** Elite benchmark, human range + the nearest edge used for the deficit. */
-  eliteBenchmarkText: string; // "75–95 ms"
-  eliteTargetValue: number;
-  /** How far off elite, signed toward "worse", + magnitude %. */
-  deficitText: string; // "17 ms over elite" / "0.35 Hz below elite"
-  deficitPct: number;
-  /** First-order top-speed gain (m/s) if corrected to elite; null if no velocity base. */
-  estimatedVelocityGainMps: number | null;
-  /** True when the gain came from an indirect coupling constant (a v1 estimate). */
-  velocityGainModeled: boolean;
-  confidence: IntelligenceConfidence;
+  eliteTarget: number;
+  eliteText: string;
+  kind: "lever" | "outcome";
+  get: (t: TrustedMetrics) => number | null;
   why: string;
 }
 
-/** Top-speed headroom from correcting the surfaced limiting factors. */
+const TRUSTED_FACTOR_DEFS: TrustedFactorDef[] = [
+  {
+    key: "frequency",
+    label: "Frequency",
+    unit: "Hz",
+    eliteTarget: 4.8,
+    eliteText: "4.8–5.2 Hz",
+    kind: "lever",
+    get: (t) => t.frequencyHz,
+    why: "Turnover sets how fast each leg resets. Raising frequency lifts top speed even at the same step length.",
+  },
+  {
+    // Internal key kept as "stepLength" for stability; UI label is "Stride Length"
+    // (AVA stride = opposite-foot contact distance). Uses the PEAK stride via
+    // trusted.strideLengthM when available.
+    key: "stepLength",
+    label: "Stride Length",
+    unit: "m",
+    eliteTarget: 2.45,
+    eliteText: "2.45–2.75 m",
+    kind: "lever",
+    get: (t) => t.strideLengthM,
+    why: "Covering more ground per stride raises top speed without needing faster turnover.",
+  },
+  {
+    key: "topSpeed",
+    label: "Top Speed",
+    unit: "m/s",
+    eliteTarget: 11.5,
+    eliteText: "11.5+ m/s",
+    kind: "outcome",
+    get: (t) => t.topSpeedMps,
+    why: "Your measured maximum velocity — the ceiling that step length and frequency combine to produce.",
+  },
+  {
+    key: "avgVelocity",
+    label: "Average Velocity",
+    unit: "m/s",
+    eliteTarget: 10.9,
+    eliteText: "10.9+ m/s",
+    kind: "outcome",
+    get: (t) => t.avgVelocityMps,
+    why: "Your average speed across the timed zone — reflects how well you reach and hold top speed.",
+  },
+];
+
+const CONF_ORDER: IntelligenceConfidence[] = ["low", "medium", "high"];
+const downgrade = (c: IntelligenceConfidence): IntelligenceConfidence =>
+  CONF_ORDER[Math.max(0, CONF_ORDER.indexOf(c) - 1)];
+
+/** One customer-facing factor, ready to render. */
+export interface LimitingFactor {
+  rank: number; // 1 = biggest limiter / closest unlock
+  key: string;
+  label: string;
+  unit: string;
+  currentValue: number;
+  currentText: string; // "2.16 m"
+  eliteTargetValue: number;
+  eliteBenchmarkText: string; // "2.45–2.75 m"
+  /** True when below elite (a real deficit); false when already elite. */
+  belowElite: boolean;
+  /** How far below elite, as a %; 0 when already elite. */
+  deficitPct: number;
+  /** How far above elite, as a %; 0 when below. Used to rank "unlocks". */
+  marginPct: number;
+  /** "0.29 m below elite" / "0.05 Hz above elite". */
+  statusText: string;
+  /** LEVER: modeled top-speed gain (m/s) from reaching elite. OUTCOME/elite: null.
+   *  Kept for the Performance Potential aggregation; NOT shown per factor. */
+  estimatedVelocityGainMps: number | null;
+  /** Coarse impact rating shown in place of the exact m/s gain. Null for outcomes /
+   *  already-elite metrics (no modeled gain to band). */
+  impactBand: ImpactBand | null;
+  /** True for the outcome metrics (top speed, average velocity). */
+  isOutcome: boolean;
+  confidence: IntelligenceConfidence;
+  why: string;
+  /** Body-proportion framing for the STEP-LENGTH factor when leg length is known
+   *  (Day 80). Null for every other factor / when leg length is unavailable. */
+  trochanter: FactorTrochanter | null;
+}
+
+/** Compact trochanter context carried on the stride-length factor for display.
+ *  The ratio uses the PEAK stride length (Day 82). */
+export interface FactorTrochanter {
+  /** peakStride ÷ trochanter length, e.g. 2.33. */
+  ratio: number;
+  ratioText: string; // "2.33×"
+  bandLabel: string; // "Rising star"
+  nextTargetRatio: number | null;
+  nextTargetRatioText: string | null; // "2.50× trochanter"
+  nextTargetStepText: string | null; // "2.48 m"
+  /** "2.50–2.70× · 2.48–2.67 m" — Olympic-caliber window for this athlete. */
+  olympicText: string;
+  /** Zone average stride (context beside the peak), e.g. "2.16 m". */
+  avgStrideText: string | null;
+  /** Stride retention (avg ÷ peak), e.g. "93.5%". */
+  retentionText: string | null;
+  /** Set when the peak is strong but the average is lagging. */
+  retentionNote: string | null;
+}
+
+/** Peak trochanter ratio at/above which the peak stride is considered "strong". */
+const PEAK_STRONG_RATIO = 2.3;
+/** Below this retention %, a strong peak with a lagging average is flagged. */
+const RETENTION_LAG_PCT = 92;
+
+/** An override target for a factor's scoring (Day 81) — used for the STEP-LENGTH
+ *  factor when a trochanter ratio target is available. `value` is the target in the
+ *  metric's own unit; `review` marks a measurement-check case (no real target). */
+interface FactorTarget {
+  value: number | null;
+  text: string;
+  review: boolean;
+}
+
+/** Top-speed headroom from correcting the trusted levers. */
 export interface PerformancePotential {
   available: boolean;
   currentTopSpeedMps: number | null;
   achievableTopSpeedMps: number | null;
   percentImprovement: number | null;
-  /** How many factors contributed a velocity gain. */
+  /** How many trusted LEVERS were below elite and contributed a gain. */
   factorsApplied: number;
   confidence: IntelligenceConfidence | null;
   /** Plain-language basis (always present). */
@@ -103,127 +202,224 @@ export interface PerformancePotential {
 
 export interface LimitingFactorDiagnosis {
   available: boolean;
+  mode: DiagnosisMode;
   factors: LimitingFactor[];
   potential: PerformancePotential;
+  confidence: IntelligenceConfidence;
 }
 
-const POTENTIAL_BASIS =
-  "First-order estimate from the sprint identity top speed = step length × cadence. Cadence and step-length gains are direct; ground-contact and flight-time gains use a conservative modeled coupling. Combined with diminishing returns — not a guaranteed outcome.";
+const POTENTIAL_BASIS_ESTIMATE =
+  "Estimate from the sprint identity top speed = step length × frequency, based on your trusted top speed. It projects the gain from reaching elite step length and frequency, blended with diminishing returns — a target, not a guarantee.";
+const POTENTIAL_BASIS_ELITE =
+  "Your trusted step length and frequency are already at elite — maintain them to hold this top speed.";
 
-function formatValue(value: number, unit: string): string {
+function fmt(value: number, unit: string): string {
   if (unit === "ms" || unit === "°") return `${Math.round(value)} ${unit}`;
   return `${value.toFixed(2)} ${unit}`;
 }
 
-/** Elite band edge nearest to the current value (the reach-to-elite target). */
-function eliteTarget(metricId: string): { value: number; text: string } | null {
-  const threshold = METRIC_THRESHOLDS[metricId];
-  if (!threshold) return null;
-  const elite = threshold.bands.find((b) => b.status === "elite");
-  if (!elite) return null;
-  const higher = HIGHER_IS_BETTER[metricId] ?? true;
-  return { value: higher ? elite.min : elite.max, text: threshold.targetRange };
-}
-
-function factorFromLimiter(
-  limiter: Limiter,
-  velocityBase: number | null,
-): LimitingFactor {
-  const target = eliteTarget(limiter.metricId);
-  const higher = HIGHER_IS_BETTER[limiter.metricId] ?? true;
-  const targetValue = target?.value ?? limiter.currentValue;
-
-  const deficit = higher
-    ? Math.max(0, targetValue - limiter.currentValue)
-    : Math.max(0, limiter.currentValue - targetValue);
-  const deficitPct = targetValue > 0 ? (deficit / targetValue) * 100 : 0;
-  const deficitText =
-    deficit === 0
-      ? "at or above elite"
-      : `${formatValue(deficit, limiter.unit)} ${higher ? "below" : "over"} elite`;
-
-  // Velocity gain: v = L·f. Fractional deficit × coupling × current top speed.
-  const coupling = VELOCITY_COUPLING[limiter.metricId] ?? 0;
-  const deficitFraction = Math.min(DEFICIT_FRACTION_CAP, targetValue > 0 ? deficit / targetValue : 0);
-  const estimatedVelocityGainMps =
-    velocityBase != null && coupling > 0
-      ? Number((velocityBase * deficitFraction * coupling).toFixed(2))
-      : null;
-
+/** Build the step-length scoring target from a trochanter evaluation. Non-review
+ *  cases target the next milestone (e.g. 2.30× = 2.28 m); at the top of the olympic
+ *  band there is no next target ("maintain"). */
+function trochanterOverride(tro: TrochanterEvaluation): FactorTarget {
+  if (tro.reviewFlag) {
+    return { value: null, text: "Ratio > 2.70× — measurement check", review: true };
+  }
+  if (tro.nextTargetRatio == null || tro.nextTargetStepLengthM == null) {
+    return { value: null, text: "Olympic caliber — maintain", review: false };
+  }
   return {
-    rank: limiter.rank,
-    key: limiter.key,
-    metricId: limiter.metricId,
-    title: limiter.title,
-    currentValue: limiter.currentValue,
-    unit: limiter.unit,
-    currentText: formatValue(limiter.currentValue, limiter.unit),
-    eliteBenchmarkText: target?.text ?? limiter.targetRange,
-    eliteTargetValue: targetValue,
-    deficitText,
-    deficitPct: Number(deficitPct.toFixed(1)),
-    estimatedVelocityGainMps,
-    velocityGainModeled: coupling > 0 && coupling < 1,
-    confidence: limiter.confidence,
-    why: limiter.why,
+    value: tro.nextTargetStepLengthM,
+    text: `${tro.nextTargetRatio.toFixed(2)}× trochanter (${tro.nextTargetStepLengthM.toFixed(2)} m)`,
+    review: false,
   };
 }
 
+/** One factor + the modeling scratch we rank on, built from a trusted value. */
+interface ScoredFactor {
+  factor: LimitingFactor;
+  def: TrustedFactorDef;
+  /** Lever gain in m/s from reaching elite (0 for outcomes / already elite). */
+  leverGainMps: number;
+}
+
+function scoreFactor(
+  def: TrustedFactorDef,
+  current: number,
+  topSpeedBase: number | null,
+  stepLengthConfidence: IntelligenceConfidence,
+  override?: FactorTarget,
+): ScoredFactor {
+  // When an override target is supplied (trochanter next-target for step length), rank
+  // against THAT instead of the generic metre elite target. A `review` override means
+  // no real target (measurement check) — treated as no deficit.
+  const review = override?.review === true;
+  const targetValue = review ? current : (override?.value ?? def.eliteTarget);
+  const targetText = override ? override.text : def.eliteText;
+
+  const deficit = review ? 0 : Math.max(0, targetValue - current);
+  const belowElite = deficit > 0;
+  const deficitPct = !review && targetValue > 0 ? (deficit / targetValue) * 100 : 0;
+  const marginPct = !review && targetValue > 0 ? Math.max(0, (current - targetValue) / targetValue) * 100 : 0;
+
+  // v = L·f: raising a LEVER by fraction φ raises top speed by ~φ. Outcomes are the
+  // result of the levers, so they never carry their own modeled gain.
+  const deficitFraction = Math.min(DEFICIT_FRACTION_CAP, targetValue > 0 ? deficit / targetValue : 0);
+  const leverGainMps =
+    def.kind === "lever" && belowElite && topSpeedBase != null
+      ? Number((topSpeedBase * deficitFraction).toFixed(2))
+      : 0;
+
+  const statusText = review
+    ? "flagged for review"
+    : belowElite
+      ? `${fmt(deficit, def.unit)} below elite`
+      : marginPct > 0.05
+        ? `${fmt(current - targetValue, def.unit)} above elite`
+        : "at elite";
+
+  const confidence: IntelligenceConfidence = def.key === "stepLength" ? stepLengthConfidence : "high";
+
+  const estimatedVelocityGainMps = def.kind === "lever" && belowElite ? leverGainMps : null;
+
+  const factor: LimitingFactor = {
+    rank: 0,
+    key: def.key,
+    label: def.label,
+    unit: def.unit,
+    currentValue: current,
+    currentText: fmt(current, def.unit),
+    eliteTargetValue: targetValue,
+    eliteBenchmarkText: targetText,
+    belowElite,
+    deficitPct: Number(deficitPct.toFixed(1)),
+    marginPct: Number(marginPct.toFixed(1)),
+    statusText,
+    estimatedVelocityGainMps,
+    impactBand: impactBandFor(estimatedVelocityGainMps, topSpeedBase),
+    isOutcome: def.kind === "outcome",
+    confidence,
+    why: def.why,
+    trochanter: null, // attached later for the step-length factor when leg length is known
+  };
+
+  return { factor, def, leverGainMps };
+}
+
 /**
- * Turn the intelligence report into the Top-N limiting factors + a performance-
- * potential projection. Pure. Velocity estimates require a measured top speed;
- * without one, factors still render (deficits only) and potential is unavailable.
+ * Build the ranked diagnosis + Performance Potential from the trusted metrics.
+ * ALWAYS returns ranked factors when the trusted metrics exist. Pure.
  */
 export function deriveLimitingFactors(
-  report: SprintIntelligenceReport,
-  measurements: SprintMeasurements | null,
+  trusted: TrustedMetrics,
+  options?: { legLengthCm?: number | null },
 ): LimitingFactorDiagnosis {
-  const ranked = [report.primaryLimiter, ...report.secondaryLimiters].filter(
-    (l): l is Limiter => l != null,
-  );
-  const top = ranked.slice(0, MAX_FACTORS);
+  const stepLengthConf = trusted.stepLengthConfidence as IntelligenceConfidence;
+  const topSpeedBase = trusted.topSpeedMps ?? trusted.avgVelocityMps ?? null;
 
-  const currentTopSpeedMps = measurements?.maxVelocityMps ?? measurements?.zoneVelocityMps ?? null;
-  const factors = top.map((l) => factorFromLimiter(l, currentTopSpeedMps));
+  // Day 81/82: when leg length is known, judge STRIDE LENGTH by body proportions
+  // (trochanter ratio) instead of the generic metre elite target — using the PEAK
+  // stride (trusted.strideLengthM). A ratio > 2.70× is a measurement check, NOT a
+  // limiter.
+  const troEval =
+    options?.legLengthCm != null && trusted.strideLengthM != null
+      ? evaluateTrochanterStepLength({ stepLengthM: trusted.strideLengthM, legLengthCm: options.legLengthCm })
+      : null;
 
-  // Performance potential: blend the per-factor fractional gains with diminishing
-  // returns so they don't naively add. achievable = v0 · (1 + blend).
-  const gains = factors
-    .map((f) => f.estimatedVelocityGainMps)
-    .filter((g): g is number => g != null && g > 0);
+  const scored = TRUSTED_FACTOR_DEFS.map((def) => {
+    const value = def.get(trusted);
+    if (value == null) return null;
+    if (def.key === "stepLength" && troEval?.reviewFlag) return null; // measurement check, not a limiter
+    const override = def.key === "stepLength" && troEval ? trochanterOverride(troEval) : undefined;
+    return scoreFactor(def, value, topSpeedBase, stepLengthConf, override);
+  }).filter((s): s is ScoredFactor => s != null);
+
+  // Attach the trochanter display context to the stride-length factor (non-review),
+  // including the zone AVERAGE stride + retention for context.
+  if (troEval) {
+    const stepScored = scored.find((s) => s.def.key === "stepLength");
+    if (stepScored) {
+      const oly = troEval.olympicRangeStepLengthM;
+      const avg = trusted.avgStrideLengthM;
+      const retention = trusted.strideRetentionPct;
+      // "Peak strong but retention lagging": a good peak ratio the athlete isn't
+      // holding across the zone.
+      const retentionLagging =
+        troEval.ratio >= PEAK_STRONG_RATIO && retention != null && retention < RETENTION_LAG_PCT;
+      stepScored.factor.trochanter = {
+        ratio: troEval.ratio,
+        ratioText: `${troEval.ratio.toFixed(2)}×`,
+        bandLabel: troEval.label,
+        nextTargetRatio: troEval.nextTargetRatio,
+        nextTargetRatioText:
+          troEval.nextTargetRatio != null ? `${troEval.nextTargetRatio.toFixed(2)}× trochanter` : null,
+        nextTargetStepText:
+          troEval.nextTargetStepLengthM != null ? `${troEval.nextTargetStepLengthM.toFixed(2)} m` : null,
+        olympicText: `2.50–2.70× · ${oly.min.toFixed(2)}–${oly.max.toFixed(2)} m`,
+        avgStrideText: avg != null ? `${avg.toFixed(2)} m` : null,
+        retentionText: retention != null ? `${retention.toFixed(1)}%` : null,
+        retentionNote: retentionLagging
+          ? "Peak stride expression is strong, but zone retention is lagging."
+          : null,
+      };
+    }
+  }
+
+  const anyDeficit = scored.some((s) => s.factor.belowElite);
+  const mode: DiagnosisMode = anyDeficit ? "limiting" : "unlocks";
+
+  // Rank. LIMITING: biggest deficit first. UNLOCKS: closest to the threshold first
+  // (smallest margin). Tie-break prefers actionable LEVERS over outcomes, then key.
+  const kindRank = (s: ScoredFactor) => (s.def.kind === "lever" ? 0 : 1);
+  const rankedScored = [...scored].sort((a, b) => {
+    const primary =
+      mode === "limiting"
+        ? b.factor.deficitPct - a.factor.deficitPct
+        : a.factor.marginPct - b.factor.marginPct;
+    if (Math.abs(primary) > 1e-9) return primary;
+    return kindRank(a) - kindRank(b) || a.def.key.localeCompare(b.def.key);
+  });
+
+  const top = rankedScored.slice(0, MAX_FACTORS);
+  top.forEach((s, i) => (s.factor.rank = i + 1));
+  const factors = top.map((s) => s.factor);
+
+  // Performance Potential: base = trusted top speed; blend the LEVER gains (frequency
+  // + step length) with diminishing returns. Outcomes never contribute.
+  const leverGains = scored
+    .filter((s) => s.def.kind === "lever" && s.leverGainMps > 0)
+    .map((s) => s.leverGainMps);
 
   let potential: PerformancePotential;
-  if (currentTopSpeedMps != null && currentTopSpeedMps > 0 && gains.length > 0) {
-    const blended =
-      1 - gains.reduce((acc, g) => acc * (1 - g / currentTopSpeedMps), 1);
-    const achievable = currentTopSpeedMps * (1 + blended);
-    // Confidence: the weakest contributing factor, then one step down (it's a projection).
-    const factorConf = factors
-      .filter((f) => (f.estimatedVelocityGainMps ?? 0) > 0)
-      .reduce<IntelligenceConfidence>((acc, f) => minConf(acc, f.confidence), "high");
+  if (topSpeedBase != null && topSpeedBase > 0) {
+    const blended = 1 - leverGains.reduce((acc, g) => acc * (1 - g / topSpeedBase), 1);
+    const achievable = topSpeedBase * (1 + blended);
     potential = {
       available: true,
-      currentTopSpeedMps: Number(currentTopSpeedMps.toFixed(2)),
+      currentTopSpeedMps: Number(topSpeedBase.toFixed(2)),
       achievableTopSpeedMps: Number(achievable.toFixed(2)),
       percentImprovement: Number((blended * 100).toFixed(1)),
-      factorsApplied: gains.length,
-      confidence: downgrade(factorConf),
-      basis: POTENTIAL_BASIS,
+      factorsApplied: leverGains.length,
+      confidence: downgrade(stepLengthConf),
+      basis: leverGains.length > 0 ? POTENTIAL_BASIS_ESTIMATE : POTENTIAL_BASIS_ELITE,
     };
   } else {
     potential = {
       available: false,
-      currentTopSpeedMps: currentTopSpeedMps != null ? Number(currentTopSpeedMps.toFixed(2)) : null,
+      currentTopSpeedMps: null,
       achievableTopSpeedMps: null,
       percentImprovement: null,
       factorsApplied: 0,
       confidence: null,
-      basis:
-        currentTopSpeedMps == null
-          ? "Calibrate a timing zone to measure top speed, then AVA can project achievable top speed."
-          : "No correctable limiting factors detected — the scored metrics are within elite range.",
+      basis: "Calibrate a timing zone to measure top speed, then AVA can project achievable top speed.",
     };
   }
 
-  return { available: factors.length > 0, factors, potential };
+  return {
+    available: factors.length > 0,
+    mode,
+    factors,
+    potential,
+    confidence: stepLengthConf,
+  };
 }

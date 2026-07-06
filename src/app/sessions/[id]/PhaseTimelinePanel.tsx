@@ -14,15 +14,15 @@ import {
  * comes from `@/lib/phases`; this only lays it out.
  */
 
-// Categorical phase colours (a legend, not performance status) — kept vivid so the
-// timeline reads at a glance on the dark surface.
+// Categorical phase colours (a legend, not performance status). A warm/neutral ramp
+// with no blue/teal — reads at a glance on the dark surface and stays on-brand.
 const PHASE_COLOR: Record<SprintPhase, string> = {
-  start: "bg-sky-400",
-  acceleration: "bg-indigo-500",
-  transition: "bg-violet-500",
-  maxVelocity: "bg-rose-500",
-  maintenance: "bg-amber-500",
-  deceleration: "bg-slate-400",
+  start: "bg-[#6B7280]",
+  acceleration: "bg-[#CD7F32]",
+  transition: "bg-[#D4AF37]",
+  maxVelocity: "bg-[#D72638]",
+  maintenance: "bg-[#E4A672]",
+  deceleration: "bg-[#4b4b52]",
 };
 
 const CONFIDENCE_TONE: Record<PhaseConfidence, AvaTone> = {

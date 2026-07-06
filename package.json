@@ -45,6 +45,7 @@
     "phases:sanity": "node scripts/phases-sanity.mjs",
     "intelligence:sanity": "node scripts/intelligence-sanity.mjs",
     "limiting-factors:sanity": "node scripts/limiting-factors-sanity.mjs",
+    "stride-metrics:sanity": "node scripts/stride-metrics-sanity.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

@@ -16,12 +16,15 @@ export default async function LoginPage({
   const { error, message } = await searchParams;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-8">
-      <h1 className="text-2xl font-bold text-lane">Sign in to AVA</h1>
+    <main className="ava-carbon mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-8">
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#D72638]">AVA</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#F5F5F7]">Sign in to AVA</h1>
+      </div>
       {error && (
         <p
           role="alert"
-          className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+          className="rounded-xl border border-[#FF3B30]/40 bg-[#FF3B30]/10 px-3 py-2 text-sm text-[#ff8079]"
         >
           {error}
         </p>
@@ -29,7 +32,7 @@ export default async function LoginPage({
       {message === "check-email" && (
         <p
           role="status"
-          className="rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700"
+          className="rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-3 py-2 text-sm text-[#E4C25A]"
         >
           Almost there — check your email for a confirmation link to finish
           signing up.
@@ -41,22 +44,25 @@ export default async function LoginPage({
           type="email"
           required
           placeholder="Email"
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-white/[0.08] bg-[#19191C] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none"
         />
         <input
           name="password"
           type="password"
           required
           placeholder="Password"
-          className="rounded border px-3 py-2"
+          className="rounded-lg border border-white/[0.08] bg-[#19191C] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none"
         />
         <div className="flex gap-3">
-          <button formAction={login} className="flex-1 rounded bg-lane px-4 py-2 text-white">
+          <button
+            formAction={login}
+            className="flex-1 rounded-lg bg-[#D72638] px-4 py-2 font-semibold text-white transition hover:bg-[#e63a4b]"
+          >
             Log in
           </button>
           <button
             formAction={signup}
-            className="flex-1 rounded border border-lane px-4 py-2 text-lane"
+            className="flex-1 rounded-lg border border-white/[0.12] bg-white/[0.04] px-4 py-2 font-semibold text-[#F5F5F7] transition hover:bg-white/[0.08]"
           >
             Sign up
           </button>

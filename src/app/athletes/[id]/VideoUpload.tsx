@@ -90,23 +90,23 @@ export default function VideoUpload({ athleteId }: { athleteId: string }) {
         type="file"
         accept="video/*"
         disabled={uploading}
-        className="text-sm"
+        className="w-full cursor-pointer rounded-lg border border-white/[0.08] bg-[#19191C] p-2 text-sm text-[#A0A2A8] file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-[#D72638] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#e63a4b] disabled:opacity-50"
       />
       <div className="flex items-center gap-3">
         <button
           type="submit"
           disabled={uploading}
-          className="rounded bg-lane px-4 py-2 text-white disabled:opacity-50"
+          className="rounded-lg bg-[#D72638] px-4 py-2 font-semibold text-white transition hover:bg-[#e63a4b] disabled:opacity-50"
         >
           {uploading ? "Uploading…" : "Upload video"}
         </button>
         {status.state === "success" && (
-          <span role="status" className="text-sm text-green-700">
+          <span role="status" className="text-sm text-[#E4C25A]">
             Upload complete.
           </span>
         )}
         {status.state === "error" && (
-          <span role="alert" className="text-sm text-red-700">
+          <span role="alert" className="text-sm text-[#ff8079]">
             {status.message}
           </span>
         )}

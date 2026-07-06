@@ -88,7 +88,7 @@ const bones = [
 
 // A readable, high-contrast palette that reads well over real sprint footage.
 const COLORS = {
-  bone: "#38bdf8", // sky-400
+  bone: "#F5F5F7", // AVA white — neutral, high-contrast skeleton (no blue)
   jointFill: "#f8fafc", // slate-50
   jointStroke: "#0f172a", // slate-900
   jointFillSoft: "rgba(248, 250, 252, 0.7)", // slate-50, semi-transparent tiny dots
@@ -100,9 +100,9 @@ const COLORS = {
   contact: "#4ade80", // green-400
   flight: "#cbd5e1", // slate-300
   hover: "#fbbf24", // amber-400
-  selected: "#22d3ee", // cyan-400
-  arm: "#a78bfa", // violet-400 — upper-arm/forearm segments
-  armAngle: "#c4b5fd", // violet-300 — arm angle labels
+  selected: "#D72638", // AVA red — selection highlight (no cyan)
+  arm: "#D4AF37", // gold — upper-arm/forearm segments (distinct from white legs)
+  armAngle: "#E4C25A", // light gold — arm angle labels
   stepLeft: "#ef4444", // red-500 — left-foot ground contacts
   stepRight: "#22c55e", // green-500 — right-foot ground contacts
   stepPath: "rgba(226, 232, 240, 0.75)", // slate-200 — connecting step path (debug only)

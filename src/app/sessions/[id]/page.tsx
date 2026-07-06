@@ -29,18 +29,12 @@ import { stepFrequencyFromContacts } from "@/lib/video/cadence";
 import type { ManualCalibrationPoints } from "@/lib/calibration";
 import { calibrationGatesSchema, type CalibrationGates } from "@/lib/calibration/gates";
 import { computeSprintMeasurements } from "@/lib/benchmark/measurements";
-import {
-  assembleAvaValues,
-  compareToBenchmark,
-  evaluateAccuracy,
-  referenceMetricsSchema,
-  type BenchmarkComparisonRow,
-  type AccuracyRow,
-} from "@/lib/benchmark";
 import { isPrecisionLimited } from "@/lib/benchmark/precision";
 import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
 import { deriveLimitingFactors } from "@/lib/intelligence/limitingFactors";
+import { buildTrustedMetrics } from "@/lib/intelligence/trustedMetrics";
+import { evaluateTrochanterStepLength } from "@/lib/intelligence/trochanterOptimizer";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
 import RecommendationsPanel from "./RecommendationsPanel";
@@ -49,8 +43,8 @@ import PerformancePredictionPanel from "./PerformancePredictionPanel";
 import PhaseTimelinePanel from "./PhaseTimelinePanel";
 import AvaIntelligencePanel from "./AvaIntelligencePanel";
 import PerformancePotentialCard from "./PerformancePotentialCard";
+import UnlockSimulatorCard from "./UnlockSimulatorCard";
 import CalibrationControlsForm from "./CalibrationControlsForm";
-import BenchmarkPanel from "./BenchmarkPanel";
 import CoachNotesForm from "./CoachNotesForm";
 import RecordingQualityCard from "./RecordingQualityCard";
 import PerformanceSummaryCard from "./PerformanceSummaryCard";
@@ -247,16 +241,9 @@ export default async function SessionPage({
     ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight)
     : null;
 
-  // Active FPS + its source, for the timing-provenance display. Every timing-derived
-  // number (contact, flight, frequency, zone, velocity, phases) uses this clock.
+  // The clock every timing-derived number (contact, flight, frequency, zone,
+  // velocity, phases) uses: manual override, else the normalized detected rate.
   const activeFps = effectiveFps;
-  const fpsSource: "override" | "normalized" | "detected" | "none" = overrideFps
-    ? "override"
-    : fpsSnapped
-      ? "normalized"
-      : detectedFps != null
-        ? "detected"
-        : "none";
 
   // Precision mode (Day 69): below ~120 fps, temporal metrics (contact/flight) are
   // frame-quantized too coarsely to be trusted as high-confidence — so we neither
@@ -294,40 +281,10 @@ export default async function SessionPage({
         })
       : null;
 
-  // Benchmark validation: the list of available benchmarks (for the link selector)
-  // and, when this session is explicitly linked to one, the AVA-vs-reference
-  // percent-error comparison. Reference data is global (RLS: readable by any
-  // authenticated user).
-  const { data: benchmarks } = await supabase
-    .from("benchmarks")
-    .select("id, name, reference_metrics")
-    .order("created_at", { ascending: true });
-
-  let benchmarkComparison: {
-    benchmarkName: string;
-    rows: BenchmarkComparisonRow[];
-    accuracy: AccuracyRow[];
-  } | null = null;
-  const linkedBenchmark = session.benchmark_id
-    ? benchmarks?.find((b) => b.id === session.benchmark_id)
-    : null;
-  if (linkedBenchmark && measurements && parsedMetrics?.success) {
-    const refParsed = referenceMetricsSchema.safeParse(linkedBenchmark.reference_metrics);
-    const reference = refParsed.success ? refParsed.data : {};
-    const avaValues = assembleAvaValues(
-      measurements,
-      {
-        groundContactTimeMs: parsedMetrics.data.groundContactTimeMs,
-        flightTimeMs: parsedMetrics.data.flightTimeMs,
-      },
-      { activeFps },
-    );
-    benchmarkComparison = {
-      benchmarkName: linkedBenchmark.name,
-      rows: compareToBenchmark(avaValues, reference),
-      accuracy: evaluateAccuracy(avaValues, reference),
-    };
-  }
+  // NB: Benchmark validation (AVA-vs-reference percent error) is an internal QA
+  // surface and is intentionally NOT rendered in the customer UI. The underlying
+  // measurement calculations above are unchanged; the benchmark comparison is still
+  // available via the reporting scripts (scripts/benchmark-breakdown.mjs).
 
   // Step-distance scale: turns the overlay's normalized step gaps into metres
   // when a calibration scale + pixel dimensions are available.
@@ -401,13 +358,29 @@ export default async function SessionPage({
         // Precision mode: don't let low-confidence 60 fps contact/flight be flagged
         // as limiters as if they were reliable measurements.
         timingReliable: !precisionLimited,
+        // Frequency is one concept: use the trusted calibrated cadence (matches the
+        // Trusted Sprint Metrics card) over the raw worker strideFrequencyHz.
+        calibratedStepFrequencyHz: measurements?.combinedStepFrequencyHz ?? null,
       })
     : null;
 
-  // Limiting-factor diagnosis (Day 78): reframe the ranked limiters into the Top-3
-  // customer-facing factors + the performance-potential projection. Pure; adds no
-  // biomechanics math (velocity gains use the existing v = L·f identity).
-  const diagnosis = intelligence ? deriveLimitingFactors(intelligence, measurements) : null;
+  // Trusted Sprint Metrics (Day 79): THE single source of truth for every customer-
+  // facing surface. Derived only from the calibrated measurement engine.
+  const trusted = buildTrustedMetrics(measurements);
+
+  // Trochanter step-length optimizer (Day 80): judge step length relative to the
+  // athlete's body proportions. leg_length_cm is the trochanter-length proxy.
+  const legLengthCm = session.athletes?.leg_length_cm ?? null;
+  // Uses the diagnosis stride length (peak when available).
+  const trochanter = trusted
+    ? evaluateTrochanterStepLength({ stepLengthM: trusted.strideLengthM, legLengthCm })
+    : null;
+
+  // Limiting-factor diagnosis (Day 79): ranks the four trusted metrics into the
+  // customer-facing #1/#2/#3 factors + the Performance Potential projection — always
+  // from the trusted values, so it can never disagree with the Trusted Metrics card.
+  // Day 80: pass leg length so the step-length factor is framed by trochanter ratio.
+  const diagnosis = trusted ? deriveLimitingFactors(trusted, { legLengthCm }) : null;
 
   // Progress tracking: compare against this athlete's previous completed
   // analysis (any earlier session). Read-only, non-mutating, RLS-scoped.
@@ -578,8 +551,18 @@ export default async function SessionPage({
             {/* Performance headroom from correcting those factors. */}
             {diagnosis && <PerformancePotentialCard potential={diagnosis.potential} />}
 
-            {/* The four trusted metrics. */}
-            {measurements && <PerformanceSummaryCard measurements={measurements} />}
+            {/* Trochanter stride-length optimizer + unlock simulator (needs leg length). */}
+            {trochanter && trusted?.strideLengthM != null && trusted?.frequencyHz != null && (
+              <UnlockSimulatorCard
+                evaluation={trochanter}
+                peakStrideLengthM={trusted.strideLengthM}
+                avgStrideLengthM={trusted.avgStrideLengthM}
+                frequencyHz={trusted.frequencyHz}
+              />
+            )}
+
+            {/* The four trusted metrics — the single source of truth. */}
+            {measurements && <PerformanceSummaryCard trusted={trusted} />}
 
             {/* Recording-quality trust indicator (collapsed). */}
             {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
@@ -593,23 +576,10 @@ export default async function SessionPage({
                 <span className="inline-block text-[#D72638] transition group-open:rotate-90">▸</span>
                 Detailed Systems
                 <span className="text-xs font-normal text-[#6B7280]">
-                  benchmark, calibration, phases, prediction &amp; coaching detail
+                  calibration, phases, prediction &amp; coaching detail
                 </span>
               </summary>
               <div className="mt-5 space-y-4">
-                {measurements && (
-                  <BenchmarkPanel
-                    sessionId={session.id}
-                    measurements={measurements}
-                    activeFps={activeFps}
-                    fpsSource={fpsSource}
-                    detectedFps={detectedFps}
-                    fpsOverride={session.fps_override ?? null}
-                    benchmarks={(benchmarks ?? []).map((b) => ({ id: b.id, name: b.name }))}
-                    linkedBenchmarkId={session.benchmark_id ?? null}
-                    comparison={benchmarkComparison}
-                  />
-                )}
                 {calibrationReport && <CalibrationPanel report={calibrationReport} />}
                 <CalibrationControlsForm
                   sessionId={session.id}

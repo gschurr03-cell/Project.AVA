@@ -1,13 +1,16 @@
-// Runtime sanity for Day 78 — limiting-factor diagnosis (intelligence/limitingFactors.ts).
+// Runtime sanity for Day 79 — trusted-source limiting-factor diagnosis
+// (intelligence/limitingFactors.ts).
 //
 //   node scripts/limiting-factors-sanity.mjs
 //
-// Compiles the pure module and asserts the presentation-support math:
-//   • current value / elite benchmark / deficit surfaced from the shared thresholds;
-//   • velocity gain uses v = L·f (direct for cadence/step-length, modeled+flagged for
-//     ground-contact/flight);
-//   • Performance Potential blends gains with diminishing returns and downgrades
-//     confidence; is unavailable without a measured top speed.
+// Compiles the pure module and asserts:
+//   • ranking reads ONLY the four trusted metrics (Frequency, Step Length, Top Speed,
+//     Average Velocity), never a conflicting source;
+//   • AVA ALWAYS returns ranked #1/#2/#3 — "limiting" mode when any deficit exists,
+//     "unlocks" mode (ranked by closest margin) when all are elite;
+//   • Frequency shows once, labelled "Frequency" in Hz, sourced from trusted frequencyHz;
+//   • velocity gain is a v=L·f estimate for LEVERS only (outcomes carry no gain);
+//   • Performance Potential is based on trusted top speed with diminishing returns.
 
 import { execFileSync } from "node:child_process";
 import { rmSync, mkdirSync, writeFileSync } from "node:fs";
@@ -44,71 +47,83 @@ try {
 
   const { deriveLimitingFactors } = require(path.join(out, "lib/intelligence/limitingFactors.js"));
 
-  const limiter = (over) => ({
-    key: over.key,
-    metricId: over.metricId,
-    title: over.title ?? over.key,
-    currentValue: over.currentValue,
-    unit: over.unit,
-    targetRange: over.targetRange,
-    severity: "poor",
-    rank: over.rank,
-    impactScore: 80,
-    confidence: over.confidence ?? "medium",
-    why: "because",
-    reasoning: [],
-    affectedPhases: [],
-    coachingFocus: "focus",
-    drills: [],
+  // Trusted metrics matching the reported real session (source of truth). AVA stride
+  // length = opposite-foot contact distance; the DIAGNOSIS uses PEAK (best 4 strides).
+  const trusted = (over = {}) => ({
+    topSpeedMps: 10.78,
+    avgVelocityMps: 10.42,
+    avgStrideLengthM: 2.16,
+    peakStrideLengthM: 2.31,
+    strideRetentionPct: 93.5,
+    strideLengthM: 2.31, // diagnosis value = peak
+    frequencyHz: 4.85,
+    zoneDistanceM: 20,
+    zoneTimeS: 1.92,
+    stepLengthConfidence: "high",
+    ...over,
   });
 
-  const report = (primary, secondary = []) => ({
-    available: true,
-    headline: "h",
-    primaryLimiter: primary,
-    secondaryLimiters: secondary,
-    confidence: "medium",
-    performanceContext: null,
-    dataGaps: [],
-    warnings: [],
-    method: "m",
-  });
+  const byKey = (d, k) => d.factors.find((f) => f.key === k);
 
-  const measurements = { maxVelocityMps: 10.4, zoneVelocityMps: 10.2, combinedStepFrequencyHz: 4.4, avgIndividualStepLengthM: 2.16 };
+  // (1) Real session → "limiting" mode, exactly 3 ranked factors; the stride factor is
+  // labelled "Stride Length" and uses the PEAK stride (2.31 m), not the average.
+  const d = deriveLimitingFactors(trusted());
+  check("always returns 3 ranked factors", d.available && d.factors.length === 3 && d.factors.every((f, i) => f.rank === i + 1));
+  check("mode is 'limiting' when deficits exist", d.mode === "limiting");
+  check("stride factor labelled 'Stride Length', sourced from trusted PEAK stride (2.31 m)", byKey(d, "stepLength")?.label === "Stride Length" && byKey(d, "stepLength")?.currentText === "2.31 m" && byKey(d, "stepLength")?.unit === "m");
+  check("elite frequency (4.85) is NOT surfaced as a limiter", !byKey(d, "frequency"));
+  check("stride LEVER gain via v=L·f (kept internal)", near(byKey(d, "stepLength").estimatedVelocityGainMps, 10.78 * ((2.45 - 2.31) / 2.45), 0.03) && byKey(d, "stepLength").isOutcome === false);
+  check("stride shows an IMPACT BAND (High) not an exact m/s", byKey(d, "stepLength").impactBand === "high");
+  check("Top Speed is an OUTCOME with no gain + no impact band", byKey(d, "topSpeed").isOutcome === true && byKey(d, "topSpeed").estimatedVelocityGainMps === null && byKey(d, "topSpeed").impactBand === null);
 
-  // Cadence limiter (higher-is-better; elite min 4.8): deficit 0.4 Hz → 8.3%.
-  const cadence = limiter({ key: "cadence", metricId: "stepFrequency", currentValue: 4.4, unit: "Hz", targetRange: "4.8–5.2 Hz", rank: 1, confidence: "high" });
-  const dCad = deriveLimitingFactors(report(cadence), measurements);
-  const f0 = dCad.factors[0];
-  check("cadence: current value + unit surfaced", f0.currentText === "4.40 Hz");
-  check("cadence: elite benchmark surfaced", /4\.8/.test(f0.eliteBenchmarkText) && near(f0.eliteTargetValue, 4.8));
-  check("cadence: deficit % ≈ 8.3", near(f0.deficitPct, 8.3, 0.2));
-  check("cadence: DIRECT velocity gain via v=L·f (≈0.87, not modeled)", near(f0.estimatedVelocityGainMps, 10.4 * (0.4 / 4.8), 0.02) && f0.velocityGainModeled === false);
+  // Performance Potential: based on TRUSTED top speed, diminishing returns.
+  const p = d.potential;
+  check("potential base = trusted top speed (10.78)", near(p.currentTopSpeedMps, 10.78));
+  check("achievable > current and % > 0 (estimate)", p.available && p.achievableTopSpeedMps > p.currentTopSpeedMps && p.percentImprovement > 0);
+  check("only trusted LEVERS applied (1: stride length; frequency elite)", p.factorsApplied === 1);
 
-  // Ground contact (lower-is-better; elite max 95): deficit 25 ms, modeled coupling 0.5.
-  const gc = limiter({ key: "groundContact", metricId: "groundContactTime", currentValue: 120, unit: "ms", targetRange: "75–95 ms", rank: 1 });
-  const dGc = deriveLimitingFactors(report(gc), measurements);
-  const g0 = dGc.factors[0];
-  check("ground contact: deficit text says 'over elite'", /over elite/.test(g0.deficitText));
-  check("ground contact: MODELED velocity gain (coupling 0.5, flagged)", near(g0.estimatedVelocityGainMps, 10.4 * (25 / 95) * 0.5, 0.02) && g0.velocityGainModeled === true);
+  // (2) Frequency deficit → appears once, labelled "Frequency" in Hz, from trusted.
+  const dFreq = deriveLimitingFactors(trusted({ frequencyHz: 4.4 }));
+  const freq = byKey(dFreq, "frequency");
+  check("frequency below elite surfaces as 'Frequency' in Hz", freq && freq.label === "Frequency" && freq.unit === "Hz" && freq.currentText === "4.40 Hz");
+  check("frequency appears exactly once", dFreq.factors.filter((f) => f.key === "frequency").length === 1);
 
-  // Performance potential: blends with diminishing returns, downgrades confidence.
-  const dTwo = deriveLimitingFactors(report(cadence, [gc]), measurements);
-  const p = dTwo.potential;
-  const gains = dTwo.factors.map((f) => f.estimatedVelocityGainMps);
-  const blended = 1 - gains.reduce((acc, x) => acc * (1 - x / 10.4), 1);
-  check("potential available with 2 factors", p.available && p.factorsApplied === 2);
-  check("achievable = v0·(1+blend), diminishing (< naive sum)", near(p.achievableTopSpeedMps, 10.4 * (1 + blended), 0.03) && p.achievableTopSpeedMps < 10.4 + gains[0] + gains[1]);
-  check("percent improvement > 0", p.percentImprovement > 0);
-  check("confidence downgraded from factor min (medium→low)", p.confidence === "low");
+  // Band thresholds: a near-elite lever (tiny deficit) → LOW impact band.
+  const dLow = deriveLimitingFactors(trusted({ strideLengthM: 2.42 }));
+  check("near-elite lever → LOW impact band", byKey(dLow, "stepLength")?.impactBand === "low");
 
-  // No measured top speed → gains null, potential unavailable.
-  const dNoV = deriveLimitingFactors(report(cadence), { maxVelocityMps: null, zoneVelocityMps: null, combinedStepFrequencyHz: 4.4, avgIndividualStepLengthM: 2.16 });
-  check("no top speed → gain null + potential unavailable", dNoV.factors[0].estimatedVelocityGainMps === null && dNoV.potential.available === false);
+  // (2b) Day 81/82 — stride length judged by PEAK TROCHANTER ratio when leg length is
+  // present; average + retention carried as context.
+  const dTro = deriveLimitingFactors(trusted(), { legLengthCm: 99 });
+  const stepTro = byKey(dTro, "stepLength");
+  check("leg length present → stride target is peak trochanter next milestone (~2.48 m, not 2.45)", stepTro && near(stepTro.eliteTargetValue, 2.475, 0.02));
+  check("stride factor carries PEAK trochanter data (2.33×, next 2.50×)", stepTro?.trochanter?.ratioText === "2.33×" && near(stepTro.trochanter.nextTargetRatio, 2.5));
+  check("stride factor carries avg + retention context", stepTro?.trochanter?.avgStrideText === "2.16 m" && stepTro?.trochanter?.retentionText === "93.5%");
+  check("stride benchmark copy is trochanter-based, not generic metres", /trochanter/.test(stepTro?.eliteBenchmarkText ?? "") && !/2\.45/.test(stepTro?.eliteBenchmarkText ?? ""));
 
-  // No limiters → not available, at most 3 factors otherwise.
-  check("no limiters → diagnosis unavailable", deriveLimitingFactors(report(null), measurements).available === false);
-  check("caps at 3 factors", deriveLimitingFactors(report(cadence, [gc, cadence, gc, cadence]), measurements).factors.length === 3);
+  // Peak strong but average lagging → coaching note.
+  const dLag = deriveLimitingFactors(trusted({ strideRetentionPct: 88 }), { legLengthCm: 99 });
+  check("strong peak + low retention → 'zone retention is lagging' note", /retention is lagging/i.test(byKey(dLag, "stepLength")?.trochanter?.retentionNote ?? ""));
+
+  // Fallback: no leg length → generic metre elite target 2.45 m, no trochanter data.
+  const stepGen = byKey(deriveLimitingFactors(trusted()), "stepLength");
+  check("no leg length → generic 2.45 m target + trochanter null (fallback preserved)", near(stepGen?.eliteTargetValue, 2.45) && stepGen?.trochanter == null);
+
+  // Review: peak ratio > 2.70× is a measurement check, NOT a ranked performance limiter.
+  const dReview = deriveLimitingFactors(trusted({ strideLengthM: 2.8 }), { legLengthCm: 100 });
+  check(">2.70× → stride length dropped (measurement check, not a limiter)", !byKey(dReview, "stepLength") && dReview.factors.length === 3);
+
+  // (3) All metrics elite → NEVER empty; "unlocks" mode ranked by closest margin.
+  const dElite = deriveLimitingFactors(trusted({ topSpeedMps: 12.0, avgVelocityMps: 11.5, strideLengthM: 2.6, frequencyHz: 5.0 }));
+  check("all-elite → still 3 ranked factors (never 'nothing stands out')", dElite.available && dElite.factors.length === 3);
+  check("all-elite → mode is 'unlocks'", dElite.mode === "unlocks");
+  check("all-elite → every surfaced factor is at/above elite", dElite.factors.every((f) => f.belowElite === false));
+  check("all-elite → ranked by smallest margin first", dElite.factors[0].marginPct <= dElite.factors[1].marginPct && dElite.factors[1].marginPct <= dElite.factors[2].marginPct);
+  check("all-elite → potential available, 0 levers applied, ~0% ", dElite.potential.available && dElite.potential.factorsApplied === 0 && dElite.potential.percentImprovement === 0);
+
+  // (4) No top speed → potential unavailable but factors still rank.
+  const dNoTop = deriveLimitingFactors(trusted({ topSpeedMps: null, avgVelocityMps: null }));
+  check("no top speed → potential unavailable, factors still present", dNoTop.potential.available === false && dNoTop.factors.length >= 1);
 
   console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");
 } finally {

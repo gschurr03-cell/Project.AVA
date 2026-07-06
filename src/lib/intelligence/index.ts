@@ -136,6 +136,14 @@ export interface IntelligenceInputs {
    * flagged as a limiter as if it were a reliable measurement.
    */
   timingReliable?: boolean;
+  /**
+   * The trusted, calibrated combined step frequency (Hz) from
+   * `computeSprintMeasurements`, when available. Frequency, cadence, and step/stride
+   * frequency are ONE concept: prefer this measured value over the raw worker
+   * `strideFrequencyHz` so the limiter matches the Trusted Sprint Metrics card
+   * (Day 78 fix). Falls back to the worker estimate only when this is absent.
+   */
+  calibratedStepFrequencyHz?: number | null;
 }
 
 const METHOD =
@@ -211,7 +219,7 @@ const LIMITER_DEFS: LimiterDef[] = [
   {
     key: "cadence",
     metricId: "stepFrequency",
-    title: "Low cadence / turnover",
+    title: "Frequency",
     weight: 20,
     phases: ["maxVelocity", "maintenance"],
     why: "Turnover sets how quickly each leg is repositioned; below target it caps top-end velocity even when stride length is good.",
@@ -278,7 +286,9 @@ function resolveMetricValues(inputs: IntelligenceInputs): {
     values: {
       groundContactTime: timingReliable && m ? m.groundContactTimeMs : null,
       strideLength: calibratedStride ?? workerStride,
-      stepFrequency: m ? m.strideFrequencyHz : null,
+      // Frequency = cadence = step/stride frequency (one concept). Prefer the trusted
+      // calibrated measurement; fall back to the raw worker estimate only if absent.
+      stepFrequency: inputs.calibratedStepFrequencyHz ?? (m ? m.strideFrequencyHz : null),
       flightTime: timingReliable && m ? m.flightTimeMs : null,
     },
     strideFromCalibration,

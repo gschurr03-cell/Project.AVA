@@ -7,10 +7,10 @@ import { logout } from "@/app/login/actions";
 import { createAthlete } from "./actions";
 
 const TREND_CHIP: Record<TrendDirection, { chip: string; arrow: string; label: string }> = {
-  improving: { chip: "bg-green-100 text-green-700", arrow: "↑", label: "Improving" },
-  declining: { chip: "bg-red-100 text-red-700", arrow: "↓", label: "Declining" },
-  plateauing: { chip: "bg-gray-100 text-gray-600", arrow: "→", label: "Plateauing" },
-  insufficient: { chip: "bg-gray-100 text-gray-500", arrow: "·", label: "No trend yet" },
+  improving: { chip: "border border-[#D4AF37]/40 bg-[#D4AF37]/12 text-[#E4C25A]", arrow: "↑", label: "Improving" },
+  declining: { chip: "border border-[#FF3B30]/40 bg-[#FF3B30]/12 text-[#FF7A70]", arrow: "↓", label: "Declining" },
+  plateauing: { chip: "border border-white/10 bg-white/[0.05] text-[#A0A2A8]", arrow: "→", label: "Plateauing" },
+  insufficient: { chip: "border border-white/10 bg-white/[0.05] text-[#6B7280]", arrow: "·", label: "No trend yet" },
 };
 
 /** Extract the joined athlete_id whether Supabase returns it as an object or array. */
@@ -65,13 +65,19 @@ export default async function DashboardPage({
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="ava-carbon mx-auto min-h-screen max-w-3xl p-8">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-lane">Your athletes</h1>
-        <div className="flex items-center gap-3 text-sm text-gray-600">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#D72638]">AVA</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#F5F5F7]">Your athletes</h1>
+        </div>
+        <div className="flex items-center gap-3 text-sm text-[#A0A2A8]">
           <span>{user.email}</span>
           <form action={logout}>
-            <button type="submit" className="rounded border px-3 py-1 hover:bg-gray-50">
+            <button
+              type="submit"
+              className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1 text-[#A0A2A8] transition hover:bg-white/[0.08]"
+            >
               Sign out
             </button>
           </form>
@@ -81,7 +87,7 @@ export default async function DashboardPage({
       {error && (
         <p
           role="alert"
-          className="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
+          className="mb-4 rounded-xl border border-[#FF3B30]/40 bg-[#FF3B30]/10 px-3 py-2 text-sm text-[#ff8079]"
         >
           {error}
         </p>
@@ -92,9 +98,12 @@ export default async function DashboardPage({
           name="full_name"
           required
           placeholder="New athlete name"
-          className="flex-1 rounded border px-3 py-2"
+          className="flex-1 rounded-lg border border-white/[0.08] bg-[#19191C] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none"
         />
-        <button type="submit" className="rounded bg-lane px-4 py-2 text-white">
+        <button
+          type="submit"
+          className="rounded-lg bg-[#D72638] px-4 py-2 font-semibold text-white transition hover:bg-[#e63a4b]"
+        >
           Add athlete
         </button>
       </form>
@@ -108,11 +117,11 @@ export default async function DashboardPage({
               <li key={a.id}>
                 <Link
                   href={`/athletes/${a.id}`}
-                  className="block rounded border p-4 hover:border-lane hover:bg-gray-50"
+                  className="block rounded-xl border border-white/[0.06] bg-[#19191C] p-4 transition hover:border-[#D72638]/40 hover:bg-[#202024]"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <span className="font-medium text-lane">{a.full_name}</span>
-                    <span className={`rounded px-2 py-0.5 text-xs font-medium ${trend.chip}`}>
+                    <span className="font-semibold text-[#F5F5F7]">{a.full_name}</span>
+                    <span className={`rounded px-2 py-0.5 text-xs font-semibold ${trend.chip}`}>
                       {trend.arrow} {trend.label}
                     </span>
                   </div>
@@ -120,20 +129,20 @@ export default async function DashboardPage({
                   {snapshot.sessionsAnalyzed > 0 ? (
                     <div className="mt-3 flex items-end gap-4">
                       <div>
-                        <p className="text-2xl font-bold text-gray-800">{snapshot.latestTechnique}</p>
-                        <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                        <p className="text-2xl font-bold text-[#F5F5F7]">{snapshot.latestTechnique}</p>
+                        <p className="text-[11px] uppercase tracking-wide text-[#6B7280]">
                           Technique score
                         </p>
                       </div>
-                      <p className="pb-1 text-xs text-gray-500">
+                      <p className="pb-1 text-xs text-[#6B7280]">
                         {snapshot.sessionsAnalyzed} session{snapshot.sessionsAnalyzed === 1 ? "" : "s"} analyzed
                       </p>
                     </div>
                   ) : (
-                    <p className="mt-3 text-xs text-gray-500">No analyzed sessions yet.</p>
+                    <p className="mt-3 text-xs text-[#6B7280]">No analyzed sessions yet.</p>
                   )}
 
-                  <span className="mt-3 block text-xs text-gray-400">
+                  <span className="mt-3 block text-xs text-[#6B7280]">
                     Added {new Date(a.created_at).toLocaleDateString()}
                   </span>
                 </Link>
@@ -142,7 +151,7 @@ export default async function DashboardPage({
           })}
         </ul>
       ) : (
-        <p className="text-gray-600">No athletes yet. Add one to get started.</p>
+        <p className="text-[#A0A2A8]">No athletes yet. Add one to get started.</p>
       )}
     </main>
   );

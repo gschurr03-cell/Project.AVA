@@ -45,8 +45,9 @@ export type SurfaceCalibration = {
   onRecompute: (formData: FormData) => void | Promise<void>;
 };
 
-/** Playback rates offered by the shared controls. */
-export const SPEEDS = [0.25, 0.5, 1, 2] as const;
+/** Playback rates offered by the shared controls. 0.1× is included for slow-motion
+ *  frame-by-frame review (browsers clamp playbackRate ~0.0625 min, so 0.1 is safe). */
+export const SPEEDS = [0.1, 0.25, 0.5, 1, 2] as const;
 
 const DEFAULT_TOGGLES: OverlayToggles = {
   skeleton: true,

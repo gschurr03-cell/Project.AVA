@@ -27,6 +27,7 @@ import type { OverlayFrame, OverlayPoint } from "@/lib/video/overlay";
 import { type StepMark, type StepSide, type StepDistanceScale } from "@/lib/video/steps";
 import { summariseContactFlight, type ContactFlightSummary } from "@/lib/video/contacts";
 import { buildFullRunEvents } from "@/lib/video/events";
+import { computePeakStrideLengthM, computeStrideRetentionPct } from "@/lib/benchmark/strideMetrics";
 import type { ManualCalibrationPoints } from "@/lib/calibration";
 import { stepFrequenciesFromContacts } from "@/lib/video/cadence";
 import {
@@ -161,9 +162,16 @@ export interface SprintMeasurements {
   flightRightMs: number | null;
   flightCombinedMs: number | null;
 
-  // Step length (m) — null when uncalibrated
+  // Step length (m) — null when uncalibrated. In AVA terms these are STRIDE lengths
+  // (opposite-foot contact-to-contact distances); the field names are kept for
+  // stability. See `strideMetrics.ts`.
   avgZoneStepLengthM: number | null;
   avgIndividualStepLengthM: number | null;
+  /** AVA Peak Stride Length (m): average of the best 4 opposite-foot contact
+   *  distances in the zone. Null with fewer than 2 valid distances. */
+  peakStrideLengthM: number | null;
+  /** Stride retention (%): avgIndividualStepLengthM ÷ peakStrideLengthM × 100. */
+  strideRetentionPct: number | null;
   leftStepLengthM: number | null;
   rightStepLengthM: number | null;
   individualStepLengthsM: number[];
@@ -552,6 +560,13 @@ export function computeSprintMeasurements(
   const avgZoneStepLengthM =
     zone && validContacts > 0 && usableScale ? zone.distanceM / validContacts : null;
 
+  // AVA Peak Stride Length (Day 82): average of the best-4 opposite-foot contact
+  // distances (these gaps ARE AVA strides). Retention = zone average ÷ peak.
+  const peakStrideLengthM = usableScale ? computePeakStrideLengthM(individualStepLengthsM) : null;
+  const strideRetentionPct = usableScale
+    ? computeStrideRetentionPct(avgIndividualStepLengthM, peakStrideLengthM)
+    : null;
+
   // Individual reliability: tight spread → trust individual lengths; otherwise the
   // zone average is the trusted value and individuals are lower confidence.
   const cv = coefficientOfVariation(individualStepLengthsM);
@@ -762,6 +777,8 @@ export function computeSprintMeasurements(
     flightCombinedMs: contactFlight.flightCombinedMs,
     avgZoneStepLengthM,
     avgIndividualStepLengthM: usableScale ? avgIndividualStepLengthM : null,
+    peakStrideLengthM,
+    strideRetentionPct,
     leftStepLengthM: usableScale ? leftStepLengthM : null,
     rightStepLengthM: usableScale ? rightStepLengthM : null,
     individualStepLengthsM,

@@ -47,8 +47,9 @@ export default function PerformancePotentialCard({
                 <span className="ml-1 text-base font-medium text-[#A0A2A8]">m/s</span>
               </p>
               <p className="mt-0.5 text-xs text-[#6B7280]">
-                after correcting {potential.factorsApplied} limiting factor
-                {potential.factorsApplied === 1 ? "" : "s"}
+                {potential.factorsApplied > 0
+                  ? `estimate — closing ${potential.factorsApplied} trusted lever${potential.factorsApplied === 1 ? "" : "s"} to elite`
+                  : "levers already at elite"}
               </p>
             </div>
 

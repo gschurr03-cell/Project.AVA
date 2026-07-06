@@ -5,8 +5,8 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Track-and-field inspired palette.
-        lane: "#0b7285",
+        // AVA brand palette. `lane` is the primary accent — AVA red, not teal.
+        lane: "#D72638",
         spark: "#f59f00",
       },
     },

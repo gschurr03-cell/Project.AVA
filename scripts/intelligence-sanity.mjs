@@ -188,6 +188,40 @@ try {
   check("incomplete → warns phases undetected", sparse.warnings.some((w) => /phase/i.test(w)));
   check("incomplete → no fabricated performance context", sparse.performanceContext === null);
 
+  // (3b) Frequency source (Day 78): frequency = cadence = step/stride frequency is
+  // ONE concept. When the trusted calibrated cadence exists, the limiter must use it,
+  // not the raw worker strideFrequencyHz — so the limiter matches the Trusted Sprint
+  // Metrics card.
+  const calibFreqElite = buildSprintIntelligence({
+    metrics: metrics({ strideFrequencyHz: 3.53, groundContactTimeMs: 90, flightTimeMs: 120 }),
+    calibration: null,
+    prediction: prediction({ available: false }),
+    phases: phases({ available: false }),
+    trainingFocus: null,
+    calibratedStepFrequencyHz: 4.85, // trusted, elite → frequency is NOT a limiter
+  });
+  const freqLimiters = [calibFreqElite.primaryLimiter, ...calibFreqElite.secondaryLimiters].filter(Boolean);
+  check(
+    "calibrated cadence (4.85, elite) → raw 3.53 ignored, frequency not a limiter",
+    !freqLimiters.some((l) => l.metricId === "stepFrequency"),
+  );
+
+  const calibFreqWatch = buildSprintIntelligence({
+    metrics: metrics({ strideFrequencyHz: 3.53, groundContactTimeMs: 90, flightTimeMs: 120 }),
+    calibration: null,
+    prediction: prediction({ available: false }),
+    phases: phases({ available: false }),
+    trainingFocus: null,
+    calibratedStepFrequencyHz: 4.4, // trusted, watch → frequency IS a limiter, value 4.4 not 3.53
+  });
+  const freqLimiter = [calibFreqWatch.primaryLimiter, ...calibFreqWatch.secondaryLimiters]
+    .filter(Boolean)
+    .find((l) => l.metricId === "stepFrequency");
+  check(
+    "calibrated cadence (4.4) → limiter current value is 4.4, not raw 3.53",
+    freqLimiter?.currentValue === 4.4 && freqLimiter?.unit === "Hz" && freqLimiter?.title === "Frequency",
+  );
+
   // (4) No metrics → unavailable with an explanation, never a limiter.
   const none = buildSprintIntelligence({ metrics: null, calibration: null, prediction: null, phases: null, trainingFocus: null });
   check("no metrics → unavailable + no limiter", none.available === false && none.primaryLimiter === null);

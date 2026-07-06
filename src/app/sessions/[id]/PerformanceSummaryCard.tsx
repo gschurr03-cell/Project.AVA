@@ -1,12 +1,13 @@
 import { AvaPanel } from "@/components/ava/AvaPanel";
-import type { SprintMeasurements } from "@/lib/benchmark/measurements";
+import type { TrustedMetrics } from "@/lib/intelligence/trustedMetrics";
 
 /**
- * Presentation only: the Performance Summary — the focal card a coach sees first.
- * It shows only the TRUSTED spatial/zone metrics (step length, velocity, cadence,
- * zone time) as large headline numbers. Frame-quantized timing (contact/flight) is
- * deliberately absent here — it lives lower down as an estimate. All numbers come
- * straight from the measurement engine; no logic here beyond selection + display.
+ * Trusted Sprint Metrics — the source-of-truth card (Day 79/82). It renders the shared
+ * {@link TrustedMetrics} object directly, so every other customer-facing surface
+ * (the limiting-factor diagnosis, Performance Potential) shows the same numbers. AVA
+ * "stride length" = opposite-foot contact distance; we show both the zone AVERAGE and
+ * the PEAK (best 4 strides). No selection logic lives here — the one place that choice
+ * is made is `buildTrustedMetrics`.
  */
 
 function BigStat({
@@ -33,45 +34,52 @@ function BigStat({
 }
 
 export default function PerformanceSummaryCard({
-  measurements,
+  trusted,
 }: {
-  measurements: SprintMeasurements;
+  trusted: TrustedMetrics | null;
 }) {
-  const m = measurements;
-
-  // Headline step length: the individual mean when it's reliable, else the trusted
-  // zone average (distance ÷ steps) — the same preference the benchmark uses.
-  const stepLengthM =
-    m.stepLengthConfidence === "high" && m.avgIndividualStepLengthM != null
-      ? m.avgIndividualStepLengthM
-      : (m.avgZoneStepLengthM ?? m.avgIndividualStepLengthM);
-
   const n = (v: number | null | undefined, d = 2) => (v == null ? "—" : v.toFixed(d));
 
-  if (!m.calibrated) {
+  if (!trusted) {
     return (
-      <AvaPanel eyebrow="Performance Summary" title="Awaiting calibration">
+      <AvaPanel eyebrow="Trusted Sprint Metrics" title="Awaiting calibration">
         <p className="text-sm text-[#A0A2A8]">
           Set the two timing gates and a known distance on the overlay below to unlock certified
-          step length, velocity, and cadence for this run.
+          top speed, stride length, velocity, and frequency for this run.
         </p>
       </AvaPanel>
     );
   }
 
+  // Zone context — "20 m zone · 1.92 s" — shown alongside the verified output.
+  // Degrades gracefully: distance-only, or omitted entirely, when unavailable.
+  const zoneContext =
+    trusted.zoneDistanceM != null
+      ? `${trusted.zoneDistanceM} m zone${trusted.zoneTimeS != null ? ` · ${n(trusted.zoneTimeS)} s` : ""}`
+      : null;
+
   return (
     <AvaPanel eyebrow="Trusted Sprint Metrics" title="Verified Performance">
-      {m.zone && (
-        <p className="-mt-3 mb-4 text-xs text-[#6B7280]">
-          over the {m.zone.distanceM} m zone{m.zoneTimeS != null ? ` · ${n(m.zoneTimeS)} s` : ""}
+      {zoneContext && (
+        <div className="-mt-3 mb-4 inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs font-semibold text-[#A0A2A8]">
+          {zoneContext}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <BigStat label="Top speed" value={n(trusted.topSpeedMps)} unit="m/s" sub="peak single-stride" />
+        <BigStat label="Average velocity" value={n(trusted.avgVelocityMps)} unit="m/s" sub="zone distance ÷ time" />
+        <BigStat label="Avg stride length" value={n(trusted.avgStrideLengthM)} unit="m" sub="zone average" />
+        <BigStat label="Peak stride length" value={n(trusted.peakStrideLengthM)} unit="m" sub="best 4 strides" />
+        <BigStat label="Frequency" value={n(trusted.frequencyHz)} unit="Hz" sub="over the full zone" />
+      </div>
+
+      {trusted.strideRetentionPct != null && (
+        <p className="mt-3 text-xs text-[#6B7280]">
+          <span className="font-semibold text-[#A0A2A8]">Stride retention:</span>{" "}
+          {n(trusted.strideRetentionPct, 1)}% (average ÷ peak) —{" "}
+          {trusted.stepLengthConfidence} confidence.
         </p>
       )}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <BigStat label="Top speed" value={n(m.maxVelocityMps)} unit="m/s" sub="peak single-stride" />
-        <BigStat label="Average velocity" value={n(m.zoneVelocityMps)} unit="m/s" sub="zone distance ÷ time" />
-        <BigStat label="Step length" value={n(stepLengthM)} unit="m" sub={`${m.stepLengthConfidence} confidence`} />
-        <BigStat label="Cadence" value={n(m.combinedStepFrequencyHz)} unit="steps/s" sub="over the full zone" />
-      </div>
     </AvaPanel>
   );
 }
