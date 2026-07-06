@@ -44,6 +44,7 @@
     "prediction:sanity": "node scripts/prediction-sanity.mjs",
     "phases:sanity": "node scripts/phases-sanity.mjs",
     "intelligence:sanity": "node scripts/intelligence-sanity.mjs",
+    "limiting-factors:sanity": "node scripts/limiting-factors-sanity.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

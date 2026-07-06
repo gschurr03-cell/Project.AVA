@@ -72,14 +72,6 @@ const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
 /** Pointer-to-joint hit radius, in CSS pixels. */
 const HIT_RADIUS = 16;
 
-/** "leftFootIndex" → "Left Foot Index" for the inspector label. */
-function prettyJoint(name: string) {
-  return name
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, (c) => c.toUpperCase())
-    .trim();
-}
-
 /**
  * Index of the last frame at or before `time`. Binary search over the ascending
  * `frame.time` values; times before the first frame return 0.
@@ -175,8 +167,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   const [toggles, setToggles] = useState<OverlayToggles>(DEFAULT_TOGGLES);
   const [currentTime, setCurrentTime] = useState(0);
   const [hoveredJoint, setHoveredJoint] = useState<string | null>(null);
-  const [selectedJoint, setSelectedJoint] = useState<string | null>(null);
   const [autoFollow, setAutoFollow] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(true);
   // Gate calibration (Day 66): while `calibrationMode` is on, clicks drop cones
   // instead of selecting joints, in order [startC1, startC2, finishC1, finishC2].
   // `pendingCones` holds the 0–4 cones placed so far, normalized to the source
@@ -366,48 +358,34 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     setHoveredJoint((prev) => (prev === hit ? prev : hit));
   };
 
-  // In calibration mode a click drops a ground point (A, then B; a third click
-  // starts a new pair). Otherwise: click a joint to pin it, click it again to
-  // unpin; clicks that miss every joint leave selection alone.
+  // In calibration mode a click drops a ground point (cone by cone). Outside
+  // calibration mode clicks do nothing (the joint inspector was removed).
   const handlePointerClick = (event: React.MouseEvent) => {
-    if (calibrationMode) {
-      const point = groundPointAtPointer(event.clientX, event.clientY);
-      if (!point) return;
-      const cone: PendingCone = { ...point, t: videoRef.current?.currentTime ?? 0 };
-      // Four cones make the two bars; a fifth click starts a fresh set.
-      setPendingCones((prev) => (prev.length >= 4 ? [cone] : [...prev, cone]));
-      return;
-    }
-    const hit = jointAtPointer(event.clientX, event.clientY);
-    if (!hit) return;
-    setSelectedJoint((prev) => (prev === hit ? null : hit));
+    if (!calibrationMode) return;
+    const point = groundPointAtPointer(event.clientX, event.clientY);
+    if (!point) return;
+    const cone: PendingCone = { ...point, t: videoRef.current?.currentTime ?? 0 };
+    // Four cones make the two bars; a fifth click starts a fresh set.
+    setPendingCones((prev) => (prev.length >= 4 ? [cone] : [...prev, cone]));
   };
 
   const toggleLayer = (key: keyof OverlayToggles) =>
     setToggles((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // Inspector values for the pinned joint, read from the current + previous frame.
-  const selectedPoint = selectedJoint ? currentFrame?.landmarks[selectedJoint] : undefined;
-  const selectedAngle = selectedJoint ? (currentFrame?.angles[selectedJoint] ?? null) : null;
-  const previousFrame = currentIndex > 0 ? frames[currentIndex - 1] : undefined;
-  const previousAngle =
-    selectedJoint && previousFrame ? (previousFrame.angles[selectedJoint] ?? null) : null;
-  const deltaAngle =
-    selectedAngle != null && previousAngle != null ? selectedAngle - previousAngle : null;
-
   // Known gate distance to display, from the new gate bars or a legacy calibration.
   const savedDistanceM = calibration?.savedGates?.distanceM ?? calibration?.saved?.distanceM ?? null;
+  const hasCalibration = !!(calibration?.savedGates || calibration?.saved);
 
   return (
     <div className="space-y-3">
-      {label && <h3 className="text-sm font-semibold text-gray-700">{label}</h3>}
+      {label && <h3 className="text-sm font-semibold text-[#A0A2A8]">{label}</h3>}
 
       <div
         ref={containerRef}
         onMouseMove={handlePointerMove}
         onMouseLeave={() => setHoveredJoint(null)}
         onClick={handlePointerClick}
-        className={`relative overflow-hidden rounded-xl border bg-black ${
+        className={`relative overflow-hidden rounded-xl border border-white/[0.08] bg-black ${
           calibrationMode ? "cursor-crosshair" : hoveredJoint ? "cursor-pointer" : ""
         }`}
       >
@@ -431,7 +409,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             frames={frames}
             toggles={toggles}
             hoveredJoint={hoveredJoint}
-            selectedJoint={selectedJoint}
+            selectedJoint={null}
             stepScale={stepScale}
             calibrationPoints={calibration?.saved ?? null}
             calibrationGates={calibration?.savedGates ?? null}
@@ -443,327 +421,240 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
 
       {controlsSlot}
 
-      {/* View controls (camera behaviour) */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3">
-        <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">View</span>
+      {/* Single compact toolbar: camera behaviour + calibration entry (dark). */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-[#121214] p-2">
         <button
           type="button"
           onClick={() => setAutoFollow((prev) => !prev)}
           aria-pressed={autoFollow}
           title="Keep the athlete centered and zoomed during playback"
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
             autoFollow
-              ? "border-lane bg-lane text-white"
-              : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
+              ? "bg-[#D72638] text-white"
+              : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
           }`}
         >
           {autoFollow ? "◉" : "○"} Auto Follow
         </button>
-        <span className="text-xs text-gray-400">
-          {autoFollow ? "Following athlete" : "Off"}
-        </span>
+
+        {calibration && (
+          <button
+            type="button"
+            onClick={() => {
+              setCalibrationMode((prev) => !prev);
+              setPendingCones([]);
+              setHoveredJoint(null);
+            }}
+            aria-pressed={calibrationMode}
+            title="Mark two timing-gate bars (cone to cone) a known distance apart"
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              calibrationMode
+                ? "bg-[#D72638] text-white"
+                : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
+            }`}
+          >
+            {calibrationMode ? "◉" : "○"} Calibrate gates
+          </button>
+        )}
 
         <button
           type="button"
-          onClick={() => setToggles((prev) => ({ ...prev, debug: !prev.debug }))}
-          aria-pressed={toggles.debug}
-          title="Show step indices, the step path, and relative distances (debug)"
-          className={`ml-auto rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            toggles.debug
-              ? "border-lane bg-lane text-white"
-              : "border-gray-300 bg-white text-gray-400 hover:bg-gray-50"
-          }`}
+          onClick={() => setLayersOpen((prev) => !prev)}
+          aria-pressed={layersOpen}
+          className="ml-auto rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-[#A0A2A8] transition-colors hover:bg-white/[0.08]"
         >
-          {toggles.debug ? "◉" : "○"} Debug labels
+          {layersOpen ? "▾" : "▸"} Layers
         </button>
       </div>
 
-      {/* Manual ground calibration (single-player only) */}
-      {calibration && (
-        <div className="space-y-3 rounded-xl border bg-white p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">
-              Calibrate
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setCalibrationMode((prev) => !prev);
-                setPendingCones([]);
-                setHoveredJoint(null);
-              }}
-              aria-pressed={calibrationMode}
-              title="Mark two timing-gate bars (cone to cone) a known distance apart"
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                calibrationMode
-                  ? "border-lane bg-lane text-white"
-                  : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
-              }`}
-            >
-              {calibrationMode ? "◉" : "○"} Timing gates
-            </button>
-            {savedDistanceM != null ? (
-              <span className="text-xs text-gray-500">
-                Calibrated: {savedDistanceM} m between the start and finish gate bars.
-              </span>
-            ) : (
-              <span className="text-xs text-gray-400">
-                No timing gates set — distances show as relative units.
-              </span>
-            )}
-            {(calibration.savedGates || calibration.saved) && (
-              <div className="ml-auto flex items-center gap-2">
-                <form action={calibration.onRecompute}>
-                  <input type="hidden" name="id" value={calibration.sessionId} />
-                  <button
-                    type="submit"
-                    title="Recalculate the zone metrics from the saved gates + known distance, using the existing pose — no re-upload, no re-analysis"
-                    className="rounded-full border border-lane bg-lane px-3 py-1 text-xs font-medium text-white transition-colors hover:opacity-90"
-                  >
-                    ↻ Recompute from zone
-                  </button>
-                </form>
-                <form
-                  action={calibration.onClear}
-                  onSubmit={() => {
-                    // Also clear any in-progress placement so the UI resets fully.
-                    setPendingCones([]);
-                    setCalibrationMode(false);
-                  }}
+      {/* Layers panel: a vertical, scrollable list of toggles (checkbox style). */}
+      {layersOpen && (
+        <div className="rounded-xl border border-white/[0.06] bg-[#121214] p-3">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+            Overlay layers
+          </p>
+          <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+            {TOGGLE_ITEMS.map(({ key, label: toggleLabel }) => {
+              const on = toggles[key];
+              return (
+                <label
+                  key={key}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-[#F5F5F7] transition-colors hover:bg-white/[0.04]"
                 >
-                  <input type="hidden" name="id" value={calibration.sessionId} />
-                  <button
-                    type="submit"
-                    title="Delete both gate bars, the known distance, and the calibration zone so you can re-add from scratch"
-                    className="rounded-full border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50"
-                  >
-                    ✕ Remove calibration
-                  </button>
-                </form>
-              </div>
-            )}
-          </div>
-
-          {savedDistanceM != null && !calibrationMode && (
-            <p className="text-xs text-gray-400">
-              Zone metrics recompute from these gates automatically when you save. To adjust the
-              zone, click <span className="font-medium">Timing gates</span>, re-mark the bars, and
-              save — or use <span className="font-medium">↻ Recompute from zone</span> to force a
-              fresh pass from the saved gates. Both use the existing pose; no re-upload. (To
-              re-detect the pose itself, rerun the full analysis from the session controls.)
-            </p>
-          )}
-
-          {calibrationMode && (
-            <div className="rounded-lg border bg-gray-50 p-3">
-              <p className="text-xs text-gray-600">
-                Mark the <span className="font-semibold">start gate</span>: click{" "}
-                <span className="font-semibold">cone 1</span> then{" "}
-                <span className="font-semibold">cone 2</span> (a bar is drawn between them). Scrub to
-                the finish, then mark the <span className="font-semibold">finish gate</span> the same
-                way. The athlete&apos;s torso crossing each bar starts/stops the timer. Enter the
-                known distance (e.g. 20) and save.
-              </p>
-              <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-500">
-                {(
-                  [
-                    ["Start · cone 1", 0],
-                    ["Start · cone 2", 1],
-                    ["Finish · cone 1", 2],
-                    ["Finish · cone 2", 3],
-                  ] as const
-                ).map(([label, i]) => (
-                  <span key={label}>
-                    {label}:{" "}
-                    <span className="font-mono text-gray-700">
-                      {pendingCones[i]
-                        ? `x ${pendingCones[i].x.toFixed(3)} @ ${pendingCones[i].t.toFixed(2)}s`
-                        : "— click to set"}
-                    </span>
-                  </span>
-                ))}
-              </div>
-
-              <form action={calibration.onSave} className="mt-3 flex flex-wrap items-end gap-3">
-                <input type="hidden" name="id" value={calibration.sessionId} />
-                <input type="hidden" name="gate_start_c1x" value={pendingCones[0]?.x ?? ""} />
-                <input type="hidden" name="gate_start_c1y" value={pendingCones[0]?.y ?? ""} />
-                <input type="hidden" name="gate_start_c2x" value={pendingCones[1]?.x ?? ""} />
-                <input type="hidden" name="gate_start_c2y" value={pendingCones[1]?.y ?? ""} />
-                <input type="hidden" name="gate_finish_c1x" value={pendingCones[2]?.x ?? ""} />
-                <input type="hidden" name="gate_finish_c1y" value={pendingCones[2]?.y ?? ""} />
-                <input type="hidden" name="gate_finish_c2x" value={pendingCones[3]?.x ?? ""} />
-                <input type="hidden" name="gate_finish_c2y" value={pendingCones[3]?.y ?? ""} />
-                <input type="hidden" name="gate_start_time_s" value={pendingCones[0]?.t ?? ""} />
-                <input type="hidden" name="gate_finish_time_s" value={pendingCones[2]?.t ?? ""} />
-                <div>
-                  <label
-                    htmlFor="calibration_known_distance_m"
-                    className="block text-xs font-medium text-gray-700"
-                  >
-                    Known distance <span className="text-gray-400">(m)</span>
-                  </label>
                   <input
-                    id="calibration_known_distance_m"
-                    name="calibration_known_distance_m"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min={0}
-                    placeholder="e.g. 20"
-                    className="mt-1 w-32 rounded border px-3 py-2 text-sm"
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => toggleLayer(key)}
+                    className="h-4 w-4 shrink-0 accent-[#D72638]"
                   />
-                </div>
-                <button
-                  type="submit"
-                  disabled={pendingCones.length < 4}
-                  className="rounded bg-lane px-4 py-2 text-sm text-white disabled:opacity-50"
-                >
-                  Save calibration
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPendingCones([])}
-                  className="text-xs text-gray-400 hover:text-gray-700"
-                >
-                  Reset cones
-                </button>
-              </form>
+                  <span className={on ? "text-[#F5F5F7]" : "text-[#A0A2A8]"}>{toggleLabel}</span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="mt-2 border-t border-white/[0.06] pt-2 text-[11px] text-[#6B7280]">
+            Skeleton is drawn only at <span className="font-medium text-[#A0A2A8]">0.25×</span> or
+            paused for maximum visual accuracy.
+          </p>
+          {toggles.stepMarks && (
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[#6B7280]">
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> Left
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full bg-green-500" /> Right
+              </span>
+              {stepCadenceHz != null && (
+                <span>
+                  · {stepCadenceHz.toFixed(2)} steps/s from {stepContactCount} contacts
+                </span>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Layer toggles */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3">
-        <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400">
-          Overlays
-        </span>
-        <span className="basis-full text-xs text-gray-400">
-          Skeleton overlay is available only at <span className="font-medium text-gray-500">0.25×</span>{" "}
-          (or paused) for maximum visual accuracy.
-        </span>
-        {TOGGLE_ITEMS.map(({ key, label: toggleLabel }) => {
-          const on = toggles[key];
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => toggleLayer(key)}
-              aria-pressed={on}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                on
-                  ? "border-lane bg-lane text-white"
-                  : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
-              }`}
-            >
-              {toggleLabel}
-            </button>
-          );
-        })}
-        {toggles.stepMarks && (
-          <span className="ml-1 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> Left
+      {/* Calibration — collapsed by default (dark). */}
+      {calibration && (
+        <details className="group rounded-xl border border-white/[0.06] bg-[#121214]" open={calibrationMode}>
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[#A0A2A8] [&::-webkit-details-marker]:hidden">
+            <span className="inline-block text-[#6B7280] transition group-open:rotate-90">▸</span>
+            Calibration
+            <span className="font-normal normal-case text-[#6B7280]">
+              {savedDistanceM != null
+                ? `· ${savedDistanceM} m timing zone set`
+                : "· distances are relative until set"}
             </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-green-500" /> Right
-            </span>
-            <span>
-              ·{" "}
-              {stepScale
-                ? "distances in metres (calibrated)"
-                : "distances relative — set calibration for metres"}
-            </span>
-            {stepCadenceHz != null && (
-              <span>
-                · cadence {stepCadenceHz.toFixed(2)} steps/s from {stepContactCount} contacts
-              </span>
-            )}
-          </span>
-        )}
-      </div>
+          </summary>
 
-      {/* Inspector */}
-      <div className="rounded-xl border bg-white p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
-            Inspector
-          </span>
-          {selectedJoint && (
-            <button
-              type="button"
-              onClick={() => setSelectedJoint(null)}
-              className="text-xs text-gray-400 hover:text-gray-700"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-
-        {selectedJoint ? (
-          <>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-              <dt className="text-gray-500">Joint</dt>
-              <dd className="font-medium text-gray-900">{prettyJoint(selectedJoint)}</dd>
-
-              <dt className="text-gray-500">Angle</dt>
-              <dd className="font-mono text-gray-900">
-                {selectedAngle != null ? `${selectedAngle}°` : "—"}
-              </dd>
-
-              <dt className="text-gray-500">Position (x, y)</dt>
-              <dd className="font-mono text-gray-900">
-                {selectedPoint
-                  ? `${selectedPoint.x.toFixed(3)}, ${selectedPoint.y.toFixed(3)}`
-                  : "—"}
-              </dd>
-
-              <dt className="text-gray-500">Frame</dt>
-              <dd className="font-mono text-gray-900">
-                {currentIndex + 1} / {frames.length}
-              </dd>
-
-              <dt className="text-gray-500">Timestamp</dt>
-              <dd className="font-mono text-gray-900">{(currentFrame?.time ?? currentTime).toFixed(2)}s</dd>
-            </dl>
-
-            <div className="mt-3 border-t pt-3">
-              <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                Angle history
-              </span>
-              <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-                <dt className="text-gray-500">Current</dt>
-                <dd className="font-mono text-gray-900">
-                  {selectedAngle != null ? `${selectedAngle}°` : "—"}
-                </dd>
-
-                <dt className="text-gray-500">Previous</dt>
-                <dd className="font-mono text-gray-900">
-                  {previousAngle != null ? `${previousAngle}°` : "—"}
-                </dd>
-
-                <dt className="text-gray-500">Δ change</dt>
-                <dd
-                  className={`font-mono ${
-                    deltaAngle == null || deltaAngle === 0
-                      ? "text-gray-900"
-                      : deltaAngle > 0
-                        ? "text-green-600"
-                        : "text-red-600"
-                  }`}
-                >
-                  {deltaAngle != null ? `${deltaAngle > 0 ? "+" : ""}${deltaAngle}°` : "—"}
-                </dd>
-              </dl>
+          <div className="space-y-3 border-t border-white/[0.06] p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCalibrationMode((prev) => !prev);
+                  setPendingCones([]);
+                  setHoveredJoint(null);
+                }}
+                aria-pressed={calibrationMode}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  calibrationMode
+                    ? "bg-[#D72638] text-white"
+                    : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
+                }`}
+              >
+                {calibrationMode ? "◉" : "○"} Timing gates
+              </button>
+              {hasCalibration && (
+                <div className="ml-auto flex items-center gap-2">
+                  <form action={calibration.onRecompute}>
+                    <input type="hidden" name="id" value={calibration.sessionId} />
+                    <button
+                      type="submit"
+                      title="Recalculate the zone metrics from the saved gates using the existing pose — no re-upload"
+                      className="rounded-lg bg-[#D72638] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#e63a4b]"
+                    >
+                      ↻ Recompute
+                    </button>
+                  </form>
+                  <form
+                    action={calibration.onClear}
+                    onSubmit={() => {
+                      setPendingCones([]);
+                      setCalibrationMode(false);
+                    }}
+                  >
+                    <input type="hidden" name="id" value={calibration.sessionId} />
+                    <button
+                      type="submit"
+                      className="rounded-lg border border-[#FF3B30]/40 px-3 py-1.5 text-xs font-semibold text-[#FF7A70] transition hover:bg-[#FF3B30]/10"
+                    >
+                      ✕ Remove
+                    </button>
+                  </form>
+                </div>
+              )}
             </div>
-          </>
-        ) : (
-          <p className="text-sm text-gray-500">
-            Hover a joint to highlight it; click to pin and inspect its angle and position.
-          </p>
-        )}
-      </div>
+
+            {calibrationMode && (
+              <div className="rounded-lg border border-white/[0.06] bg-[#19191C] p-3">
+                <p className="text-xs text-[#A0A2A8]">
+                  Mark the <span className="font-semibold text-[#F5F5F7]">start gate</span>: click{" "}
+                  <span className="font-semibold text-[#F5F5F7]">cone 1</span> then{" "}
+                  <span className="font-semibold text-[#F5F5F7]">cone 2</span>. Scrub to the finish,
+                  then mark the <span className="font-semibold text-[#F5F5F7]">finish gate</span> the
+                  same way. Enter the known distance and save.
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-[#6B7280]">
+                  {(
+                    [
+                      ["Start · cone 1", 0],
+                      ["Start · cone 2", 1],
+                      ["Finish · cone 1", 2],
+                      ["Finish · cone 2", 3],
+                    ] as const
+                  ).map(([coneLabel, i]) => (
+                    <span key={coneLabel}>
+                      {coneLabel}:{" "}
+                      <span className="font-mono text-[#A0A2A8]">
+                        {pendingCones[i]
+                          ? `x ${pendingCones[i].x.toFixed(3)} @ ${pendingCones[i].t.toFixed(2)}s`
+                          : "— click to set"}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+
+                <form action={calibration.onSave} className="mt-3 flex flex-wrap items-end gap-3">
+                  <input type="hidden" name="id" value={calibration.sessionId} />
+                  <input type="hidden" name="gate_start_c1x" value={pendingCones[0]?.x ?? ""} />
+                  <input type="hidden" name="gate_start_c1y" value={pendingCones[0]?.y ?? ""} />
+                  <input type="hidden" name="gate_start_c2x" value={pendingCones[1]?.x ?? ""} />
+                  <input type="hidden" name="gate_start_c2y" value={pendingCones[1]?.y ?? ""} />
+                  <input type="hidden" name="gate_finish_c1x" value={pendingCones[2]?.x ?? ""} />
+                  <input type="hidden" name="gate_finish_c1y" value={pendingCones[2]?.y ?? ""} />
+                  <input type="hidden" name="gate_finish_c2x" value={pendingCones[3]?.x ?? ""} />
+                  <input type="hidden" name="gate_finish_c2y" value={pendingCones[3]?.y ?? ""} />
+                  <input type="hidden" name="gate_start_time_s" value={pendingCones[0]?.t ?? ""} />
+                  <input type="hidden" name="gate_finish_time_s" value={pendingCones[2]?.t ?? ""} />
+                  <div>
+                    <label
+                      htmlFor="calibration_known_distance_m"
+                      className="block text-xs font-medium text-[#A0A2A8]"
+                    >
+                      Known distance <span className="text-[#6B7280]">(m)</span>
+                    </label>
+                    <input
+                      id="calibration_known_distance_m"
+                      name="calibration_known_distance_m"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min={0}
+                      placeholder="e.g. 20"
+                      className="mt-1 w-32 rounded-lg border border-white/[0.08] bg-[#0d0d0f] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={pendingCones.length < 4}
+                    className="rounded-lg bg-[#D72638] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#e63a4b] disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingCones([])}
+                    className="text-xs text-[#6B7280] hover:text-[#F5F5F7]"
+                  >
+                    Reset cones
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
     </div>
   );
 });

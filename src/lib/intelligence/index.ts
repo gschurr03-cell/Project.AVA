@@ -69,6 +69,12 @@ export interface Limiter {
   /** The evaluation metric id this limiter is anchored to. */
   metricId: string;
   title: string;
+  /** The measured value that flagged this limiter (from the shared evaluation). */
+  currentValue: number;
+  /** Unit of {@link currentValue}, e.g. "ms" / "Hz" / "m". */
+  unit: string;
+  /** Human elite target range, e.g. "75–95 ms" (from the shared thresholds). */
+  targetRange: string;
   /** Off-target severity, from the shared threshold evaluation. */
   severity: "watch" | "poor";
   /** 1 = primary limiter, then 2, 3, … */
@@ -452,6 +458,9 @@ export function buildSprintIntelligence(inputs: IntelligenceInputs): SprintIntel
       key: def.key,
       metricId: def.metricId,
       title: def.title,
+      currentValue: evaluation.value,
+      unit: evaluation.unit,
+      targetRange: evaluation.targetRange,
       severity: status,
       rank: 0, // assigned after ranking
       impactScore,

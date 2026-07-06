@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 import { setSessionBenchmark } from "@/app/sessions/actions";
+import { AvaPanel } from "@/components/ava/AvaPanel";
+import { AvaCautionPanel } from "@/components/ava/AvaCautionPanel";
+import { AVA_BADGE } from "@/lib/design/ava";
 import type { SprintMeasurements } from "@/lib/benchmark/measurements";
 import type { AccuracyRow, BenchmarkComparisonRow, ComparisonStatus } from "@/lib/benchmark";
 import {
@@ -14,13 +17,17 @@ import {
  * FPS source, a benchmark link selector, and — when the session is linked to a
  * benchmark — the ground-truth validation table (AVA vs reference vs % error).
  * All numbers come from the pure engines; no logic here beyond formatting.
+ *
+ * Dark AVA theme. Comparison status maps onto the medal system (ok = Gold,
+ * warn = Bronze, off = Red Alert, missing = Gray, info = Silver). Precision-limited
+ * timing rows are moved into a "Coming Soon / Caution" section, not shown as trusted.
  */
 
 const n2 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(2));
 const n1 = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(1));
 const int = (v: number | null | undefined) => (v == null ? "—" : String(v));
-const fmtMs = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v)} ms`);
-const fmtFr = (v: number | null | undefined) => (v == null ? "—" : v.toFixed(1));
+
+const BADGE_BASE = "rounded border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide";
 
 /** Per-side frequency is computed + stored but hidden from the UI (Day 74) — only
  *  the combined value is shown. Filtered from the comparison table below. */
@@ -30,11 +37,11 @@ const HIDDEN_COMPARISON_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const STATUS_BADGE: Record<ComparisonStatus, string> = {
-  ok: "bg-green-100 text-green-700",
-  warn: "bg-amber-100 text-amber-700",
-  off: "bg-red-100 text-red-700",
-  missing: "bg-gray-200 text-gray-500",
-  info: "bg-sky-100 text-sky-700",
+  ok: AVA_BADGE.gold,
+  warn: AVA_BADGE.bronze,
+  off: AVA_BADGE.alert,
+  missing: AVA_BADGE.gray,
+  info: AVA_BADGE.silver,
 };
 
 const STATUS_LABEL: Record<ComparisonStatus, string> = {
@@ -47,10 +54,10 @@ const STATUS_LABEL: Record<ComparisonStatus, string> = {
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-md border bg-white p-3 shadow-sm">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-gray-800">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-gray-400">{sub}</p>}
+    <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-[#F5F5F7]">{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-[#6B7280]">{sub}</p>}
     </div>
   );
 }
@@ -72,14 +79,17 @@ function Collapsible({
   defaultOpen?: boolean;
 }) {
   return (
-    <details className="group mb-4 rounded-md border bg-white text-sm" open={defaultOpen}>
+    <details
+      className="group mb-4 rounded-xl border border-white/[0.06] bg-[#19191C] text-sm"
+      open={defaultOpen}
+    >
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[#A0A2A8]">
           {title}
-          {hint && <span className="ml-2 font-normal normal-case text-gray-400">{hint}</span>}
+          {hint && <span className="ml-2 font-normal normal-case text-[#6B7280]">{hint}</span>}
         </span>
         <svg
-          className="h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-150 group-open:rotate-90"
+          className="h-3.5 w-3.5 shrink-0 text-[#6B7280] transition-transform duration-150 group-open:rotate-90"
           viewBox="0 0 20 20"
           fill="currentColor"
           aria-hidden="true"
@@ -91,7 +101,7 @@ function Collapsible({
           />
         </svg>
       </summary>
-      <div className="border-t px-3 py-3">{children}</div>
+      <div className="border-t border-white/[0.06] px-3 py-3">{children}</div>
     </details>
   );
 }
@@ -102,7 +112,7 @@ function ComparisonTable({ rows, muted }: { rows: BenchmarkComparisonRow[]; mute
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-400">
+          <tr className="border-b border-white/[0.08] text-left text-xs uppercase tracking-wide text-[#6B7280]">
             <th className="px-2 py-1">Metric</th>
             <th className="px-2 py-1 text-right">AVA</th>
             <th className="px-2 py-1 text-right">Benchmark</th>
@@ -110,26 +120,24 @@ function ComparisonTable({ rows, muted }: { rows: BenchmarkComparisonRow[]; mute
             <th className="px-2 py-1 text-right">Status</th>
           </tr>
         </thead>
-        <tbody className={muted ? "text-gray-400" : undefined}>
+        <tbody className={muted ? "opacity-70" : undefined}>
           {rows.map((r) => (
-            <tr key={r.key} className="border-b last:border-0">
-              <td className={`px-2 py-1.5 ${muted ? "text-gray-500" : "text-gray-700"}`}>
+            <tr key={r.key} className="border-b border-white/[0.06] last:border-0">
+              <td className="px-2 py-1.5 text-[#A0A2A8]">
                 {r.label}
-                {r.unit && <span className="ml-1 text-xs text-gray-400">({r.unit})</span>}
+                {r.unit && <span className="ml-1 text-xs text-[#6B7280]">({r.unit})</span>}
               </td>
-              <td className={`px-2 py-1.5 text-right font-mono ${muted ? "text-gray-500" : "text-gray-900"}`}>
+              <td className="px-2 py-1.5 text-right font-mono text-[#F5F5F7]">
                 {r.avaValue != null ? r.avaValue.toFixed(2) : "—"}
               </td>
-              <td className={`px-2 py-1.5 text-right font-mono ${muted ? "text-gray-500" : "text-gray-900"}`}>
+              <td className="px-2 py-1.5 text-right font-mono text-[#F5F5F7]">
                 {r.benchmarkValue != null ? r.benchmarkValue.toFixed(2) : "—"}
               </td>
-              <td className={`px-2 py-1.5 text-right font-mono ${muted ? "text-gray-500" : "text-gray-900"}`}>
+              <td className="px-2 py-1.5 text-right font-mono text-[#F5F5F7]">
                 {r.percentError != null ? `${r.percentError.toFixed(1)}%` : "—"}
               </td>
               <td className="px-2 py-1.5 text-right">
-                <span
-                  className={`rounded px-2 py-0.5 text-xs font-medium ${muted ? "bg-gray-100 text-gray-500" : STATUS_BADGE[r.status]}`}
-                >
+                <span className={`${BADGE_BASE} ${STATUS_BADGE[r.status]}`}>
                   {STATUS_LABEL[r.status]}
                 </span>
               </td>
@@ -167,21 +175,20 @@ export default function BenchmarkPanel({
   const precisionLimited = isPrecisionLimited(activeFps);
 
   return (
-    <section className="mt-6 rounded-lg border bg-gray-50 p-5">
-      <h2 className="mb-1 text-xl font-bold text-lane">Sprint Measurements &amp; Benchmark</h2>
-      <p className="mb-4 text-xs text-gray-500">
+    <AvaPanel eyebrow="Validation" title="Sprint Measurements & Benchmark">
+      <p className="-mt-3 mb-4 text-xs text-[#6B7280]">
         Calibrated measurements from verified ground contacts and the manual zone. Step frequency,
         step length, contact time, and flight time are separate metrics and reported as such.
       </p>
 
       {/* FPS / precision / camera compensation — diagnostic, collapsed by default. */}
       <Collapsible
-        title="FPS, precision &amp; camera"
+        title="FPS, precision & camera"
         hint={`${activeFps ?? "—"} fps${precisionLimited ? " · precision mode" : ""} · ${m.cameraCompensation.confidence} camera`}
       >
         {precisionLimited && (
-          <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-            <p className="font-semibold">
+          <div className="mb-3 rounded-lg border border-[#CD7F32]/40 bg-[#CD7F32]/10 p-3 text-xs text-[#E0A063]">
+            <p className="font-semibold text-[#E4C25A]">
               Precision mode — {activeFps ?? "unknown"} fps (high-precision timing needs ≥
               {HIGH_PRECISION_TIMING_FPS} fps)
             </p>
@@ -196,15 +203,15 @@ export default function BenchmarkPanel({
         )}
 
         <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Active FPS</span>
-          <span className="text-lg font-bold text-gray-800">{activeFps ?? "—"}</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-[#6B7280]">Active FPS</span>
+          <span className="text-lg font-bold text-[#F5F5F7]">{activeFps ?? "—"}</span>
           <span
-            className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
+            className={`${BADGE_BASE} ${
               fpsSource === "override"
-                ? "bg-amber-100 text-amber-700"
+                ? AVA_BADGE.bronze
                 : fpsSource === "normalized"
-                  ? "bg-sky-100 text-sky-700"
-                  : "bg-green-100 text-green-700"
+                  ? AVA_BADGE.silver
+                  : AVA_BADGE.gold
             }`}
           >
             {fpsSource === "override"
@@ -215,7 +222,7 @@ export default function BenchmarkPanel({
                   ? "detected"
                   : "unknown"}
           </span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-[#6B7280]">
             detected {detectedFps ?? "—"}
             {fpsSource === "normalized" ? ` → ${activeFps} (snapped to canonical)` : ""} · override{" "}
             {fpsOverride ?? "—"} · drives all timing (contact, flight, frequency, zone, velocity, phases)
@@ -223,95 +230,37 @@ export default function BenchmarkPanel({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
+          <span className="text-xs font-medium uppercase tracking-wide text-[#6B7280]">
             Camera compensation
           </span>
           <span
-            className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${
+            className={`${BADGE_BASE} ${
               m.cameraCompensation.confidence === "high"
-                ? "bg-green-100 text-green-700"
+                ? AVA_BADGE.gold
                 : m.cameraCompensation.confidence === "medium"
-                  ? "bg-amber-100 text-amber-700"
+                  ? AVA_BADGE.silver
                   : m.cameraCompensation.confidence === "low"
-                    ? "bg-orange-100 text-orange-700"
-                    : "bg-gray-200 text-gray-600"
+                    ? AVA_BADGE.bronze
+                    : AVA_BADGE.gray
             }`}
           >
             {m.cameraCompensation.confidence}
           </span>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-[#6B7280]">
             {m.cameraCompensation.available
               ? `Spatial metrics use stabilized world coordinates · ${Math.round(m.cameraCompensation.coverage * 100)}% frame coverage`
               : "Not compensated — spatial metrics use raw frame coordinates"}
           </span>
         </div>
         {m.cameraCompensation.warning && (
-          <p className="mt-3 rounded border border-orange-300 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+          <p className="mt-3 rounded-lg border border-[#CD7F32]/40 bg-[#CD7F32]/10 px-3 py-2 text-xs text-[#E0A063]">
             ⚠ {m.cameraCompensation.warning}
           </p>
         )}
       </Collapsible>
 
-      {/* Diagnostics: which frames/contacts were included/excluded (Day 65) */}
-      <details className="mb-4 rounded-md border bg-white p-3 text-sm">
-        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-400">
-          Diagnostics — frames &amp; contacts used
-        </summary>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
-          <dt className="text-gray-500">Tracking coverage</dt>
-          <dd className="font-mono text-gray-800">
-            {Math.round(m.diagnostics.trackingCoverage * 100)}% ({m.diagnostics.trackedFrames}/
-            {m.diagnostics.totalFrames} frames with a tracked foot)
-          </dd>
-          <dt className="text-gray-500">First / last contact</dt>
-          <dd className="font-mono text-gray-800">
-            {m.diagnostics.firstContactTimeS != null ? `${m.diagnostics.firstContactTimeS.toFixed(2)}s` : "—"}
-            {" → "}
-            {m.diagnostics.lastContactTimeS != null ? `${m.diagnostics.lastContactTimeS.toFixed(2)}s` : "—"}
-          </dd>
-          <dt className="text-gray-500">Contacts included in zone</dt>
-          <dd className="font-mono text-gray-800">
-            {m.diagnostics.includedContacts} of {m.totalContacts} detected
-          </dd>
-          {m.diagnostics.timing && (
-            <>
-              <dt className="text-gray-500">Active FPS / frame</dt>
-              <dd className="font-mono text-gray-800">
-                {m.diagnostics.timing.activeFps != null ? m.diagnostics.timing.activeFps.toFixed(1) : "—"} fps ·{" "}
-                {m.diagnostics.timing.frameMs != null ? `${m.diagnostics.timing.frameMs.toFixed(1)} ms/frame` : "—"}
-              </dd>
-              <dt className="text-gray-500">Ground contact L / R</dt>
-              <dd className="font-mono text-gray-800">
-                {fmtMs(m.diagnostics.timing.groundContactLeftMs)} / {fmtMs(m.diagnostics.timing.groundContactRightMs)}{" "}
-                <span className="text-gray-400">
-                  ({fmtFr(m.diagnostics.timing.contactFramesLeft)}/{fmtFr(m.diagnostics.timing.contactFramesRight)} frames,{" "}
-                  {m.diagnostics.timing.leftContacts}L/{m.diagnostics.timing.rightContacts}R contacts)
-                </span>
-              </dd>
-              <dt className="text-gray-500">Flight L / R</dt>
-              <dd className="font-mono text-gray-800">
-                {fmtMs(m.diagnostics.timing.flightLeftMs)} / {fmtMs(m.diagnostics.timing.flightRightMs)}
-              </dd>
-            </>
-          )}
-        </dl>
-        {m.diagnostics.excludedContacts.length > 0 && (
-          <p className="mt-2 text-xs text-gray-500">
-            <span className="font-medium">Excluded:</span>{" "}
-            {m.diagnostics.excludedContacts
-              .map((c) => `${c.side[0].toUpperCase()}@${c.time.toFixed(2)}s (${c.reason})`)
-              .join("; ")}
-          </p>
-        )}
-        {m.diagnostics.notes.map((n) => (
-          <p key={n} className="mt-2 text-xs text-amber-700">
-            {n}
-          </p>
-        ))}
-      </details>
-
       {!m.calibrated && (
-        <p className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+        <p className="mb-4 rounded-lg border border-[#CD7F32]/40 bg-[#CD7F32]/10 px-3 py-2 text-xs text-[#E0A063]">
           No manual calibration yet — contact counts and cadence are shown, but step length and
           velocity need two calibration gates a known distance apart (Calibration gates on the overlay).
         </p>
@@ -321,7 +270,7 @@ export default function BenchmarkPanel({
           COMBINED frequency is surfaced (Day 74); per-side frequency stays computed
           + stored, just not shown. */}
       <Collapsible
-        title="Contacts &amp; frequency"
+        title="Contacts & frequency"
         hint={`${m.combinedStepFrequencyHz != null ? n2(m.combinedStepFrequencyHz) : "—"} steps/s · ${int(m.validContacts)} in-zone contacts`}
       >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -362,8 +311,8 @@ export default function BenchmarkPanel({
           <Stat label="Right step" value={m.rightStepLengthM != null ? `${n2(m.rightStepLengthM)} m` : "—"} />
         </div>
         {m.calibrated && m.zoneSteps.some((s) => s.stepLengthM != null) && (
-          <p className="mt-3 text-xs text-gray-500">
-            <span className="font-medium">Individual steps through the zone:</span>{" "}
+          <p className="mt-3 text-xs text-[#6B7280]">
+            <span className="font-medium text-[#A0A2A8]">Individual steps through the zone:</span>{" "}
             {m.zoneSteps
               .filter((s) => s.stepLengthM != null)
               .map(
@@ -372,7 +321,7 @@ export default function BenchmarkPanel({
               )
               .join(" · ")}
             {m.stepLengthConfidence !== "high" && (
-              <span className="ml-1 text-amber-600">
+              <span className="ml-1 text-[#E0A063]">
                 (lower confidence — trust the zone average above)
               </span>
             )}
@@ -385,30 +334,30 @@ export default function BenchmarkPanel({
         title="Velocity (cross-checked)"
         hint={`zone ${primaryVel != null ? n2(primaryVel) : "—"} m/s · max ${m.maxVelocityMps != null ? n2(m.maxVelocityMps) : "—"} m/s`}
       >
-        <div className="overflow-hidden rounded-md border bg-white">
+        <div className="overflow-hidden rounded-lg border border-white/[0.06]">
           <table className="w-full text-sm">
             <tbody>
               {m.velocities.map((v) => (
-                <tr key={v.key} className="border-b last:border-0">
-                  <td className="px-3 py-2 text-gray-600">{v.label}</td>
-                  <td className="px-3 py-2 text-right font-mono text-gray-900">
+                <tr key={v.key} className="border-b border-white/[0.06] last:border-0">
+                  <td className="px-3 py-2 text-[#A0A2A8]">{v.label}</td>
+                  <td className="px-3 py-2 text-right font-mono text-[#F5F5F7]">
                     {v.value != null ? `${n2(v.value)} m/s` : "—"}
                   </td>
-                  <td className="px-3 py-2 text-xs text-gray-400">{v.method}</td>
+                  <td className="px-3 py-2 text-xs text-[#6B7280]">{v.method}</td>
                 </tr>
               ))}
-              <tr className="border-b last:border-0 bg-gray-50">
-                <td className="px-3 py-2 font-medium text-gray-700">Max velocity (peak single-stride)</td>
-                <td className="px-3 py-2 text-right font-mono text-gray-900">
+              <tr className="border-b border-white/[0.06] last:border-0 bg-white/[0.03]">
+                <td className="px-3 py-2 font-medium text-[#A0A2A8]">Max velocity (peak single-stride)</td>
+                <td className="px-3 py-2 text-right font-mono text-[#F5F5F7]">
                   {m.maxVelocityMps != null ? `${n2(m.maxVelocityMps)} m/s` : "—"}
                 </td>
-                <td className="px-3 py-2 text-xs text-gray-400">fastest stride</td>
+                <td className="px-3 py-2 text-xs text-[#6B7280]">fastest stride</td>
               </tr>
             </tbody>
           </table>
         </div>
         {m.velocitySpreadPct != null && (
-          <p className={`mt-2 text-xs ${m.velocitySpreadPct > 15 ? "text-amber-600" : "text-gray-500"}`}>
+          <p className={`mt-2 text-xs ${m.velocitySpreadPct > 15 ? "text-[#E0A063]" : "text-[#6B7280]"}`}>
             Methods spread {n1(m.velocitySpreadPct)}% · {m.velocityNote}
             {primaryVel != null && ` · zone velocity ${n2(primaryVel)} m/s`}
           </p>
@@ -416,18 +365,18 @@ export default function BenchmarkPanel({
       </Collapsible>
 
       {/* Benchmark link + validation */}
-      <div className="mt-5 rounded-md border bg-white p-4">
-        <h3 className="mb-2 text-sm font-semibold text-gray-700">Benchmark validation</h3>
+      <div className="mt-5 rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
+        <h3 className="mb-2 text-sm font-semibold text-[#F5F5F7]">Benchmark validation</h3>
         <form action={setSessionBenchmark} className="mb-3 flex flex-wrap items-center gap-2">
           <input type="hidden" name="id" value={sessionId} />
-          <label htmlFor="benchmark_id" className="text-xs text-gray-500">
+          <label htmlFor="benchmark_id" className="text-xs text-[#6B7280]">
             Compare against
           </label>
           <select
             id="benchmark_id"
             name="benchmark_id"
             defaultValue={linkedBenchmarkId ?? ""}
-            className="rounded border px-2 py-1 text-sm"
+            className="rounded-lg border border-white/[0.08] bg-[#0d0d0f] px-2 py-1 text-sm text-[#F5F5F7] focus:border-[#D72638]/50 focus:outline-none"
           >
             <option value="">Not linked</option>
             {benchmarks.map((b) => (
@@ -436,7 +385,10 @@ export default function BenchmarkPanel({
               </option>
             ))}
           </select>
-          <button type="submit" className="rounded bg-lane px-3 py-1 text-sm text-white">
+          <button
+            type="submit"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.05] px-3 py-1 text-sm font-medium text-[#F5F5F7] transition hover:bg-white/[0.09]"
+          >
             Save link
           </button>
         </form>
@@ -444,25 +396,25 @@ export default function BenchmarkPanel({
         {comparison ? (
           <>
             {/* Accuracy targets (Day 65): headline metrics vs their error budgets. */}
-            <div className="mb-4 rounded-md border bg-gray-50 p-3">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+            <div className="mb-4 rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[#6B7280]">
                 Accuracy vs targets
               </p>
               <div className="space-y-1">
                 {comparison.accuracy.map((a) => (
                   <div key={a.key} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="text-gray-700">{a.label}</span>
+                    <span className="text-[#A0A2A8]">{a.label}</span>
                     <span className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-gray-500">
+                      <span className="font-mono text-xs text-[#6B7280]">
                         {a.errorPct != null ? `${a.errorPct.toFixed(1)}%` : "—"} / ≤{a.targetPct}%
                       </span>
                       <span
-                        className={`rounded px-2 py-0.5 text-xs font-medium ${
+                        className={`${BADGE_BASE} ${
                           a.status === "pass"
-                            ? "bg-green-100 text-green-700"
+                            ? AVA_BADGE.gold
                             : a.status === "fail"
-                              ? "bg-red-100 text-red-700"
-                              : "bg-gray-200 text-gray-500"
+                              ? AVA_BADGE.alert
+                              : AVA_BADGE.gray
                         }`}
                       >
                         {a.status === "pass" ? "✓ meets" : a.status === "fail" ? "over target" : "n/a"}
@@ -471,7 +423,7 @@ export default function BenchmarkPanel({
                   </div>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-gray-500">
+              <p className="mt-2 text-xs text-[#6B7280]">
                 Frequency is temporal (high confidence). Spatial metrics depend on calibration + camera
                 compensation; when over target the diagnostics above explain why (partial early tracking,
                 camera-pan estimation). Average step length uses the trusted zone method (distance ÷ steps).
@@ -494,21 +446,21 @@ export default function BenchmarkPanel({
               }
               return (
                 <>
-                  <p className="mb-2 text-xs text-gray-500">
-                    AVA vs <span className="font-medium">{comparison.benchmarkName}</span> — percent
-                    error per metric. Green ≤10%, amber ≤25%, red &gt;25%.
+                  <p className="mb-2 text-xs text-[#6B7280]">
+                    AVA vs <span className="font-medium text-[#A0A2A8]">{comparison.benchmarkName}</span> —
+                    percent error per metric. Gold ≤10%, bronze ≤25%, red alert &gt;25%.
                   </p>
                   {primary.length > 0 && <ComparisonTable rows={primary} />}
 
                   {diagnostic.length > 0 && (
-                    <details className="mt-3 rounded-md border bg-gray-50 p-3">
-                      <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-400">
+                    <details className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
+                      <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-[#6B7280]">
                         Per-side detail (diagnostic) — left/right asymmetry
                       </summary>
                       <div className="mt-2">
                         <ComparisonTable rows={diagnostic} muted />
                       </div>
-                      <p className="mt-2 text-xs text-gray-500">
+                      <p className="mt-2 text-xs text-[#6B7280]">
                         Small left/right differences are diagnostic detail, not headline numbers —
                         the per-side spread is near the detection/frame-rate noise floor.
                       </p>
@@ -516,42 +468,29 @@ export default function BenchmarkPanel({
                   )}
 
                   {timing.length > 0 && (
-                    <details className="group mt-3 rounded-md border border-dashed border-amber-300 bg-amber-50/40">
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 [&::-webkit-details-marker]:hidden">
-                        <span className="text-xs font-medium uppercase tracking-wide text-amber-700">
-                          Timing — requires higher FPS
-                        </span>
-                        <svg
-                          className="h-3.5 w-3.5 shrink-0 text-amber-400 transition-transform duration-150 group-open:rotate-90"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </summary>
-                      <div className="border-t border-amber-200 px-3 py-3">
-                        <ComparisonTable rows={timing} muted />
-                        <p className="mt-2 text-xs text-amber-700">{PRECISION_TIMING_MESSAGE}</p>
-                      </div>
-                    </details>
+                    <AvaCautionPanel
+                      className="mt-3"
+                      title="Coming Soon"
+                      subtitle="Timing — requires higher FPS"
+                      pill={`${activeFps ?? "Low"} FPS`}
+                      description={PRECISION_TIMING_MESSAGE}
+                      watermark={false}
+                    >
+                      <ComparisonTable rows={timing} muted />
+                    </AvaCautionPanel>
                   )}
                 </>
               );
             })()}
           </>
         ) : (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-[#6B7280]">
             Link this session to a benchmark to validate every calculated metric against the
             reference and report percent error. Comparisons only appear for an explicitly linked
             session.
           </p>
         )}
       </div>
-    </section>
+    </AvaPanel>
   );
 }

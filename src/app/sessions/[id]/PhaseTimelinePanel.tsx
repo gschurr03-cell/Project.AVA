@@ -1,3 +1,5 @@
+import { AvaPanel } from "@/components/ava/AvaPanel";
+import { avaBadge, type AvaTone } from "@/lib/design/ava";
 import {
   PHASE_LABELS,
   type PhaseBand,
@@ -12,6 +14,8 @@ import {
  * comes from `@/lib/phases`; this only lays it out.
  */
 
+// Categorical phase colours (a legend, not performance status) — kept vivid so the
+// timeline reads at a glance on the dark surface.
 const PHASE_COLOR: Record<SprintPhase, string> = {
   start: "bg-sky-400",
   acceleration: "bg-indigo-500",
@@ -21,20 +25,14 @@ const PHASE_COLOR: Record<SprintPhase, string> = {
   deceleration: "bg-slate-400",
 };
 
-const CONFIDENCE_BADGE: Record<PhaseConfidence, string> = {
-  high: "bg-green-100 text-green-700",
-  medium: "bg-amber-100 text-amber-700",
-  low: "bg-gray-200 text-gray-600",
+const CONFIDENCE_TONE: Record<PhaseConfidence, AvaTone> = {
+  high: "gold",
+  medium: "bronze",
+  low: "gray",
 };
 
 function ConfidenceBadge({ confidence }: { confidence: PhaseConfidence }) {
-  return (
-    <span
-      className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${CONFIDENCE_BADGE[confidence]}`}
-    >
-      {confidence}
-    </span>
-  );
+  return <span className={avaBadge(CONFIDENCE_TONE[confidence])}>{confidence}</span>;
 }
 
 const fmt = (t: number) => `${t.toFixed(2)}s`;
@@ -43,16 +41,15 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
   const span = Math.max(report.spanEnd - report.spanStart, 1e-6);
 
   return (
-    <section className="mt-6 rounded-lg border bg-gray-50 p-5">
-      <h2 className="mb-1 text-xl font-bold text-lane">Sprint Phases</h2>
-      <p className="mb-4 text-xs text-gray-500">
+    <AvaPanel eyebrow="Sprint Phases" title="Phase Timeline">
+      <p className="-mt-3 mb-4 text-xs text-[#6B7280]">
         Detected from the velocity profile and step marks. Phase boundaries are estimates.
       </p>
 
       {!report.available ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-800">Phases unavailable</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-700">
+        <div className="rounded-lg border border-[#CD7F32]/40 bg-[#CD7F32]/10 p-4">
+          <p className="text-sm font-semibold text-[#E0A063]">Phases unavailable</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#A0A2A8]">
             {report.warnings.map((w) => (
               <li key={w}>{w}</li>
             ))}
@@ -61,7 +58,7 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
       ) : (
         <>
           {/* Proportional timeline band */}
-          <div className="flex h-8 w-full overflow-hidden rounded-md border">
+          <div className="flex h-8 w-full overflow-hidden rounded-md border border-white/[0.08]">
             {report.bands.map((band, i) => {
               const width = ((band.endTime - band.startTime) / span) * 100;
               return (
@@ -74,7 +71,7 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
               );
             })}
           </div>
-          <div className="mt-1 flex justify-between text-xs text-gray-400">
+          <div className="mt-1 flex justify-between text-xs text-[#6B7280]">
             <span>{fmt(report.spanStart)}</span>
             {report.peakVelocityTime != null && (
               <span>Peak velocity ≈ {fmt(report.peakVelocityTime)}</span>
@@ -90,7 +87,7 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
           </ul>
 
           {report.warnings.length > 0 && (
-            <ul className="mt-4 list-disc space-y-1 pl-5 text-xs text-amber-700">
+            <ul className="mt-4 list-disc space-y-1 pl-5 text-xs text-[#E0A063]">
               {report.warnings.map((w) => (
                 <li key={w}>{w}</li>
               ))}
@@ -98,24 +95,24 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
           )}
         </>
       )}
-    </section>
+    </AvaPanel>
   );
 }
 
 function PhaseRow({ band }: { band: PhaseBand }) {
   return (
-    <li className="rounded-md border bg-white p-3 shadow-sm">
+    <li className="rounded-xl border border-white/[0.06] bg-[#19191C] p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className={`inline-block h-3 w-3 rounded-sm ${PHASE_COLOR[band.phase]}`} />
-          <span className="text-sm font-semibold text-gray-800">{PHASE_LABELS[band.phase]}</span>
-          <span className="font-mono text-xs text-gray-400">
+          <span className="text-sm font-semibold text-[#F5F5F7]">{PHASE_LABELS[band.phase]}</span>
+          <span className="font-mono text-xs text-[#6B7280]">
             {fmt(band.startTime)}–{fmt(band.endTime)}
           </span>
         </div>
         <ConfidenceBadge confidence={band.confidence} />
       </div>
-      <p className="mt-1 text-sm text-gray-600">{band.explanation}</p>
+      <p className="mt-1 text-sm text-[#A0A2A8]">{band.explanation}</p>
     </li>
   );
 }

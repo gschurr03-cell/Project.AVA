@@ -40,18 +40,23 @@ import {
 import { isPrecisionLimited } from "@/lib/benchmark/precision";
 import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
+import { deriveLimitingFactors } from "@/lib/intelligence/limitingFactors";
 import MetricsPanel from "./MetricsPanel";
 import InsightPanel from "./InsightPanel";
 import RecommendationsPanel from "./RecommendationsPanel";
 import CalibrationPanel from "./CalibrationPanel";
 import PerformancePredictionPanel from "./PerformancePredictionPanel";
 import PhaseTimelinePanel from "./PhaseTimelinePanel";
-import SprintIntelligencePanel from "./SprintIntelligencePanel";
+import AvaIntelligencePanel from "./AvaIntelligencePanel";
+import PerformancePotentialCard from "./PerformancePotentialCard";
 import CalibrationControlsForm from "./CalibrationControlsForm";
 import BenchmarkPanel from "./BenchmarkPanel";
 import CoachNotesForm from "./CoachNotesForm";
 import RecordingQualityCard from "./RecordingQualityCard";
 import PerformanceSummaryCard from "./PerformanceSummaryCard";
+import { AvaPanel } from "@/components/ava/AvaPanel";
+import { AvaStatusPill } from "@/components/ava/AvaStatusPill";
+import { AvaInfoStat } from "@/components/ava/AvaInfoStat";
 import { buildRecordingQuality, summarisePoseQuality } from "@/lib/recording/quality";
 
 /** Pull a calibrated measurement value by key from a calibration report. */
@@ -399,6 +404,11 @@ export default async function SessionPage({
       })
     : null;
 
+  // Limiting-factor diagnosis (Day 78): reframe the ranked limiters into the Top-3
+  // customer-facing factors + the performance-potential projection. Pure; adds no
+  // biomechanics math (velocity gains use the existing v = L·f identity).
+  const diagnosis = intelligence ? deriveLimitingFactors(intelligence, measurements) : null;
+
   // Progress tracking: compare against this athlete's previous completed
   // analysis (any earlier session). Read-only, non-mutating, RLS-scoped.
   let comparisonReport: CoachingComparisonReport | null = null;
@@ -425,153 +435,168 @@ export default async function SessionPage({
     }
   }
 
+  const analysisComplete = analysis?.status === "complete";
+  const metricsReady = analysisComplete && parsedMetrics?.success;
+  const activeFpsLabel =
+    activeFps != null
+      ? `${Number.isInteger(activeFps) ? activeFps : Math.round(activeFps * 100) / 100} FPS`
+      : null;
+  const resolutionLabel =
+    effectiveWidth && effectiveHeight ? `${effectiveWidth}×${effectiveHeight}` : null;
+
   return (
-    <main className="mx-auto max-w-2xl p-8">
-      <Link href={`/athletes/${session.athlete_id}`} className="text-sm text-gray-500 hover:underline">
-        ← Back to athlete
-      </Link>
-      <h1 className="mb-6 mt-2 truncate text-2xl font-bold text-lane">{displayName}</h1>
+    <main className="ava-carbon min-h-screen">
+      <div className="mx-auto max-w-7xl space-y-6 px-6 py-8">
+        {/* B. Top command bar */}
+        <div className="flex items-center justify-between gap-4">
+          <Link
+            href={`/athletes/${session.athlete_id}`}
+            className="text-sm font-medium text-[#A0A2A8] transition hover:text-[#F5F5F7]"
+          >
+            ← Back to athlete
+          </Link>
 
-      {error && (
-        <p
-          role="alert"
-          className="mb-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700"
-        >
-          {error}
-        </p>
-      )}
-      {saved && (
-        <p className="mb-4 rounded border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700">
-          Calibration saved.
-        </p>
-      )}
+          <p className="hidden text-[11px] font-semibold uppercase tracking-[0.28em] text-[#6B7280] sm:block">
+            AVA Sprint Analysis
+          </p>
 
-      <dl className="mb-8 grid grid-cols-3 gap-y-3 rounded border p-4 text-sm">
-        <dt className="font-medium text-gray-500">Athlete</dt>
-        <dd className="col-span-2">{session.athletes?.full_name ?? "—"}</dd>
-
-        <dt className="font-medium text-gray-500">Status</dt>
-        <dd className="col-span-2">{STATUS_LABELS[session.status] ?? session.status}</dd>
-
-        <dt className="font-medium text-gray-500">Uploaded</dt>
-        <dd className="col-span-2">{new Date(session.created_at).toLocaleString()}</dd>
-
-        <dt className="font-medium text-gray-500">Original file</dt>
-        <dd className="col-span-2 break-all">{session.original_filename ?? "—"}</dd>
-
-        <dt className="font-medium text-gray-500">Duration</dt>
-        <dd className="col-span-2">{formatDuration(session.duration_s)}</dd>
-
-        <dt className="font-medium text-gray-500">Resolution</dt>
-        <dd className="col-span-2">
-          {session.width && session.height ? `${session.width}×${session.height}` : "—"}
-        </dd>
-
-        <dt className="font-medium text-gray-500">FPS</dt>
-        <dd className="col-span-2">{session.fps ?? "—"}</dd>
-
-        <dt className="font-medium text-gray-500">Codec</dt>
-        <dd className="col-span-2">{session.codec ?? "—"}</dd>
-
-        <dt className="font-medium text-gray-500">File size</dt>
-        <dd className="col-span-2">{formatBytes(session.size_bytes)}</dd>
-
-        <dt className="font-medium text-gray-500">Storage path</dt>
-        <dd className="col-span-2 break-all font-mono text-xs">{session.video_path ?? "—"}</dd>
-      </dl>
-
-      <section className="mb-8 rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Video</h2>
-        {signedVideo?.signedUrl ? (
-          <VideoPlayer videoUrl={signedVideo?.signedUrl ?? ""} markers={timelineMarkers} />
-        ) : (
-          <p className="text-sm text-gray-500">No uploaded video available.</p>
-        )}
-      </section>
-
-      <section className="mb-8 rounded border p-4">
-        <h2 className="mb-3 text-lg font-semibold">Rename</h2>
-        <form action={renameSession} className="flex gap-2">
-          <input type="hidden" name="id" value={session.id} />
-          <input
-            name="name"
-            defaultValue={session.name ?? ""}
-            placeholder={session.original_filename ?? "Session name"}
-            className="flex-1 rounded border px-3 py-2"
-          />
-          <button type="submit" className="rounded bg-lane px-4 py-2 text-white">
-            Save
-          </button>
-        </form>
-      </section>
-
-      <section className="mb-8 rounded border p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-700">Analysis</h2>
-          {analysis && (
-            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-              {ANALYSIS_STATUS_LABELS[analysis.status] ?? analysis.status}
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {analysisInFlight ? (
+              <AvaStatusPill
+                label={ANALYSIS_STATUS_LABELS[analysis!.status] ?? analysis!.status}
+                tone="gray"
+              />
+            ) : (
+              <form action={queueAnalysis}>
+                <input type="hidden" name="id" value={session.id} />
+                <button
+                  type="submit"
+                  className="ava-red-glow rounded-lg bg-[#D72638] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e63a4b]"
+                >
+                  {analysis ? "Rerun Analysis" : "Run Analysis"}
+                </button>
+              </form>
+            )}
+          </div>
         </div>
 
-        {!analysis && <p className="mb-3 text-gray-500">No analysis has been run yet.</p>}
-
-        {analysisInFlight && (
-          <p className="mb-3 text-gray-500">
-            Analysis {ANALYSIS_STATUS_LABELS[analysis!.status].toLowerCase()} — results will appear
-            here when the worker finishes.
+        {error && (
+          <p
+            role="alert"
+            className="rounded-xl border border-[#FF3B30]/40 bg-[#FF3B30]/10 px-4 py-3 text-sm text-[#ff8079]"
+          >
+            {error}
+          </p>
+        )}
+        {saved && (
+          <p className="rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-3 text-sm text-[#D4AF37]">
+            Calibration saved.
           </p>
         )}
 
-        {analysis?.status === "complete" && (
-          <div className="mb-3">
-            <p className="mb-3 text-sm text-gray-500">
-              Completed{" "}
-              {analysis.completed_at ? new Date(analysis.completed_at).toLocaleString() : ""}.
-            </p>
-            {parsedMetrics?.success ? (
-              <>
-                {/* Trust indicator first, then the focal performance summary. */}
-                {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
-                {measurements && <PerformanceSummaryCard measurements={measurements} />}
+        {/* C. Session hero panel */}
+        <AvaPanel>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#D72638]">
+                AVA Sprint Analysis
+              </p>
+              <h1 className="truncate text-3xl font-bold tracking-tight text-[#F5F5F7]">
+                {displayName}
+              </h1>
+            </div>
 
-                <section className="mb-8 rounded-xl border bg-white p-5 shadow-sm">
-                  <h2 className="mb-3 text-xl font-bold text-lane">Interactive Overlay</h2>
-                  {/* Sync (Day 75): the overlay renders against the video's OWN timeline
-                      (raw frame timestamps), not the FPS-normalized clock used for
-                      metrics — so the skeleton stays glued to the runner at 1× and 2.5×.
-                      Analysis below still uses the normalized frames, so benchmark
-                      numbers are unchanged. */}
-                  {signedVideo?.signedUrl && overlayFrames.length > 0 ? (
-                    <OverlayVideoPlayer
-                      videoUrl={signedVideo.signedUrl}
-                      frames={rawOverlayFrames}
-                      stepScale={stepScale}
-                      stepCadenceHz={stepCadenceHz}
-                      stepContactCount={overlayStepMarks.length}
-                      sessionId={session.id}
-                      manualCalibration={manualPoints}
-                      calibrationGates={calibrationGates}
-                    />
-                  ) : (
-                    <p className="text-sm text-gray-500">
-                      The pose overlay (skeleton, joint angles, COM trail, and foot-contact labels)
-                      will appear here once per-frame pose data is available for this analysis.
-                    </p>
-                  )}
-                </section>
+            <div className="flex flex-wrap items-center gap-2">
+              {analysisComplete ? (
+                <AvaStatusPill label="Diagnosis Ready" tone="gold" />
+              ) : (
+                <AvaStatusPill label={STATUS_LABELS[session.status] ?? session.status} tone="gray" />
+              )}
+              {activeFpsLabel && <AvaStatusPill label={activeFpsLabel} tone="gray" />}
+              {resolutionLabel && <AvaStatusPill label={resolutionLabel} tone="gray" />}
+            </div>
+          </div>
 
-                {/* Second focal point: the coaching read. */}
-                {intelligence && (
-                  <SprintIntelligencePanel
-                    report={intelligence}
-                    measurements={measurements}
-                    timingReliable={!precisionLimited}
-                    legLengthCm={session.athletes?.leg_length_cm ?? null}
-                  />
-                )}
+          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <AvaInfoStat label="Athlete" value={session.athletes?.full_name ?? "—"} />
+            <AvaInfoStat
+              label="Uploaded"
+              value={new Date(session.created_at).toLocaleDateString()}
+            />
+            <AvaInfoStat label="Duration" value={formatDuration(session.duration_s)} />
+            <AvaInfoStat label="File size" value={formatBytes(session.size_bytes)} />
+          </div>
+        </AvaPanel>
 
+        {/* D. Main review panel — overlay is the primary surface once analysis is done;
+            the raw source video is only its own section BEFORE analysis. */}
+        <AvaPanel
+          eyebrow="Primary Review"
+          title={analysisComplete ? "Interactive Overlay" : "Source Video"}
+        >
+          {analysisComplete ? (
+            /* Sync (Day 75): the overlay renders against the video's OWN timeline (raw
+               frame timestamps), not the FPS-normalized clock used for metrics — so the
+               skeleton stays glued to the runner at 1× and 2.5×. Analysis below still uses
+               the normalized frames, so benchmark numbers are unchanged. */
+            signedVideo?.signedUrl && overlayFrames.length > 0 ? (
+              <OverlayVideoPlayer
+                videoUrl={signedVideo.signedUrl}
+                frames={rawOverlayFrames}
+                stepScale={stepScale}
+                stepCadenceHz={stepCadenceHz}
+                stepContactCount={overlayStepMarks.length}
+                sessionId={session.id}
+                manualCalibration={manualPoints}
+                calibrationGates={calibrationGates}
+              />
+            ) : (
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
+                <p className="text-sm text-[#A0A2A8]">
+                  The pose overlay (skeleton, joint angles, COM trail, and foot-contact labels)
+                  will appear here once per-frame pose data is ready for this analysis.
+                </p>
+              </div>
+            )
+          ) : signedVideo?.signedUrl ? (
+            <VideoPlayer videoUrl={signedVideo.signedUrl} markers={timelineMarkers} />
+          ) : (
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
+              <p className="text-sm text-[#A0A2A8]">No uploaded video available for this session.</p>
+            </div>
+          )}
+        </AvaPanel>
+
+        {/* E. Analysis content — diagnosis-first: lead with the limiting factors. */}
+        {metricsReady ? (
+          <div className="space-y-6">
+            {/* PRIMARY FEATURE: the ranked limiting-factor diagnosis. */}
+            {intelligence && diagnosis && (
+              <AvaIntelligencePanel report={intelligence} diagnosis={diagnosis} />
+            )}
+
+            {/* Performance headroom from correcting those factors. */}
+            {diagnosis && <PerformancePotentialCard potential={diagnosis.potential} />}
+
+            {/* The four trusted metrics. */}
+            {measurements && <PerformanceSummaryCard measurements={measurements} />}
+
+            {/* Recording-quality trust indicator (collapsed). */}
+            {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
+
+            {/* Everything else is experimental / not-yet-trusted. */}
+            <MetricsPanel metrics={parsedMetrics!.data} activeFps={activeFps} />
+
+            {/* Detailed Systems — secondary engines + validation, collapsed. */}
+            <details className="group rounded-2xl border border-white/[0.06] bg-[#121214]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+              <summary className="flex cursor-pointer items-center gap-2 text-lg font-semibold tracking-tight text-[#F5F5F7]">
+                <span className="inline-block text-[#D72638] transition group-open:rotate-90">▸</span>
+                Detailed Systems
+                <span className="text-xs font-normal text-[#6B7280]">
+                  benchmark, calibration, phases, prediction &amp; coaching detail
+                </span>
+              </summary>
+              <div className="mt-5 space-y-4">
                 {measurements && (
                   <BenchmarkPanel
                     sessionId={session.id}
@@ -585,70 +610,93 @@ export default async function SessionPage({
                     comparison={benchmarkComparison}
                   />
                 )}
+                {calibrationReport && <CalibrationPanel report={calibrationReport} />}
+                <CalibrationControlsForm
+                  sessionId={session.id}
+                  detectedFps={detectedFps}
+                  fpsOverride={session.fps_override ?? null}
+                  zoneStartS={session.calibration_zone_start_s ?? null}
+                  zoneEndS={session.calibration_zone_end_s ?? null}
+                  zoneDistanceM={session.calibration_zone_distance_m ?? null}
+                />
+                {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
+                {prediction && <PerformancePredictionPanel prediction={prediction} />}
+                {coachingReport && (
+                  <InsightPanel report={coachingReport} comparison={comparisonReport} />
+                )}
+                {recommendations && <RecommendationsPanel recommendations={recommendations} />}
+              </div>
+            </details>
 
-                {/* Detailed analysis — secondary, kept below the focal cards. */}
-                <details className="mt-8 rounded-xl border bg-gray-50 p-5">
-                  <summary className="cursor-pointer text-lg font-semibold text-gray-700">
-                    Detailed analysis
-                    <span className="ml-2 text-xs font-normal text-gray-400">
-                      raw metrics, calibration, phases, prediction &amp; coaching detail
-                    </span>
-                  </summary>
-                  <div className="mt-4 space-y-2">
-                    <MetricsPanel metrics={parsedMetrics.data} activeFps={activeFps} />
-                    {calibrationReport && <CalibrationPanel report={calibrationReport} />}
-                    <CalibrationControlsForm
-                      sessionId={session.id}
-                      detectedFps={detectedFps}
-                      fpsOverride={session.fps_override ?? null}
-                      zoneStartS={session.calibration_zone_start_s ?? null}
-                      zoneEndS={session.calibration_zone_end_s ?? null}
-                      zoneDistanceM={session.calibration_zone_distance_m ?? null}
-                    />
-                    {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
-                    {prediction && <PerformancePredictionPanel prediction={prediction} />}
-                    {coachingReport && (
-                      <InsightPanel report={coachingReport} comparison={comparisonReport} />
-                    )}
-                    {recommendations && <RecommendationsPanel recommendations={recommendations} />}
-                  </div>
-                </details>
-
-                <CoachNotesForm sessionId={session.id} defaultNotes={session.notes} />
-              </>
-            ) : (
-              <p className="text-sm text-gray-500">
-                Metrics are unavailable or could not be read for this analysis.
-              </p>
-            )}
+            <CoachNotesForm sessionId={session.id} defaultNotes={session.notes} />
           </div>
+        ) : analysisComplete ? (
+          <AvaPanel eyebrow="Analysis" title="Metrics unavailable">
+            <p className="text-sm text-[#A0A2A8]">
+              This analysis completed, but its metrics could not be read. Rerun the analysis to
+              regenerate them.
+            </p>
+          </AvaPanel>
+        ) : analysisInFlight ? (
+          <AvaPanel eyebrow="Analysis" title="Analysis running">
+            <p className="text-sm text-[#A0A2A8]">
+              Analysis {ANALYSIS_STATUS_LABELS[analysis!.status].toLowerCase()} — the limiting-factor
+              diagnosis will appear here when the worker finishes.
+            </p>
+          </AvaPanel>
+        ) : analysis?.status === "failed" ? (
+          <AvaPanel eyebrow="Analysis" title="Analysis failed">
+            <p className="text-sm text-[#ff8079]">
+              Analysis failed{analysis.error ? `: ${analysis.error}` : ""}. Rerun analysis to try
+              again.
+            </p>
+          </AvaPanel>
+        ) : (
+          <AvaPanel eyebrow="Analysis" title="Not analyzed yet">
+            <p className="text-sm text-[#A0A2A8]">
+              No analysis has been run for this session. Use{" "}
+              <span className="font-semibold text-[#F5F5F7]">Run Analysis</span> above to generate
+              sprint intelligence.
+            </p>
+          </AvaPanel>
         )}
 
-        {analysis?.status === "failed" && (
-          <p className="mb-3 text-sm text-red-700">
-            Analysis failed{analysis.error ? `: ${analysis.error}` : ""}.
-          </p>
-        )}
-
-        {!analysisInFlight && (
-          <form action={queueAnalysis}>
+        {/* F. Session Admin — rename lives here, dark and out of the primary flow. */}
+        <details className="group rounded-2xl border border-white/[0.06] bg-[#121214]/95 p-5">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[#A0A2A8]">
+            <span className="inline-block text-[#6B7280] transition group-open:rotate-90">▸</span>
+            Session Admin
+          </summary>
+          <form action={renameSession} className="mt-4 flex gap-2">
             <input type="hidden" name="id" value={session.id} />
-            <button type="submit" className="rounded bg-lane px-4 py-2 text-white">
-              {analysis ? "Run analysis again" : "Run analysis"}
+            <input
+              name="name"
+              defaultValue={session.name ?? ""}
+              placeholder={session.original_filename ?? "Session name"}
+              className="flex-1 rounded-lg border border-white/[0.08] bg-[#19191C] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="rounded-lg border border-white/[0.12] bg-white/[0.05] px-4 py-2 text-sm font-medium text-[#F5F5F7] transition hover:bg-white/[0.09]"
+            >
+              Save
             </button>
           </form>
-        )}
-      </section>
+        </details>
 
-      <form action={deleteSession}>
-        <input type="hidden" name="id" value={session.id} />
-        <button
-          type="submit"
-          className="rounded border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50"
-        >
-          Delete session
-        </button>
-      </form>
+        {/* G. Danger zone — small, deliberately not prominent. */}
+        <div className="flex justify-end pt-2">
+          <form action={deleteSession}>
+            <input type="hidden" name="id" value={session.id} />
+            <button
+              type="submit"
+              className="rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-[#8a8a90] transition hover:border-[#FF3B30]/40 hover:text-[#FF3B30]"
+            >
+              Delete session
+            </button>
+          </form>
+        </div>
+      </div>
     </main>
   );
 }

@@ -1,3 +1,5 @@
+import { AvaPanel } from "@/components/ava/AvaPanel";
+import { avaBadge, type AvaTone } from "@/lib/design/ava";
 import type { CalibrationReport, Confidence, Measurement } from "@/lib/calibration";
 
 /**
@@ -6,20 +8,14 @@ import type { CalibrationReport, Confidence, Measurement } from "@/lib/calibrati
  * formatting — the numbers and confidences come from `@/lib/calibration`.
  */
 
-const CONFIDENCE_BADGE: Record<Confidence, string> = {
-  high: "bg-green-100 text-green-700",
-  medium: "bg-amber-100 text-amber-700",
-  low: "bg-gray-200 text-gray-600",
+const CONFIDENCE_TONE: Record<Confidence, AvaTone> = {
+  high: "gold",
+  medium: "bronze",
+  low: "gray",
 };
 
 function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
-  return (
-    <span
-      className={`rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${CONFIDENCE_BADGE[confidence]}`}
-    >
-      {confidence}
-    </span>
-  );
+  return <span className={avaBadge(CONFIDENCE_TONE[confidence])}>{confidence}</span>;
 }
 
 function formatValue(m: Measurement): string {
@@ -29,20 +25,25 @@ function formatValue(m: Measurement): string {
 
 export default function CalibrationPanel({ report }: { report: CalibrationReport }) {
   return (
-    <section className="mt-6 rounded-lg border bg-gray-50 p-5">
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <h2 className="text-xl font-bold text-lane">Real-World Estimates</h2>
-        {report.scale && <ConfidenceBadge confidence={report.scale.confidence} />}
-      </div>
-      <p className="mb-4 text-xs text-gray-500">
+    <AvaPanel
+      eyebrow="Calibration"
+      title="Real-World Estimates"
+      className={report.scale ? "relative" : ""}
+    >
+      {report.scale && (
+        <div className="absolute right-5 top-5">
+          <ConfidenceBadge confidence={report.scale.confidence} />
+        </div>
+      )}
+      <p className="-mt-3 mb-4 text-xs text-[#6B7280]">
         Calibrated from pose + athlete profile. Estimates only — accuracy depends on the calibration
         source below.
       </p>
 
       {!report.calibrated ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-800">Needs calibration</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-700">
+        <div className="rounded-lg border border-[#CD7F32]/40 bg-[#CD7F32]/10 p-4">
+          <p className="text-sm font-semibold text-[#E0A063]">Needs calibration</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#A0A2A8]">
             {report.warnings.map((w) => (
               <li key={w}>{w}</li>
             ))}
@@ -54,12 +55,15 @@ export default function CalibrationPanel({ report }: { report: CalibrationReport
             {report.measurements
               .filter((m) => !m.debug)
               .map((m) => (
-                <div key={m.key} className="rounded-md border bg-white p-3 shadow-sm">
-                  <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                <div
+                  key={m.key}
+                  className="rounded-xl border border-white/[0.06] bg-[#19191C] p-3"
+                >
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
                     {m.label}
                   </dt>
                   <dd className="mt-1 flex items-baseline justify-between gap-2">
-                    <span className="text-2xl font-bold text-gray-800">{formatValue(m)}</span>
+                    <span className="text-2xl font-bold text-[#F5F5F7]">{formatValue(m)}</span>
                     {m.confidence && <ConfidenceBadge confidence={m.confidence} />}
                   </dd>
                 </div>
@@ -69,7 +73,7 @@ export default function CalibrationPanel({ report }: { report: CalibrationReport
           {/* Debug-only diagnostics (e.g. whole-clip travel) — never a headline number;
               the manually-defined zone distance is the source of truth. */}
           {report.measurements.some((m) => m.debug) && (
-            <p className="mt-3 text-xs text-gray-400">
+            <p className="mt-3 text-xs text-[#6B7280]">
               <span className="font-medium uppercase tracking-wide">Debug:</span>{" "}
               {report.measurements
                 .filter((m) => m.debug)
@@ -79,13 +83,14 @@ export default function CalibrationPanel({ report }: { report: CalibrationReport
           )}
 
           {report.scale && (
-            <p className="mt-3 text-xs text-gray-500">
-              <span className="font-medium">Calibration source:</span> {report.scale.reason}
+            <p className="mt-3 text-xs text-[#A0A2A8]">
+              <span className="font-medium text-[#F5F5F7]">Calibration source:</span>{" "}
+              {report.scale.reason}
             </p>
           )}
 
           {report.warnings.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-700">
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#E0A063]">
               {report.warnings.map((w) => (
                 <li key={w}>{w}</li>
               ))}
@@ -93,6 +98,6 @@ export default function CalibrationPanel({ report }: { report: CalibrationReport
           )}
         </>
       )}
-    </section>
+    </AvaPanel>
   );
 }
