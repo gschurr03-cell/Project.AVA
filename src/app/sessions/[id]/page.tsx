@@ -10,13 +10,22 @@ import {
   sessionDisplayName,
   STATUS_LABELS,
 } from "@/lib/sessions";
-import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
+import {
+  deleteSession,
+  queueAnalysis,
+  renameSession,
+  setSessionAnalysisType,
+} from "@/app/sessions/actions";
 import VideoPlayer from "@/components/VideoPlayer";
 import { buildTimelineMarkersFromMetrics } from "@/lib/biomechanics/video/timelineMarkers";
 import OverlayVideoPlayer from "@/components/video/OverlayVideoPlayer";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import { loadOverlayFrames } from "@/lib/video/loadOverlayFrames";
-import { buildCalibrationReport, type CalibrationReport, type CalibrationZone } from "@/lib/calibration";
+import {
+  buildCalibrationReport,
+  type CalibrationReport,
+  type CalibrationZone,
+} from "@/lib/calibration";
 import { predictPerformance, type RaceDistance } from "@/lib/prediction";
 import { detectSprintPhases } from "@/lib/phases";
 import { applyFpsOverride, isValidFps, normalizeFps } from "@/lib/video/fps";
@@ -47,6 +56,7 @@ import { AvaPanel } from "@/components/ava/AvaPanel";
 import { AvaStatusPill } from "@/components/ava/AvaStatusPill";
 import { AvaInfoStat } from "@/components/ava/AvaInfoStat";
 import { buildRecordingQuality, summarisePoseQuality } from "@/lib/recording/quality";
+import { accelerationProfileLabel, analysisTypeConfig, isAnalysisType } from "@/lib/analysisTypes";
 
 /** Pull a calibrated measurement value by key from a calibration report. */
 function calibratedValue(report: CalibrationReport | null, key: string): number | null {
@@ -77,7 +87,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, analysis_type, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -85,6 +95,12 @@ export default async function SessionPage({
   if (!session) notFound();
 
   const displayName = sessionDisplayName(session);
+  const mode = analysisTypeConfig(session.analysis_type);
+  const hasSelectedMode = isAnalysisType(session.analysis_type);
+  const profileDistance =
+    session.calibration_known_distance_m ??
+    session.calibration_zone_distance_m ??
+    session.distance_m;
 
   // Signed URL for the uploaded sprint video (1-hour expiry), if one exists.
   const { data: signedVideo } = session.video_path
@@ -281,8 +297,7 @@ export default async function SessionPage({
   // athlete profile + calibrated biomechanics. Consumes the other engines'
   // outputs without modifying them; only shown once metrics exist.
   const athleteProfile = session.athletes;
-  const pb = (d: RaceDistance) =>
-    athleteProfile?.[`personal_best_${d}m` as const] ?? null;
+  const pb = (d: RaceDistance) => athleteProfile?.[`personal_best_${d}m` as const] ?? null;
   const goal = (d: RaceDistance) => athleteProfile?.[`goal_${d}m` as const] ?? null;
   const prediction = parsedMetrics?.success
     ? predictPerformance({
@@ -373,7 +388,6 @@ export default async function SessionPage({
       })
     : null;
 
-
   const analysisComplete = analysis?.status === "complete";
   const metricsReady = analysisComplete && parsedMetrics?.success;
   const activeFpsLabel =
@@ -396,27 +410,15 @@ export default async function SessionPage({
           </Link>
 
           <p className="hidden text-[11px] font-semibold uppercase tracking-[0.28em] text-[#6B7280] sm:block">
-            AVA Sprint Analysis
+            {hasSelectedMode ? mode.analysisTitle : "Choose Analysis Mode"}
           </p>
 
-          <div className="flex items-center gap-3">
-            {analysisInFlight ? (
-              <AvaStatusPill
-                label={ANALYSIS_STATUS_LABELS[analysis!.status] ?? analysis!.status}
-                tone="gray"
-              />
-            ) : (
-              <form action={queueAnalysis}>
-                <input type="hidden" name="id" value={session.id} />
-                <button
-                  type="submit"
-                  className="ava-red-glow rounded-lg bg-[#D72638] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e63a4b]"
-                >
-                  {analysis ? "Rerun Analysis" : "Run Analysis"}
-                </button>
-              </form>
-            )}
-          </div>
+          {analysisInFlight && (
+            <AvaStatusPill
+              label={ANALYSIS_STATUS_LABELS[analysis!.status] ?? analysis!.status}
+              tone="gray"
+            />
+          )}
         </div>
 
         {error && (
@@ -438,18 +440,29 @@ export default async function SessionPage({
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#D72638]">
-                AVA Sprint Analysis
+                {hasSelectedMode ? mode.analysisTitle : "Sprint Analysis"}
               </p>
               <h1 className="truncate text-3xl font-bold tracking-tight text-[#F5F5F7]">
                 {displayName}
               </h1>
+              {hasSelectedMode && (
+                <p className="mt-2 text-sm text-[#A0A2A8]">
+                  {mode.displayTitle}
+                  {session.analysis_type === "acceleration"
+                    ? ` · ${accelerationProfileLabel(profileDistance)}`
+                    : ""}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               {analysisComplete ? (
                 <AvaStatusPill label="Diagnosis Ready" tone="gold" />
               ) : (
-                <AvaStatusPill label={STATUS_LABELS[session.status] ?? session.status} tone="gray" />
+                <AvaStatusPill
+                  label={STATUS_LABELS[session.status] ?? session.status}
+                  tone="gray"
+                />
               )}
               {activeFpsLabel && <AvaStatusPill label={activeFpsLabel} tone="gray" />}
               {resolutionLabel && <AvaStatusPill label={resolutionLabel} tone="gray" />}
@@ -473,6 +486,44 @@ export default async function SessionPage({
           eyebrow="Primary Review"
           title={analysisComplete ? "Interactive Overlay" : "Source Video"}
         >
+          {!analysisInFlight && (
+            <div className="mb-5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+              {!analysis && (
+                <>
+                  <p className="mb-3 text-sm font-semibold text-[#F5F5F7]">Choose analysis mode</p>
+                  <div className="inline-flex rounded-lg border border-white/[0.1] bg-[#121214] p-1">
+                    {(["fly", "acceleration"] as const).map((type) => (
+                      <form action={setSessionAnalysisType} key={type}>
+                        <input type="hidden" name="id" value={session.id} />
+                        <input type="hidden" name="analysis_type" value={type} />
+                        <button
+                          type="submit"
+                          className={`rounded-md px-4 py-2 text-sm font-semibold transition ${session.analysis_type === type ? "bg-[#D72638] text-white" : "text-[#A0A2A8] hover:bg-white/[0.06] hover:text-white"}`}
+                        >
+                          {type === "fly" ? "Fly Analysis" : "Acceleration Analysis"}
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="mt-4">
+                {hasSelectedMode ? (
+                  <form action={queueAnalysis}>
+                    <input type="hidden" name="id" value={session.id} />
+                    <button
+                      type="submit"
+                      className="ava-red-glow rounded-lg bg-[#D72638] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e63a4b]"
+                    >
+                      {analysis ? "Rerun Analysis" : "Run Analysis"}
+                    </button>
+                  </form>
+                ) : (
+                  <p className="text-xs text-[#6B7280]">Select one mode to enable analysis.</p>
+                )}
+              </div>
+            </div>
+          )}
           {analysisComplete ? (
             /* Sync (Day 75): the overlay renders against the video's OWN timeline (raw
                frame timestamps), not the FPS-normalized clock used for metrics — so the
@@ -492,8 +543,8 @@ export default async function SessionPage({
             ) : (
               <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
                 <p className="text-sm text-[#A0A2A8]">
-                  The pose overlay (skeleton, joint angles, COM trail, and foot-contact labels)
-                  will appear here once per-frame pose data is ready for this analysis.
+                  The pose overlay (skeleton, joint angles, COM trail, and foot-contact labels) will
+                  appear here once per-frame pose data is ready for this analysis.
                 </p>
               </div>
             )
@@ -501,7 +552,9 @@ export default async function SessionPage({
             <VideoPlayer videoUrl={signedVideo.signedUrl} markers={timelineMarkers} />
           ) : (
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
-              <p className="text-sm text-[#A0A2A8]">No uploaded video available for this session.</p>
+              <p className="text-sm text-[#A0A2A8]">
+                No uploaded video available for this session.
+              </p>
             </div>
           )}
         </AvaPanel>
@@ -542,7 +595,9 @@ export default async function SessionPage({
             {/* Detailed Systems — secondary engines + validation, collapsed. */}
             <details className="group rounded-2xl border border-white/[0.06] bg-[#121214]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
               <summary className="flex cursor-pointer items-center gap-2 text-lg font-semibold tracking-tight text-[#F5F5F7]">
-                <span className="inline-block text-[#D72638] transition group-open:rotate-90">▸</span>
+                <span className="inline-block text-[#D72638] transition group-open:rotate-90">
+                  ▸
+                </span>
                 Detailed Systems
                 <span className="text-xs font-normal text-[#6B7280]">
                   calibration &amp; sprint phases
@@ -580,8 +635,8 @@ export default async function SessionPage({
         ) : analysisInFlight ? (
           <AvaPanel eyebrow="Analysis" title="Analysis running">
             <p className="text-sm text-[#A0A2A8]">
-              Analysis {ANALYSIS_STATUS_LABELS[analysis!.status].toLowerCase()} — the limiting-factor
-              diagnosis will appear here when the worker finishes.
+              Analysis {ANALYSIS_STATUS_LABELS[analysis!.status].toLowerCase()} — the
+              limiting-factor diagnosis will appear here when the worker finishes.
             </p>
           </AvaPanel>
         ) : analysis?.status === "failed" ? (

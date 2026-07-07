@@ -8,6 +8,45 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { MIN_FPS, MAX_FPS } from "@/lib/video/fps";
 import { calibrationGatesSchema, gatesToManualPoints } from "@/lib/calibration/gates";
+import { ANALYSIS_TYPE_CONFIG, isAnalysisType } from "@/lib/analysisTypes";
+
+/** Persist the coach's explicit mode choice before the first analysis runs. */
+export async function setSessionAnalysisType(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const analysisType = String(formData.get("analysis_type") ?? "");
+  if (!id) redirect("/dashboard");
+  if (!isAnalysisType(analysisType)) {
+    redirect(
+      `/sessions/${id}?error=${encodeURIComponent("Choose Fly Analysis or Acceleration Analysis.")}`,
+    );
+  }
+
+  const config = ANALYSIS_TYPE_CONFIG[analysisType];
+  const supabase = await createClient();
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("id, name")
+    .eq("id", id)
+    .single();
+  if (!session) redirect("/dashboard");
+  const { error } = await supabase
+    .from("sessions")
+    .update({
+      analysis_type: analysisType,
+      benchmark_id: config.benchmarkId,
+      // Acceleration's test title is canonical; fly keeps the coach/file name.
+      name:
+        analysisType === "acceleration"
+          ? config.displayTitle
+          : session.name === ANALYSIS_TYPE_CONFIG.acceleration.displayTitle
+            ? null
+            : session.name,
+    })
+    .eq("id", id);
+
+  if (error) redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  revalidatePath(`/sessions/${id}`);
+}
 
 /**
  * Rename a session (sets the editable display `name`). RLS scopes the update to
@@ -111,10 +150,15 @@ export async function queueAnalysis(formData: FormData) {
   // Ownership check: RLS returns the row only if the coach owns the athlete.
   const { data: session } = await supabase
     .from("sessions")
-    .select("id")
+    .select("id, analysis_type")
     .eq("id", id)
     .single();
   if (!session) redirect("/dashboard");
+  if (!isAnalysisType(session.analysis_type)) {
+    redirect(
+      `/sessions/${id}?error=${encodeURIComponent("Select an analysis type before running analysis.")}`,
+    );
+  }
 
   // Don't queue a second analysis while one is already in flight.
   const { data: active } = await supabase
@@ -270,7 +314,10 @@ const manualCalibrationSchema = z
     calibration_point_b_time_s: gateTime,
   })
   .superRefine((v, ctx) => {
-    if (v.calibration_point_ax === v.calibration_point_bx && v.calibration_point_ay === v.calibration_point_by) {
+    if (
+      v.calibration_point_ax === v.calibration_point_bx &&
+      v.calibration_point_ay === v.calibration_point_by
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "The two calibration points must be different.",

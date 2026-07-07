@@ -42,6 +42,7 @@ const ANALYSIS_ID = "33333333-3333-4333-8333-333333333333";
 // The permanent AVA Calab Vid 1 (VueMotion 20 m) benchmark reference. Mirrors
 // migrations 0009 + 0010; kept here so the seed can re-assert it idempotently.
 const BENCHMARK_ID = "44444444-4444-4444-8444-444444444444";
+const ACCEL_BENCHMARK_ID = "55555555-5555-4555-8555-555555555555";
 const BENCHMARK_REFERENCE = {
   zoneTimeS: 1.93,
   avgVelocityMps: 10.36,
@@ -184,6 +185,24 @@ async function main() {
     );
     if (error) throw new Error(`benchmarks upsert: ${error.message}`);
     log("benchmark upserted (AVA Calab Vid 1 — permanent reference)");
+
+    const { error: accelError } = await supabase.from("benchmarks").upsert(
+      {
+        id: ACCEL_BENCHMARK_ID,
+        name: "AVA Accel Test",
+        source: "IMG_1961.MOV",
+        source_video_name: "IMG_1961.MOV",
+        kind: "0–20m acceleration",
+        analysis_type: "acceleration",
+        distance_m: 20,
+        reference_metrics: {},
+        notes:
+          "Acceleration-mode wiring benchmark sourced from IMG_1961.MOV. Metric reference values intentionally pending acceleration-specific validation.",
+      },
+      { onConflict: "id" },
+    );
+    if (accelError) throw new Error(`acceleration benchmark upsert: ${accelError.message}`);
+    log("benchmark upserted (AVA Accel Test — IMG_1961.MOV)");
   }
 
   // profiles: a row is auto-created by the on-signup trigger; make sure the dev

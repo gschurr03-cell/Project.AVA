@@ -67,6 +67,9 @@ export default function VideoUpload({ athleteId }: { athleteId: string }) {
       created_by: user.id,
       video_path: path,
       original_filename: file.name,
+      // Mode is intentionally selected from the opened video card before the
+      // first analysis, rather than being silently chosen during upload.
+      analysis_type: null,
       status: "uploaded",
     });
 

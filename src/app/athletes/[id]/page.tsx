@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
+import { analysisTypeConfig } from "@/lib/analysisTypes";
 import {
   PROFILE_FIELDS,
   formatProfileValue,
@@ -54,7 +55,7 @@ export default async function AthletePage({
 
   const { data: sessions } = await supabase
     .from("sessions")
-    .select("id, name, original_filename, video_path, status, created_at")
+    .select("id, name, original_filename, video_path, status, created_at, analysis_type")
     .eq("athlete_id", athlete.id)
     .order("created_at", { ascending: false });
 
@@ -67,8 +68,12 @@ export default async function AthletePage({
       </Link>
 
       <div className="mb-6 mt-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#D72638]">Athlete</p>
-        <h1 className="mt-1 text-3xl font-bold tracking-tight text-[#F5F5F7]">{athlete.full_name}</h1>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#D72638]">
+          Athlete
+        </p>
+        <h1 className="mt-1 text-3xl font-bold tracking-tight text-[#F5F5F7]">
+          {athlete.full_name}
+        </h1>
         <p className="mt-1 text-sm text-[#6B7280]">
           Athlete dashboard, session history, and progress tracking.
         </p>
@@ -101,7 +106,9 @@ export default async function AthletePage({
         </div>
 
         <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">Sessions</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+            Sessions
+          </p>
           <p className="mt-2 text-3xl font-bold text-[#F5F5F7]">{sessionCount}</p>
           <p className="mt-1 text-xs text-[#6B7280]">Total uploaded</p>
         </div>
@@ -140,7 +147,10 @@ export default async function AthletePage({
           {hasAnyProfile ? (
             <dl className="mb-6 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-3">
               {PROFILE_FIELDS.map((def) => (
-                <div key={def.key} className="flex justify-between gap-2 border-b border-white/[0.06] py-1">
+                <div
+                  key={def.key}
+                  className="flex justify-between gap-2 border-b border-white/[0.06] py-1"
+                >
                   <dt className="text-[#6B7280]">{def.label}</dt>
                   <dd className="font-medium text-[#F5F5F7]">
                     {formatProfileValue(profileValues[def.key], def.unit)}
@@ -150,8 +160,8 @@ export default async function AthletePage({
             </dl>
           ) : (
             <p className="mb-6 text-sm text-[#6B7280]">
-              No profile details yet. Add them below to have them on hand for upcoming calibration and
-              PB-prediction features.
+              No profile details yet. Add them below to have them on hand for upcoming calibration
+              and PB-prediction features.
             </p>
           )}
 
@@ -166,7 +176,8 @@ export default async function AthletePage({
           AVA now tracks trusted-only outputs (AVA Performance Score, top speed, average velocity,
           peak stride length, frequency, stride retention). These are computed live per session and
           aren&apos;t yet stored across sessions, so athlete-level trends will appear once trusted
-          metrics are persisted. Ground contact and flight time are not trusted yet and are excluded.
+          metrics are persisted. Ground contact and flight time are not trusted yet and are
+          excluded.
         </p>
       </section>
 
@@ -188,6 +199,11 @@ export default async function AthletePage({
                   <span className="block truncate font-semibold text-[#F5F5F7]">
                     {sessionDisplayName(s)}
                   </span>
+                  {s.analysis_type === "acceleration" && (
+                    <span className="mt-1 block text-xs text-[#D4AF37]">
+                      {analysisTypeConfig(s.analysis_type).analysisTitle}
+                    </span>
+                  )}
                   <span className="mt-2 flex items-center gap-2 text-xs text-[#6B7280]">
                     <span className="rounded border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[#A0A2A8]">
                       {STATUS_LABELS[s.status] ?? s.status}

@@ -12,6 +12,7 @@ export type Database = {
       benchmarks: {
         Row: {
           created_at: string
+          analysis_type: Database["public"]["Enums"]["sprint_analysis_type"]
           distance_m: number | null
           id: string
           kind: string | null
@@ -19,9 +20,11 @@ export type Database = {
           notes: string | null
           reference_metrics: Json
           source: string | null
+          source_video_name: string | null
         }
         Insert: {
           created_at?: string
+          analysis_type?: Database["public"]["Enums"]["sprint_analysis_type"]
           distance_m?: number | null
           id?: string
           kind?: string | null
@@ -29,9 +32,11 @@ export type Database = {
           notes?: string | null
           reference_metrics?: Json
           source?: string | null
+          source_video_name?: string | null
         }
         Update: {
           created_at?: string
+          analysis_type?: Database["public"]["Enums"]["sprint_analysis_type"]
           distance_m?: number | null
           id?: string
           kind?: string | null
@@ -39,6 +44,7 @@ export type Database = {
           notes?: string | null
           reference_metrics?: Json
           source?: string | null
+          source_video_name?: string | null
         }
         Relationships: []
       }
@@ -171,6 +177,8 @@ export type Database = {
       }
       sessions: {
         Row: {
+          analysis_type:
+            Database["public"]["Enums"]["sprint_analysis_type"] | null
           athlete_id: string
           benchmark_id: string | null
           calibration_gates: Json | null
@@ -203,6 +211,8 @@ export type Database = {
           width: number | null
         }
         Insert: {
+          analysis_type?:
+            Database["public"]["Enums"]["sprint_analysis_type"] | null
           athlete_id: string
           benchmark_id?: string | null
           calibration_gates?: Json | null
@@ -235,6 +245,8 @@ export type Database = {
           width?: number | null
         }
         Update: {
+          analysis_type?:
+            Database["public"]["Enums"]["sprint_analysis_type"] | null
           athlete_id?: string
           benchmark_id?: string | null
           calibration_gates?: Json | null
@@ -299,6 +311,7 @@ export type Database = {
     }
     Enums: {
       analysis_status: "queued" | "running" | "complete" | "failed"
+      sprint_analysis_type: "fly" | "acceleration"
       session_status:
         | "uploaded"
         | "queued"
@@ -724,4 +737,3 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
     ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
-
