@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { analysisMetricsSchema, type AnalysisMetrics } from "@/lib/biomechanics/types";
+import { analysisMetricsSchema } from "@/lib/biomechanics/types";
 import {
   ANALYSIS_STATUS_LABELS,
   formatBytes,
@@ -11,10 +11,6 @@ import {
   STATUS_LABELS,
 } from "@/lib/sessions";
 import { deleteSession, queueAnalysis, renameSession } from "@/app/sessions/actions";
-import { generateCoachingReport } from "@/lib/coaching/report";
-import { compareCoachingReports } from "@/lib/coaching/comparison";
-import { buildRecommendations } from "@/lib/coaching/recommendations";
-import type { CoachingComparisonReport } from "@/lib/coaching/types";
 import VideoPlayer from "@/components/VideoPlayer";
 import { buildTimelineMarkersFromMetrics } from "@/lib/biomechanics/video/timelineMarkers";
 import OverlayVideoPlayer from "@/components/video/OverlayVideoPlayer";
@@ -34,14 +30,13 @@ import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
 import { deriveLimitingFactors } from "@/lib/intelligence/limitingFactors";
 import { buildTrustedMetrics } from "@/lib/intelligence/trustedMetrics";
+import { calculateAvaPerformanceScore } from "@/lib/intelligence/performanceScore";
 import { evaluateTrochanterStepLength } from "@/lib/intelligence/trochanterOptimizer";
 import MetricsPanel from "./MetricsPanel";
-import InsightPanel from "./InsightPanel";
-import RecommendationsPanel from "./RecommendationsPanel";
 import CalibrationPanel from "./CalibrationPanel";
-import PerformancePredictionPanel from "./PerformancePredictionPanel";
 import PhaseTimelinePanel from "./PhaseTimelinePanel";
 import AvaIntelligencePanel from "./AvaIntelligencePanel";
+import AvaPerformanceScoreCard from "./AvaPerformanceScoreCard";
 import PerformancePotentialCard from "./PerformancePotentialCard";
 import UnlockSimulatorCard from "./UnlockSimulatorCard";
 import CalibrationControlsForm from "./CalibrationControlsForm";
@@ -56,16 +51,6 @@ import { buildRecordingQuality, summarisePoseQuality } from "@/lib/recording/qua
 /** Pull a calibrated measurement value by key from a calibration report. */
 function calibratedValue(report: CalibrationReport | null, key: string): number | null {
   return report?.measurements.find((m) => m.key === key)?.value ?? null;
-}
-
-/** Map validated analysis metrics onto the coaching engine's metric keys. */
-function toCoachingMetrics(data: AnalysisMetrics) {
-  return {
-    stepFrequency: data.strideFrequencyHz,
-    groundContactTime: data.groundContactTimeMs,
-    flightTime: data.flightTimeMs,
-    strideLength: data.avgStrideLengthM,
-  };
 }
 
 /**
@@ -122,16 +107,6 @@ export default async function SessionPage({
   // a graceful fallback rather than crashing the page.
   const parsedMetrics =
     analysis?.status === "complete" ? analysisMetricsSchema.safeParse(analysis.metrics) : null;
-
-  // Coaching insights now come from the reusable engine, not the panel.
-  const coachingReport = parsedMetrics?.success
-    ? generateCoachingReport(toCoachingMetrics(parsedMetrics.data), analysis?.id)
-    : null;
-
-  // Deterministic training recommendations derived from the same metrics.
-  const recommendations = parsedMetrics?.success
-    ? buildRecommendations(toCoachingMetrics(parsedMetrics.data))
-    : null;
 
   // Step/contact markers for the video timeline. Empty until metrics carry
   // per-event timestamps; built here so the prop path is ready.
@@ -382,31 +357,22 @@ export default async function SessionPage({
   // Day 80: pass leg length so the step-length factor is framed by trochanter ratio.
   const diagnosis = trusted ? deriveLimitingFactors(trusted, { legLengthCm }) : null;
 
-  // Progress tracking: compare against this athlete's previous completed
-  // analysis (any earlier session). Read-only, non-mutating, RLS-scoped.
-  let comparisonReport: CoachingComparisonReport | null = null;
-  if (coachingReport && analysis) {
-    const { data: previousAnalysis } = await supabase
-      .from("analyses")
-      .select("id, metrics, created_at, sessions!inner(athlete_id)")
-      .eq("sessions.athlete_id", session.athlete_id)
-      .eq("status", "complete")
-      .lt("created_at", analysis.created_at)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+  // AVA Performance Score (Day 84): a single trusted-only 0–100 score. Uses ONLY
+  // trusted metrics + recording quality — never ground contact / flight time / raw
+  // frequency. Unavailable (not a fake 0) until a calibrated run exists.
+  const performanceScore = trusted
+    ? calculateAvaPerformanceScore({
+        topSpeedMps: trusted.topSpeedMps,
+        avgVelocityMps: trusted.avgVelocityMps,
+        frequencyHz: trusted.frequencyHz,
+        avgStrideLengthM: trusted.avgStrideLengthM,
+        peakStrideLengthM: trusted.peakStrideLengthM,
+        strideRetentionPct: trusted.strideRetentionPct,
+        legLengthCm,
+        recordingQualityScore: recordingQuality?.score ?? null,
+      })
+    : null;
 
-    if (previousAnalysis) {
-      const parsedPrevious = analysisMetricsSchema.safeParse(previousAnalysis.metrics);
-      if (parsedPrevious.success) {
-        const previousReport = generateCoachingReport(
-          toCoachingMetrics(parsedPrevious.data),
-          previousAnalysis.id,
-        );
-        comparisonReport = compareCoachingReports(coachingReport, previousReport);
-      }
-    }
-  }
 
   const analysisComplete = analysis?.status === "complete";
   const metricsReady = analysisComplete && parsedMetrics?.success;
@@ -543,6 +509,9 @@ export default async function SessionPage({
         {/* E. Analysis content — diagnosis-first: lead with the limiting factors. */}
         {metricsReady ? (
           <div className="space-y-6">
+            {/* Trusted-only headline score. */}
+            {performanceScore && <AvaPerformanceScoreCard result={performanceScore} />}
+
             {/* PRIMARY FEATURE: the ranked limiting-factor diagnosis. */}
             {intelligence && diagnosis && (
               <AvaIntelligencePanel report={intelligence} diagnosis={diagnosis} />
@@ -576,7 +545,7 @@ export default async function SessionPage({
                 <span className="inline-block text-[#D72638] transition group-open:rotate-90">▸</span>
                 Detailed Systems
                 <span className="text-xs font-normal text-[#6B7280]">
-                  calibration, phases, prediction &amp; coaching detail
+                  calibration &amp; sprint phases
                 </span>
               </summary>
               <div className="mt-5 space-y-4">
@@ -590,11 +559,12 @@ export default async function SessionPage({
                   zoneDistanceM={session.calibration_zone_distance_m ?? null}
                 />
                 {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
-                {prediction && <PerformancePredictionPanel prediction={prediction} />}
-                {coachingReport && (
-                  <InsightPanel report={coachingReport} comparison={comparisonReport} />
-                )}
-                {recommendations && <RecommendationsPanel recommendations={recommendations} />}
+                {/* Race-time prediction removed for now — deriving 60/100/200 m from
+                    peak velocity alone isn't trustworthy. Coming soon (see
+                    PerformancePotentialCard TODO). The coaching-report / raw-metric /
+                    recommendation panels are also withheld: they were built on the
+                    not-yet-trusted temporal metrics (ground contact, flight time) and
+                    the raw worker frequency. The engines still run internally. */}
               </div>
             </details>
 

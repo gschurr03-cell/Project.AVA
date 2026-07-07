@@ -76,11 +76,11 @@ try {
   check("stride shows an IMPACT BAND (High) not an exact m/s", byKey(d, "stepLength").impactBand === "high");
   check("Top Speed is an OUTCOME with no gain + no impact band", byKey(d, "topSpeed").isOutcome === true && byKey(d, "topSpeed").estimatedVelocityGainMps === null && byKey(d, "topSpeed").impactBand === null);
 
-  // Performance Potential: based on TRUSTED top speed, diminishing returns.
+  // Performance Velocity Estimation: practice top speed × a conservative 2–3% uplift.
   const p = d.potential;
-  check("potential base = trusted top speed (10.78)", near(p.currentTopSpeedMps, 10.78));
-  check("achievable > current and % > 0 (estimate)", p.available && p.achievableTopSpeedMps > p.currentTopSpeedMps && p.percentImprovement > 0);
-  check("only trusted LEVERS applied (1: stride length; frequency elite)", p.factorsApplied === 1);
+  check("velocity estimate base = trusted practice top speed (10.78)", near(p.practiceTopSpeedMps, 10.78));
+  check("meet range = practice × 1.02–1.03 (≈ 11.00–11.10)", near(p.meetLowMps, 10.78 * 1.02, 0.01) && near(p.meetHighMps, 10.78 * 1.03, 0.01));
+  check("meet estimate is realistic (≤ +3%, no impossible jump)", p.meetHighMps <= p.practiceTopSpeedMps * 1.03 + 1e-9 && p.achievableTopSpeedMps === undefined);
 
   // (2) Frequency deficit → appears once, labelled "Frequency" in Hz, from trusted.
   const dFreq = deriveLimitingFactors(trusted({ frequencyHz: 4.4 }));
@@ -119,7 +119,7 @@ try {
   check("all-elite → mode is 'unlocks'", dElite.mode === "unlocks");
   check("all-elite → every surfaced factor is at/above elite", dElite.factors.every((f) => f.belowElite === false));
   check("all-elite → ranked by smallest margin first", dElite.factors[0].marginPct <= dElite.factors[1].marginPct && dElite.factors[1].marginPct <= dElite.factors[2].marginPct);
-  check("all-elite → potential available, 0 levers applied, ~0% ", dElite.potential.available && dElite.potential.factorsApplied === 0 && dElite.potential.percentImprovement === 0);
+  check("all-elite → velocity estimate still practice × 1.02–1.03", dElite.potential.available && near(dElite.potential.meetLowMps, 12.0 * 1.02, 0.01) && near(dElite.potential.meetHighMps, 12.0 * 1.03, 0.01));
 
   // (4) No top speed → potential unavailable but factors still rank.
   const dNoTop = deriveLimitingFactors(trusted({ topSpeedMps: null, avgVelocityMps: null }));

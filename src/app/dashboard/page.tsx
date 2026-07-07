@@ -2,16 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { summarizeAthlete, type TrendDirection } from "@/lib/coaching/trends";
 import { logout } from "@/app/login/actions";
 import { createAthlete } from "./actions";
-
-const TREND_CHIP: Record<TrendDirection, { chip: string; arrow: string; label: string }> = {
-  improving: { chip: "border border-[#D4AF37]/40 bg-[#D4AF37]/12 text-[#E4C25A]", arrow: "↑", label: "Improving" },
-  declining: { chip: "border border-[#FF3B30]/40 bg-[#FF3B30]/12 text-[#FF7A70]", arrow: "↓", label: "Declining" },
-  plateauing: { chip: "border border-white/10 bg-white/[0.05] text-[#A0A2A8]", arrow: "→", label: "Plateauing" },
-  insufficient: { chip: "border border-white/10 bg-white/[0.05] text-[#6B7280]", arrow: "·", label: "No trend yet" },
-};
 
 /** Extract the joined athlete_id whether Supabase returns it as an object or array. */
 function analysisAthleteId(row: { sessions: unknown }): string | null {
@@ -111,36 +103,22 @@ export default async function DashboardPage({
       {athletes && athletes.length > 0 ? (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {athletes.map((a) => {
-            const snapshot = summarizeAthlete(byAthlete.get(a.id) ?? []);
-            const trend = TREND_CHIP[snapshot.techniqueTrend.direction];
+            // Trusted scoring is per-session (live), so the dashboard shows the factual
+            // analyzed-session count rather than the legacy untrusted Technique Score.
+            const analyzedCount = byAthlete.get(a.id)?.length ?? 0;
             return (
               <li key={a.id}>
                 <Link
                   href={`/athletes/${a.id}`}
                   className="block rounded-xl border border-white/[0.06] bg-[#19191C] p-4 transition hover:border-[#D72638]/40 hover:bg-[#202024]"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-semibold text-[#F5F5F7]">{a.full_name}</span>
-                    <span className={`rounded px-2 py-0.5 text-xs font-semibold ${trend.chip}`}>
-                      {trend.arrow} {trend.label}
-                    </span>
-                  </div>
+                  <span className="font-semibold text-[#F5F5F7]">{a.full_name}</span>
 
-                  {snapshot.sessionsAnalyzed > 0 ? (
-                    <div className="mt-3 flex items-end gap-4">
-                      <div>
-                        <p className="text-2xl font-bold text-[#F5F5F7]">{snapshot.latestTechnique}</p>
-                        <p className="text-[11px] uppercase tracking-wide text-[#6B7280]">
-                          Technique score
-                        </p>
-                      </div>
-                      <p className="pb-1 text-xs text-[#6B7280]">
-                        {snapshot.sessionsAnalyzed} session{snapshot.sessionsAnalyzed === 1 ? "" : "s"} analyzed
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-xs text-[#6B7280]">No analyzed sessions yet.</p>
-                  )}
+                  <p className="mt-3 text-xs text-[#6B7280]">
+                    {analyzedCount > 0
+                      ? `${analyzedCount} session${analyzedCount === 1 ? "" : "s"} analyzed — open for AVA Performance Score`
+                      : "No analyzed sessions yet."}
+                  </p>
 
                   <span className="mt-3 block text-xs text-[#6B7280]">
                     Added {new Date(a.created_at).toLocaleDateString()}

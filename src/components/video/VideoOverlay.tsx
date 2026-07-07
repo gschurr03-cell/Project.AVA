@@ -557,6 +557,27 @@ export default function VideoOverlay({
       // athlete runs on (and moves with the ground under Auto Follow). Indices and
       // the connecting path are hidden behind debug mode. A contact appears once
       // playback reaches it and disappears again on rewind. ---
+      // Calibrated measurement zone (world-x bounds). Mirrors computeSprintMeasurements'
+      // gate math EXACTLY — the SAME reduced gate midpoints (manual calibration points)
+      // and the SAME camera-offset world-x (frameX + offset at placement time). Used
+      // ONLY to decide whether a stride-length LABEL is drawn: the foot-contact marker,
+      // its position/appearance, and every calculation are untouched. Null when there is
+      // no calibrated zone, in which case labels render exactly as before.
+      const zonePts = calibrationRef.current;
+      const zoneWorldX = (frameX: number, timeS: number | null | undefined): number =>
+        cameraTrack.available && timeS != null ? frameX + cameraOffsetAtTime(cameraTrack, timeS).x : frameX;
+      const zoneMinX = zonePts
+        ? Math.min(zoneWorldX(zonePts.ax, zonePts.aTimeS), zoneWorldX(zonePts.bx, zonePts.bTimeS))
+        : null;
+      const zoneMaxX = zonePts
+        ? Math.max(zoneWorldX(zonePts.ax, zonePts.aTimeS), zoneWorldX(zonePts.bx, zonePts.bTimeS))
+        : null;
+      const labelInZone = (m: { x: number; time: number }): boolean => {
+        if (zoneMinX == null || zoneMaxX == null) return true; // no calibrated zone → unchanged
+        const wx = m.x + cameraOffsetAtTime(cameraTrack, m.time).x;
+        return wx >= zoneMinX - 1e-9 && wx <= zoneMaxX + 1e-9;
+      };
+
       if (show.stepMarks && stepMarks.length) {
         const reached = stepMarks.filter((m) => m.time <= currentTime + 1e-3);
 
@@ -595,10 +616,16 @@ export default function VideoOverlay({
           // this contact's ground spot — the ONLY text on a step in normal mode.
           // Real metres when calibrated; a relative estimate only in debug mode.
           // Never a contact/flight time. Drawn in a smaller font to stay unobtrusive.
+          //
+          // Show the numeric stride label ONLY for contacts INSIDE the calibrated zone
+          // (the ones trusted metrics actually use). Out-of-zone contacts keep their
+          // marker but drop the label — label-only, no effect on position or math.
           const meters = mark.distanceMetersFromPrev;
           ctx.font = STEP_LABEL_FONT;
           if (meters != null) {
-            placeLabel(ctx, `${meters.toFixed(2)} m`, p.x + 6, p.y + 10, color, placedLabels);
+            if (labelInZone(mark)) {
+              placeLabel(ctx, `${meters.toFixed(2)} m`, p.x + 6, p.y + 10, color, placedLabels);
+            }
           } else if (show.debug && mark.distanceFromPrev != null) {
             placeLabel(ctx, `≈${mark.distanceFromPrev.toFixed(2)} rel`, p.x + 6, p.y + 10, color, placedLabels);
           }

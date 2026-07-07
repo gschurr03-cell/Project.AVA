@@ -116,10 +116,6 @@ const TRUSTED_FACTOR_DEFS: TrustedFactorDef[] = [
   },
 ];
 
-const CONF_ORDER: IntelligenceConfidence[] = ["low", "medium", "high"];
-const downgrade = (c: IntelligenceConfidence): IntelligenceConfidence =>
-  CONF_ORDER[Math.max(0, CONF_ORDER.indexOf(c) - 1)];
-
 /** One customer-facing factor, ready to render. */
 export interface LimitingFactor {
   rank: number; // 1 = biggest limiter / closest unlock
@@ -187,18 +183,33 @@ interface FactorTarget {
   review: boolean;
 }
 
-/** Top-speed headroom from correcting the trusted levers. */
+/**
+ * Performance Velocity Estimation (Day 83). A CONSERVATIVE, realistic estimate of
+ * theoretical meet top velocity: practice peak velocity plus a 2–3% meet-performance
+ * uplift. This deliberately replaces the old "achievable top speed" model, which
+ * blended lever gains and could imply impossible +2 m/s jumps. NOT a race-time
+ * prediction.
+ *
+ * TODO (future race prediction): model 0–20 m acceleration, max velocity, and speed
+ * maintenance separately — do not derive 100 m / 200 m times from peak velocity alone.
+ */
 export interface PerformancePotential {
   available: boolean;
-  currentTopSpeedMps: number | null;
-  achievableTopSpeedMps: number | null;
-  percentImprovement: number | null;
-  /** How many trusted LEVERS were below elite and contributed a gain. */
-  factorsApplied: number;
-  confidence: IntelligenceConfidence | null;
+  /** Trusted practice peak velocity (m/s). */
+  practiceTopSpeedMps: number | null;
+  /** Low end of the estimated meet velocity range = practice × 1.02. */
+  meetLowMps: number | null;
+  /** High end of the estimated meet velocity range = practice × 1.03. */
+  meetHighMps: number | null;
   /** Plain-language basis (always present). */
   basis: string;
 }
+
+/** Conservative meet-performance uplift applied to practice peak velocity. */
+const MEET_UPLIFT_LOW = 1.02;
+const MEET_UPLIFT_HIGH = 1.03;
+const PERFORMANCE_VELOCITY_BASIS =
+  "Based on practice peak velocity plus a conservative 2–3% meet-performance uplift. This is not a full race-time prediction.";
 
 export interface LimitingFactorDiagnosis {
   available: boolean;
@@ -207,11 +218,6 @@ export interface LimitingFactorDiagnosis {
   potential: PerformancePotential;
   confidence: IntelligenceConfidence;
 }
-
-const POTENTIAL_BASIS_ESTIMATE =
-  "Estimate from the sprint identity top speed = step length × frequency, based on your trusted top speed. It projects the gain from reaching elite step length and frequency, blended with diminishing returns — a target, not a guarantee.";
-const POTENTIAL_BASIS_ELITE =
-  "Your trusted step length and frequency are already at elite — maintain them to hold this top speed.";
 
 function fmt(value: number, unit: string): string {
   if (unit === "ms" || unit === "°") return `${Math.round(value)} ${unit}`;
@@ -384,34 +390,24 @@ export function deriveLimitingFactors(
   top.forEach((s, i) => (s.factor.rank = i + 1));
   const factors = top.map((s) => s.factor);
 
-  // Performance Potential: base = trusted top speed; blend the LEVER gains (frequency
-  // + step length) with diminishing returns. Outcomes never contribute.
-  const leverGains = scored
-    .filter((s) => s.def.kind === "lever" && s.leverGainMps > 0)
-    .map((s) => s.leverGainMps);
-
+  // Performance Velocity Estimation: conservative meet uplift on the trusted practice
+  // peak velocity (2–3%). No lever blending — that could imply impossible jumps.
   let potential: PerformancePotential;
   if (topSpeedBase != null && topSpeedBase > 0) {
-    const blended = 1 - leverGains.reduce((acc, g) => acc * (1 - g / topSpeedBase), 1);
-    const achievable = topSpeedBase * (1 + blended);
     potential = {
       available: true,
-      currentTopSpeedMps: Number(topSpeedBase.toFixed(2)),
-      achievableTopSpeedMps: Number(achievable.toFixed(2)),
-      percentImprovement: Number((blended * 100).toFixed(1)),
-      factorsApplied: leverGains.length,
-      confidence: downgrade(stepLengthConf),
-      basis: leverGains.length > 0 ? POTENTIAL_BASIS_ESTIMATE : POTENTIAL_BASIS_ELITE,
+      practiceTopSpeedMps: Number(topSpeedBase.toFixed(2)),
+      meetLowMps: Number((topSpeedBase * MEET_UPLIFT_LOW).toFixed(2)),
+      meetHighMps: Number((topSpeedBase * MEET_UPLIFT_HIGH).toFixed(2)),
+      basis: PERFORMANCE_VELOCITY_BASIS,
     };
   } else {
     potential = {
       available: false,
-      currentTopSpeedMps: null,
-      achievableTopSpeedMps: null,
-      percentImprovement: null,
-      factorsApplied: 0,
-      confidence: null,
-      basis: "Calibrate a timing zone to measure top speed, then AVA can project achievable top speed.",
+      practiceTopSpeedMps: null,
+      meetLowMps: null,
+      meetHighMps: null,
+      basis: "Calibrate a timing zone to measure top speed, then AVA can estimate meet velocity.",
     };
   }
 

@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { buildAthleteHistory } from "@/lib/coaching/athlete";
-import { buildAthleteTrends, analyzeTrend, type TrendDirection } from "@/lib/coaching/trends";
-import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { createClient } from "@/lib/supabase/server";
 import { sessionDisplayName, STATUS_LABELS } from "@/lib/sessions";
 import {
@@ -12,68 +9,16 @@ import {
   type AthleteProfileValues,
 } from "@/lib/athletes/profile";
 import AthleteProfileForm from "./AthleteProfileForm";
-import TrainingFocusPanel from "./TrainingFocusPanel";
 import VideoUpload from "./VideoUpload";
 
-function formatScore(value: number | null) {
-  return value == null ? "—" : String(value);
-}
-
-function formatChange(value: number | null) {
-  if (value == null) return "No previous session";
-  if (value === 0) return "No change";
-  return `${value > 0 ? "+" : ""}${value} since last`;
-}
-
-function formatTrendNumber(value: number) {
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
-}
-
-const TREND_STYLE: Record<TrendDirection, { chip: string; arrow: string }> = {
-  improving: { chip: "border border-[#D4AF37]/40 bg-[#D4AF37]/12 text-[#E4C25A]", arrow: "↑" },
-  declining: { chip: "border border-[#FF3B30]/40 bg-[#FF3B30]/12 text-[#FF7A70]", arrow: "↓" },
-  plateauing: { chip: "border border-white/10 bg-white/[0.05] text-[#A0A2A8]", arrow: "→" },
-  insufficient: { chip: "border border-white/10 bg-white/[0.05] text-[#6B7280]", arrow: "·" },
-};
-
 /**
- * Trend card (Day 76): the latest value plus a MEANINGFUL read — direction, rate,
- * and confidence — from {@link analyzeTrend}, not just a raw first→latest delta.
+ * The legacy Technique Score (and its trends) was built on the coaching engine, which
+ * consumes not-yet-trusted temporal metrics (ground contact, flight time) and the raw
+ * worker frequency. It has been replaced by the trusted-only AVA Performance Score,
+ * which is computed LIVE per session from calibrated metrics. Historical analyses
+ * don't yet persist trusted metrics, so the athlete-level score/trends honestly show
+ * "Not enough trusted data" — open a session for its AVA Performance Score.
  */
-function TrendCard({
-  title,
-  values,
-  unit,
-  higherIsBetter,
-}: {
-  title: string;
-  values: number[];
-  unit?: string;
-  higherIsBetter: boolean;
-}) {
-  const latest = values[values.length - 1];
-  const signal = analyzeTrend(values, { higherIsBetter, unit });
-  const style = TREND_STYLE[signal.direction];
-
-  return (
-    <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">{title}</p>
-        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${style.chip}`}>
-          {style.arrow} {signal.direction}
-        </span>
-      </div>
-      <p className="mt-2 text-3xl font-bold text-[#F5F5F7]">
-        {formatTrendNumber(latest)}
-        {unit ? <span className="ml-1 text-base font-medium text-[#6B7280]">{unit}</span> : null}
-      </p>
-      <p className="mt-1 text-xs text-[#A0A2A8]">{signal.summary}</p>
-      {signal.direction !== "insufficient" && (
-        <p className="mt-0.5 text-[11px] text-[#6B7280]">{signal.confidence} confidence · {values.length} sessions</p>
-      )}
-    </div>
-  );
-}
 
 export default async function AthletePage({
   params,
@@ -113,30 +58,7 @@ export default async function AthletePage({
     .eq("athlete_id", athlete.id)
     .order("created_at", { ascending: false });
 
-  const { data: completedAnalyses } = await supabase
-    .from("analyses")
-    .select("id, metrics, created_at, sessions!inner(athlete_id)")
-    .eq("status", "complete")
-    .eq("sessions.athlete_id", athlete.id)
-    .order("created_at", { ascending: false })
-    .limit(10);
-
-  const { summary: history } = buildAthleteHistory(
-    completedAnalyses ?? [],
-  );
-
-  const trends = buildAthleteTrends(completedAnalyses ?? []);
-
-  const trainingFocus = buildTrainingFocus(completedAnalyses ?? []);
-
-  const trend =
-    history.techniqueChange == null
-      ? "—"
-      : history.improving
-        ? "Improving"
-        : history.techniqueChange < 0
-          ? "Declining"
-          : "Stable";
+  const sessionCount = sessions?.length ?? 0;
 
   return (
     <main className="ava-carbon mx-auto min-h-screen max-w-5xl p-8">
@@ -166,49 +88,22 @@ export default async function AthletePage({
         </p>
       )}
 
-      <section className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">Latest Score</p>
-          <p className="mt-2 text-3xl font-bold text-[#E4C25A]">
-            {formatScore(history.latestTechniqueScore)}
+      <section className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4 sm:col-span-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+            AVA Performance Score
           </p>
-          <p className="mt-1 text-xs text-[#6B7280]">{formatChange(history.techniqueChange)}</p>
-        </div>
-
-        <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">Average Score</p>
-          <p className="mt-2 text-3xl font-bold text-[#F5F5F7]">
-            {formatScore(history.averageTechniqueScore)}
+          <p className="mt-2 text-2xl font-bold text-[#A0A2A8]">Not enough trusted data</p>
+          <p className="mt-1 text-xs text-[#6B7280]">
+            The trusted-only score is computed live per session. Open a session to see its AVA
+            Performance Score.
           </p>
-          <p className="mt-1 text-xs text-[#6B7280]">Last {history.totalSessions} analyzed</p>
-        </div>
-
-        <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">Best Score</p>
-          <p className="mt-2 text-3xl font-bold text-[#F5F5F7]">
-            {formatScore(history.bestTechniqueScore)}
-          </p>
-          <p className="mt-1 text-xs text-[#6B7280]">Personal best analysis</p>
         </div>
 
         <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">Sessions</p>
-          <p className="mt-2 text-3xl font-bold text-[#F5F5F7]">{sessions?.length ?? 0}</p>
+          <p className="mt-2 text-3xl font-bold text-[#F5F5F7]">{sessionCount}</p>
           <p className="mt-1 text-xs text-[#6B7280]">Total uploaded</p>
-        </div>
-
-        <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">Trend</p>
-          <p className="mt-2 text-2xl font-bold text-[#F5F5F7]">
-            {history.techniqueChange == null
-              ? "—"
-              : history.improving
-                ? "Improving"
-                : history.techniqueChange < 0
-                  ? "Declining"
-                  : "Stable"}
-          </p>
-          <p className="mt-1 text-xs text-[#6B7280]">Latest vs previous</p>
         </div>
       </section>
 
@@ -265,50 +160,14 @@ export default async function AthletePage({
       </details>
 
       <section className="mb-8 rounded-2xl border border-white/[0.06] bg-[#121214]/95 p-5">
-        <h2 className="mb-3 text-lg font-semibold text-[#F5F5F7]">Recent Progress</h2>
-        {history.totalSessions > 0 ? (
-          <ul className="divide-y divide-white/[0.06]">
-            {[
-              ["Latest technique score", formatScore(history.latestTechniqueScore)],
-              ["Average technique score", formatScore(history.averageTechniqueScore)],
-              ["Best technique score", formatScore(history.bestTechniqueScore)],
-              ["Sessions analyzed", String(history.totalSessions)],
-              ["Current trend", trend],
-            ].map(([label, value]) => (
-              <li key={label} className="flex items-center justify-between py-2">
-                <span className="flex items-center gap-2 text-sm text-[#A0A2A8]">
-                  <span className="text-[#E4C25A]">✓</span>
-                  {label}
-                </span>
-                <span className="text-sm font-semibold text-[#F5F5F7]">{value}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-[#6B7280]">
-            No analyzed sessions yet. Upload and analyze a sprint to start tracking progress.
-          </p>
-        )}
-      </section>
-
-      <section className="mb-8">
-        <h2 className="mb-3 text-lg font-semibold text-[#F5F5F7]">Performance Trends</h2>
-        {trends.techniqueScores.length >= 2 ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <TrendCard title="Technique Score" values={trends.techniqueScores} higherIsBetter />
-            <TrendCard title="Ground Contact" values={trends.groundContactTimes} unit="ms" higherIsBetter={false} />
-            <TrendCard title="Flight Time" values={trends.flightTimes} unit="ms" higherIsBetter />
-            <TrendCard title="Frequency" values={trends.strideFrequencies} unit="Hz" higherIsBetter />
-          </div>
-        ) : (
-          <p className="text-sm text-[#6B7280]">
-            Analyze at least two sessions to unlock trend tracking.
-          </p>
-        )}
-      </section>
-
-      <section className="mb-8">
-        <TrainingFocusPanel focus={trainingFocus} />
+        <h2 className="mb-1 text-lg font-semibold text-[#F5F5F7]">Performance Trends</h2>
+        <p className="text-sm text-[#A0A2A8]">Not enough trusted data.</p>
+        <p className="mt-2 text-xs leading-5 text-[#6B7280]">
+          AVA now tracks trusted-only outputs (AVA Performance Score, top speed, average velocity,
+          peak stride length, frequency, stride retention). These are computed live per session and
+          aren&apos;t yet stored across sessions, so athlete-level trends will appear once trusted
+          metrics are persisted. Ground contact and flight time are not trusted yet and are excluded.
+        </p>
       </section>
 
       <section className="mb-8 rounded-2xl border border-white/[0.06] bg-[#121214]/95 p-5">

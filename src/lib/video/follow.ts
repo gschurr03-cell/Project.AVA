@@ -43,6 +43,18 @@ export const DEFAULT_FOLLOW_CONFIG: FollowConfig = {
 };
 
 /**
+ * Visual-only review zoom. Does not affect analysis or measurements.
+ *
+ * `scale` is consumed solely by {@link followTransform} (a CSS transform applied to
+ * the wrapper that holds BOTH the video and the pose canvas). Every measurement,
+ * coordinate, calibration point, and pointer/click mapping is computed on the
+ * UNTRANSFORMED video/overlay, and click hit-testing reads the transformed on-screen
+ * rect, so a tighter render self-corrects. Day 85: tighten the Auto Follow viewport
+ * ~50% (multiply the follow zoom, and its cap, by this factor).
+ */
+export const VISUAL_ZOOM_BOOST = 1.5;
+
+/**
  * Broadcast-style smoothing tunables (Day 64). Horizontal pan is snappier than
  * vertical (which is heavily damped so the camera doesn't bounce with each
  * stride); zoom eases on its own slow track with a deadband so limb extension
@@ -139,7 +151,8 @@ export function computeFollowTarget(
     // A standing athlete is ≈ 3.6 torso-lengths tall; fit that padded height.
     const estHeight = Math.max(torsoLen * 3.6, 1e-3);
     const boxH = estHeight * grow;
-    const scale = Math.max(1, Math.min(config.maxScale, 1 / boxH));
+    // Visual-only review zoom (×1.5). Does not affect analysis or measurements.
+    const scale = Math.max(1, VISUAL_ZOOM_BOOST * Math.min(config.maxScale, 1 / boxH));
     return clampFollow({ cx, cy, scale });
   }
 
@@ -148,7 +161,8 @@ export function computeFollowTarget(
   const cy = (minY + maxY) / 2;
   const boxW = Math.max((maxX - minX) * grow, 1e-3);
   const boxH = Math.max((maxY - minY) * grow, 1e-3);
-  const scale = Math.max(1, Math.min(config.maxScale, Math.min(1 / boxW, 1 / boxH)));
+  // Visual-only review zoom (×1.5). Does not affect analysis or measurements.
+  const scale = Math.max(1, VISUAL_ZOOM_BOOST * Math.min(config.maxScale, Math.min(1 / boxW, 1 / boxH)));
   return clampFollow({ cx, cy, scale });
 }
 

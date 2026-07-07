@@ -46,6 +46,7 @@
     "intelligence:sanity": "node scripts/intelligence-sanity.mjs",
     "limiting-factors:sanity": "node scripts/limiting-factors-sanity.mjs",
     "stride-metrics:sanity": "node scripts/stride-metrics-sanity.mjs",
+    "performance-score:sanity": "node scripts/performance-score-sanity.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
