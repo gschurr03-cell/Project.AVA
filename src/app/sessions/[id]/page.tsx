@@ -57,6 +57,8 @@ import { AvaStatusPill } from "@/components/ava/AvaStatusPill";
 import { AvaInfoStat } from "@/components/ava/AvaInfoStat";
 import { buildRecordingQuality, summarisePoseQuality } from "@/lib/recording/quality";
 import { accelerationProfileLabel, analysisTypeConfig, isAnalysisType } from "@/lib/analysisTypes";
+import { computeAccelerationMetrics } from "@/lib/acceleration/metrics";
+import AccelerationMetricsPanel from "./AccelerationMetricsPanel";
 
 /** Pull a calibrated measurement value by key from a calibration report. */
 function calibratedValue(report: CalibrationReport | null, key: string): number | null {
@@ -228,9 +230,13 @@ export default async function SessionPage({
   // + per-side frequency, average/individual/per-side step length, and the three
   // cross-checked velocities. The manual calibration points supply both the scale
   // and the zone bounds; frames are already FPS-retimed above.
-  const measurements = overlayFrames.length
+  const measurements = session.analysis_type === "fly" && overlayFrames.length
     ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight)
     : null;
+  const accelerationMetrics =
+    session.analysis_type === "acceleration" && overlayFrames.length
+      ? computeAccelerationMetrics(overlayFrames, manualPoints)
+      : null;
 
   // The clock every timing-derived number (contact, flight, frequency, zone,
   // velocity, phases) uses: manual override, else the normalized detected rate.
@@ -562,35 +568,48 @@ export default async function SessionPage({
         {/* E. Analysis content — diagnosis-first: lead with the limiting factors. */}
         {metricsReady ? (
           <div className="space-y-6">
+            {accelerationMetrics && <AccelerationMetricsPanel metrics={accelerationMetrics} />}
+
             {/* Trusted-only headline score. */}
-            {performanceScore && <AvaPerformanceScoreCard result={performanceScore} />}
+            {session.analysis_type === "fly" && performanceScore && (
+              <AvaPerformanceScoreCard result={performanceScore} />
+            )}
 
             {/* PRIMARY FEATURE: the ranked limiting-factor diagnosis. */}
-            {intelligence && diagnosis && (
+            {session.analysis_type === "fly" && intelligence && diagnosis && (
               <AvaIntelligencePanel report={intelligence} diagnosis={diagnosis} />
             )}
 
             {/* Performance headroom from correcting those factors. */}
-            {diagnosis && <PerformancePotentialCard potential={diagnosis.potential} />}
-
-            {/* Trochanter stride-length optimizer + unlock simulator (needs leg length). */}
-            {trochanter && trusted?.strideLengthM != null && trusted?.frequencyHz != null && (
-              <UnlockSimulatorCard
-                evaluation={trochanter}
-                peakStrideLengthM={trusted.strideLengthM}
-                avgStrideLengthM={trusted.avgStrideLengthM}
-                frequencyHz={trusted.frequencyHz}
-              />
+            {session.analysis_type === "fly" && diagnosis && (
+              <PerformancePotentialCard potential={diagnosis.potential} />
             )}
 
+            {/* Trochanter stride-length optimizer + unlock simulator (needs leg length). */}
+            {session.analysis_type === "fly" &&
+              trochanter &&
+              trusted?.strideLengthM != null &&
+              trusted?.frequencyHz != null && (
+                <UnlockSimulatorCard
+                  evaluation={trochanter}
+                  peakStrideLengthM={trusted.strideLengthM}
+                  avgStrideLengthM={trusted.avgStrideLengthM}
+                  frequencyHz={trusted.frequencyHz}
+                />
+              )}
+
             {/* The four trusted metrics — the single source of truth. */}
-            {measurements && <PerformanceSummaryCard trusted={trusted} />}
+            {session.analysis_type === "fly" && measurements && (
+              <PerformanceSummaryCard trusted={trusted} />
+            )}
 
             {/* Recording-quality trust indicator (collapsed). */}
             {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
 
             {/* Everything else is experimental / not-yet-trusted. */}
-            <MetricsPanel metrics={parsedMetrics!.data} activeFps={activeFps} />
+            {session.analysis_type === "fly" && (
+              <MetricsPanel metrics={parsedMetrics!.data} activeFps={activeFps} />
+            )}
 
             {/* Detailed Systems — secondary engines + validation, collapsed. */}
             <details className="group rounded-2xl border border-white/[0.06] bg-[#121214]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
@@ -613,7 +632,9 @@ export default async function SessionPage({
                   zoneEndS={session.calibration_zone_end_s ?? null}
                   zoneDistanceM={session.calibration_zone_distance_m ?? null}
                 />
-                {phaseReport && <PhaseTimelinePanel report={phaseReport} />}
+                {session.analysis_type === "fly" && phaseReport && (
+                  <PhaseTimelinePanel report={phaseReport} />
+                )}
                 {/* Race-time prediction removed for now — deriving 60/100/200 m from
                     peak velocity alone isn't trustworthy. Coming soon (see
                     PerformancePotentialCard TODO). The coaching-report / raw-metric /

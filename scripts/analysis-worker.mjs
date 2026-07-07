@@ -185,7 +185,7 @@ async function processJob(job) {
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("video_path, athlete_id")
+    .select("video_path, athlete_id, analysis_type")
     .eq("id", claimed.session_id)
     .single();
 
@@ -210,7 +210,29 @@ async function processJob(job) {
 
     log(`running MediaPipe on ${session.video_path}${MAX_FRAMES ? ` (maxFrames=${MAX_FRAMES})` : ""}...`);
     const opts = MAX_FRAMES ? { maxFrames: MAX_FRAMES } : {};
-    const sequence = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
+    // Acceleration start detection needs unusually clear wrist/ground landmarks.
+    // Tighten the existing INTERNAL inference ROI for this job only. The Python
+    // runner maps every cropped landmark back into full-frame coordinates, so the
+    // stored artifact and user-facing follow/overlay retain their normal scale.
+    const previousZoom = process.env.MEDIAPIPE_ROI_ZOOM;
+    const previousPadding = process.env.MEDIAPIPE_ROI_PADDING;
+    if (session.analysis_type === "acceleration") {
+      process.env.MEDIAPIPE_ROI = "1";
+      process.env.MEDIAPIPE_ROI_ZOOM = process.env.MEDIAPIPE_ACCEL_START_ZOOM ?? "1.35";
+      process.env.MEDIAPIPE_ROI_PADDING = process.env.MEDIAPIPE_ACCEL_START_PADDING ?? "1.2";
+      log(
+        "acceleration start detection: tighter internal ROI enabled (display coordinates unchanged)",
+      );
+    }
+    let sequence;
+    try {
+      sequence = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
+    } finally {
+      if (previousZoom == null) delete process.env.MEDIAPIPE_ROI_ZOOM;
+      else process.env.MEDIAPIPE_ROI_ZOOM = previousZoom;
+      if (previousPadding == null) delete process.env.MEDIAPIPE_ROI_PADDING;
+      else process.env.MEDIAPIPE_ROI_PADDING = previousPadding;
+    }
     log(`pose: ${sequence.frames.length} frames @ ${sequence.fps}fps ${sequence.width}x${sequence.height}`);
 
     const analysis = analyzeSprint(sequence);

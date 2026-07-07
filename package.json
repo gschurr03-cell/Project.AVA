@@ -27,6 +27,7 @@
     "benchmark:sanity": "node scripts/benchmark-sanity.mjs",
     "benchmark:reference": "node scripts/benchmark-reference-sanity.mjs",
     "analysis-types:sanity": "node scripts/analysis-types-sanity.mjs",
+    "acceleration-metrics:sanity": "node scripts/acceleration-metrics-sanity.mjs",
     "benchmark:steps": "node scripts/step-comparison.mjs",
     "field:validation": "node scripts/field-validation.mjs",
     "field:sanity": "node scripts/field-validation-sanity.mjs",
