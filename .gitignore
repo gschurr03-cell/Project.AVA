@@ -65,3 +65,11 @@ yarn-error.log*
 
 # Local runtime logs
 worker.log
+
+# Python
+.venv-rtmpose/
+__pycache__/
+*.pyc
+
+# Logs
+*.log

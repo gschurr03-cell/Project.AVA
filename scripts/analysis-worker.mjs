@@ -71,6 +71,7 @@ try {
       "src/lib/biomechanics/mediapipe/index.ts",
       "src/lib/biomechanics/analysis/index.ts",
       "src/lib/biomechanics/worker/index.ts",
+      "src/lib/biomechanics/rtmpose/index.ts",
       "--outDir",
       buildDir,
       "--module",
@@ -107,6 +108,7 @@ try {
   process.exit(1);
 }
 const { MediaPipePoseBackend } = require(path.join(buildDir, "mediapipe/index.js"));
+const { RTMPosePoseBackend } = require(path.join(buildDir, "rtmpose/index.js"));
 const { analyzeSprint } = require(path.join(buildDir, "analysis/index.js"));
 const { toAnalysisMetrics } = require(path.join(buildDir, "worker/index.js"));
 const { computeAccelerationMetrics } = require(
@@ -173,6 +175,7 @@ const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 const backend = MediaPipePoseBackend.withPythonRuntime();
+const rtmposeBackend = new RTMPosePoseBackend();
 
 async function claim(job) {
   const { data, error } = await supabase
@@ -253,7 +256,7 @@ async function processJob(job) {
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "video_path, athlete_id, analysis_type, distance_m, calibration_point_bx, calibration_known_distance_m",
+      "video_path, athlete_id, analysis_type, pose_engine, distance_m, calibration_point_bx, calibration_known_distance_m",
     )
     .eq("id", claimed.session_id)
     .single();
@@ -281,9 +284,9 @@ async function processJob(job) {
       throw new Error(`could not sign video URL: ${signErr?.message ?? "unknown"}`);
     }
 
-    log(
-      `running MediaPipe on ${session.video_path}${MAX_FRAMES ? ` (maxFrames=${MAX_FRAMES})` : ""}...`,
-    );
+    const requestedPoseEngine =
+      session.analysis_type === "fly" && session.pose_engine === "rtmpose" ? "rtmpose" : "mediapipe";
+    log(`running ${requestedPoseEngine} on ${session.video_path}${MAX_FRAMES ? ` (maxFrames=${MAX_FRAMES})` : ""}...`);
     const opts = MAX_FRAMES ? { maxFrames: MAX_FRAMES } : {};
     // Acceleration start detection needs unusually clear wrist/ground landmarks.
     // Tighten the existing INTERNAL inference ROI for this job only. The Python
@@ -306,7 +309,30 @@ async function processJob(job) {
     }
     let sequence;
     try {
-      sequence = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
+      if (requestedPoseEngine === "rtmpose") {
+        try {
+          sequence = await rtmposeBackend.estimate({ signedUrl: signed.signedUrl }, opts);
+          if (process.env.RTMPOSE_COMPARE === "1") {
+            log("comparison mode: running MediaPipe reference skeleton");
+            const reference = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
+            if (reference.frames.length) {
+              for (const frame of sequence.frames) {
+                const nearest = reference.frames.reduce((best, candidate) =>
+                  Math.abs(candidate.tMs - frame.tMs) < Math.abs(best.tMs - frame.tMs)
+                    ? candidate : best,
+                reference.frames[0]);
+                frame.comparisonBackend = "mediapipe";
+                frame.comparisonKeypoints = nearest.keypoints;
+              }
+            }
+          }
+        } catch (rtmposeError) {
+          log(`RTMPose failed (${rtmposeError.message}); falling back to MediaPipe`);
+          sequence = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
+        }
+      } else {
+        sequence = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
+      }
     } finally {
       if (previousZoom == null) delete process.env.MEDIAPIPE_ROI_ZOOM;
       else process.env.MEDIAPIPE_ROI_ZOOM = previousZoom;
@@ -353,7 +379,9 @@ async function processJob(job) {
     } else {
       // Fly remains on the existing analyzer + mapper, byte-for-byte in result shape.
       const analysis = analyzeSprint(sequence);
-      const mapped = toAnalysisMetrics(analysis, MODEL_VERSION);
+      const activeModelVersion =
+        sequence.backend === "rtmpose" ? "rtmpose-yolo-v1" : MODEL_VERSION;
+      const mapped = toAnalysisMetrics(analysis, activeModelVersion);
       persistedMetrics = mapped.metrics;
       artifactAnalysis = analysis;
       warnings = mapped.warnings;
@@ -374,7 +402,7 @@ async function processJob(job) {
 
     await callback(claimed.id, {
       status: "complete",
-      modelVersion: MODEL_VERSION,
+      modelVersion: sequence.backend === "rtmpose" ? "rtmpose-yolo-v1" : MODEL_VERSION,
       metrics: persistedMetrics,
       ...(keypointsPath ? { keypointsPath } : {}),
     });

@@ -10,6 +10,24 @@ import { MIN_FPS, MAX_FPS } from "@/lib/video/fps";
 import { calibrationGatesSchema, gatesToManualPoints } from "@/lib/calibration/gates";
 import { ANALYSIS_TYPE_CONFIG, isAnalysisType } from "@/lib/analysisTypes";
 
+/** Select the experimental fly pose backend. Acceleration is intentionally excluded. */
+export async function setFlyPoseEngine(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const poseEngine = String(formData.get("pose_engine") ?? "");
+  if (!id) redirect("/dashboard");
+  if (poseEngine !== "mediapipe" && poseEngine !== "rtmpose") {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Unknown pose engine.")}`);
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sessions")
+    .update({ pose_engine: poseEngine })
+    .eq("id", id)
+    .eq("analysis_type", "fly");
+  if (error) redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  revalidatePath(`/sessions/${id}`);
+}
+
 /** Save the acceleration finish distance before the analysis is queued. */
 export async function setAccelerationFinishDistance(formData: FormData) {
   const id = String(formData.get("id") ?? "");

@@ -53,6 +53,7 @@ const MP_INDEX_TO_JOINT: ReadonlyArray<readonly [number, JointName]> = [
 function toOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
   const rawFrames = sequence.frames.map((frame) => {
     const landmarks: Array<{ x: number; y: number; visibility?: number }> = [];
+    const comparisonLandmarks: Array<{ x: number; y: number; visibility?: number }> = [];
     for (const [mpIndex, joint] of MP_INDEX_TO_JOINT) {
       const keypoint = frame.keypoints[joint];
       if (keypoint) {
@@ -63,7 +64,21 @@ function toOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
         };
       }
     }
-    return { frame: frame.index, time: frame.tMs / 1000, landmarks };
+    for (const [mpIndex, joint] of MP_INDEX_TO_JOINT) {
+      const keypoint = frame.comparisonKeypoints?.[joint];
+      if (keypoint) comparisonLandmarks[mpIndex] = {
+        x: keypoint.x, y: keypoint.y, visibility: keypoint.visibility ?? keypoint.score,
+      };
+    }
+    return {
+      frame: frame.index,
+      time: frame.tMs / 1000,
+      landmarks,
+      backend: sequence.backend,
+      trackingConfidence: frame.trackingConfidence,
+      comparisonBackend: frame.comparisonBackend,
+      comparisonLandmarks,
+    };
   });
 
   return buildOverlayFrames({ ...sequence, frames: rawFrames } as unknown as PoseSequence);

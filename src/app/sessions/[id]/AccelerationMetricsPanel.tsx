@@ -66,29 +66,6 @@ export default function AccelerationMetricsPanel({ metrics }: { metrics: Acceler
           : `${metrics.strideMetrics.status.replace("_", " ")} — ${metrics.strideMetrics.reason}`}
       </div>
       <p className="mt-4 text-sm text-[#A0A2A8]">{metrics.summary}</p>
-      <details className="mt-4 rounded-lg border border-white/[0.08] bg-black/20 p-3 text-xs text-[#A0A2A8]">
-        <summary className="cursor-pointer font-semibold text-[#6B7280]">
-          Temporary acceleration debug
-        </summary>
-        <pre className="mt-2 whitespace-pre-wrap font-mono">
-          {JSON.stringify(
-            {
-              resultType: metrics.resultType,
-              status: metrics.status,
-              startEvent: metrics.startEvent,
-              splitCount: Object.values(metrics.splits).filter((item) => item != null).length,
-              finishDistanceM: metrics.finishDistanceM,
-              finishCrossingTime: metrics.finishCrossingTime,
-              runTime: metrics.runTime,
-              missingReason: metrics.status.startsWith("ready")
-                ? null
-                : metrics.warnings.join(" | "),
-            },
-            null,
-            2,
-          )}
-        </pre>
-      </details>
       {metrics.warnings.map((warning) => (
         <p key={warning} className="mt-2 text-xs text-[#E4C25A]">
           {warning}

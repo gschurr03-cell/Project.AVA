@@ -17,6 +17,8 @@
     "mediapipe:sanity": "node scripts/mediapipe-sanity.mjs",
     "mediapipe:install-check": "python3 -c 'import cv2, mediapipe; print(\"opencv\", cv2.__version__); print(\"mediapipe\", mediapipe.__version__)'",
     "mediapipe:video": "node scripts/run-mediapipe-video.mjs",
+    "rtmpose:video": "node scripts/run-rtmpose-video.mjs",
+    "rtmpose:sanity": "node scripts/rtmpose-sanity.mjs",
     "events:sanity": "node scripts/events-sanity.mjs",
     "strides:sanity": "node scripts/strides-sanity.mjs",
     "angles:sanity": "node scripts/angles-sanity.mjs",

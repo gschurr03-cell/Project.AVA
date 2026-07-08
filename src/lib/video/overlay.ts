@@ -13,6 +13,10 @@ export type OverlayFrame = {
     left: boolean;
     right: boolean;
   };
+  backend?: string;
+  trackingConfidence?: number;
+  comparisonBackend?: string;
+  comparisonLandmarks?: Record<string, OverlayPoint>;
 };
 
 /**
@@ -29,6 +33,10 @@ type RawPoseFrame = {
   keypoints?: RawLandmark[];
   events?: { leftContact?: boolean; rightContact?: boolean };
   footContact?: { left?: boolean; right?: boolean };
+  backend?: string;
+  trackingConfidence?: number;
+  comparisonBackend?: string;
+  comparisonLandmarks?: RawLandmark[];
 };
 
 const names = [
@@ -96,6 +104,7 @@ export function buildOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
     const poseFrame = rawFrame as unknown as RawPoseFrame;
     const landmarksArray = poseFrame.landmarks ?? poseFrame.keypoints ?? [];
     const landmarks: Record<string, OverlayPoint> = {};
+    const comparisonLandmarks: Record<string, OverlayPoint> = {};
 
     landmarksArray.forEach((lm: RawLandmark, i: number) => {
       const name = names[i] ?? `p${i}`;
@@ -104,6 +113,11 @@ export function buildOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
         y: lm.y,
         visibility: lm.visibility ?? lm.score,
       };
+    });
+    (poseFrame.comparisonLandmarks ?? []).forEach((lm: RawLandmark, i: number) => {
+      if (!lm) return;
+      const name = names[i] ?? `p${i}`;
+      comparisonLandmarks[name] = { x: lm.x, y: lm.y, visibility: lm.visibility ?? lm.score };
     });
 
     const centerOfMass =
@@ -132,6 +146,10 @@ export function buildOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
       frame: poseFrame.frame ?? index,
       time: poseFrame.time ?? index / fps,
       landmarks,
+      backend: poseFrame.backend ?? sequence.backend,
+      trackingConfidence: poseFrame.trackingConfidence,
+      comparisonBackend: poseFrame.comparisonBackend,
+      comparisonLandmarks: Object.keys(comparisonLandmarks).length ? comparisonLandmarks : undefined,
       angles: {
         leftKnee: angle(landmarks.leftHip, landmarks.leftKnee, landmarks.leftAnkle),
         rightKnee: angle(landmarks.rightHip, landmarks.rightKnee, landmarks.rightAnkle),

@@ -63,6 +63,11 @@ export const poseFrameSchema = z.object({
   /** Frame timestamp in milliseconds from the start of the clip. */
   tMs: z.number().nonnegative(),
   keypoints: z.record(jointNameSchema, keypointSchema),
+  /** Person-track confidence supplied by detector-backed pose engines. */
+  trackingConfidence: z.number().min(0).max(1).optional(),
+  /** Optional second-engine pose for visual debugging only; never read by metrics. */
+  comparisonKeypoints: z.record(jointNameSchema, keypointSchema).optional(),
+  comparisonBackend: z.string().optional(),
 });
 /** Partial keypoint map is guaranteed here regardless of Zod's record inference. */
 export type PoseFrame = Omit<z.infer<typeof poseFrameSchema>, "keypoints"> & {

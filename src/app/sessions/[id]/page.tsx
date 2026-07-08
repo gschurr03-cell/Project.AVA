@@ -17,6 +17,7 @@ import {
   renameSession,
   setSessionAnalysisType,
   setAccelerationFinishDistance,
+  setFlyPoseEngine,
 } from "@/app/sessions/actions";
 import VideoPlayer from "@/components/VideoPlayer";
 import { buildTimelineMarkersFromMetrics } from "@/lib/biomechanics/video/timelineMarkers";
@@ -90,7 +91,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, analysis_type, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, analysis_type, pose_engine, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -437,6 +438,10 @@ export default async function SessionPage({
       : null;
   const resolutionLabel =
     effectiveWidth && effectiveHeight ? `${effectiveWidth}×${effectiveHeight}` : null;
+  // Prominent zone-distance label for the Fly hero (e.g. "20m Fly"). Presentation
+  // only — reuses the already-derived profile distance, changes no metric math.
+  const flyDistanceLabel =
+    session.analysis_type === "fly" && profileDistance != null ? `${profileDistance}m Fly` : null;
 
   return (
     <main className="ava-carbon min-h-screen">
@@ -488,15 +493,17 @@ export default async function SessionPage({
               </h1>
               {hasSelectedMode && (
                 <p className="mt-2 text-sm text-[#A0A2A8]">
-                  {mode.displayTitle}
                   {session.analysis_type === "acceleration"
-                    ? ` · ${accelerationProfileLabel(profileDistance)}`
-                    : ""}
+                    ? `${mode.displayTitle} · ${accelerationProfileLabel(profileDistance)}`
+                    : flyDistanceLabel
+                      ? `${flyDistanceLabel} zone`
+                      : mode.displayTitle}
                 </p>
               )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {flyDistanceLabel && <AvaStatusPill label={flyDistanceLabel} tone="gold" />}
               {analysisComplete ? (
                 <AvaStatusPill label="Diagnosis Ready" tone="gold" />
               ) : (
@@ -568,6 +575,31 @@ export default async function SessionPage({
                     ))}
                   </div>
                 </>
+              )}
+              {session.analysis_type === "fly" && (
+                <div className="mt-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+                    Pose engine
+                  </p>
+                  <div className="inline-flex rounded-lg border border-white/[0.1] bg-[#121214] p-1">
+                    {(["mediapipe", "rtmpose"] as const).map((engine) => (
+                      <form action={setFlyPoseEngine} key={engine}>
+                        <input type="hidden" name="id" value={session.id} />
+                        <input type="hidden" name="pose_engine" value={engine} />
+                        <button
+                          type="submit"
+                          className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
+                            (session.pose_engine ?? "mediapipe") === engine
+                              ? "bg-[#D72638] text-white"
+                              : "text-[#A0A2A8] hover:bg-white/[0.06]"
+                          }`}
+                        >
+                          {engine === "mediapipe" ? "MediaPipe (default)" : "RTMPose (experimental)"}
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                </div>
               )}
               <div className="mt-4">
                 {hasSelectedMode &&

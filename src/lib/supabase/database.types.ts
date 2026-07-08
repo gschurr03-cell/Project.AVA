@@ -210,6 +210,7 @@ export type Database = {
           overlay_trochanter_x: number | null
           overlay_trochanter_y: number | null
           original_filename: string | null
+          pose_engine: string
           recorded_at: string
           size_bytes: number | null
           status: Database["public"]["Enums"]["session_status"]
@@ -247,6 +248,7 @@ export type Database = {
           overlay_trochanter_x?: number | null
           overlay_trochanter_y?: number | null
           original_filename?: string | null
+          pose_engine?: string
           recorded_at?: string
           size_bytes?: number | null
           status?: Database["public"]["Enums"]["session_status"]
@@ -284,6 +286,7 @@ export type Database = {
           overlay_trochanter_x?: number | null
           overlay_trochanter_y?: number | null
           original_filename?: string | null
+          pose_engine?: string
           recorded_at?: string
           size_bytes?: number | null
           status?: Database["public"]["Enums"]["session_status"]

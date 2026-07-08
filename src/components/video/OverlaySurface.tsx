@@ -74,7 +74,8 @@ const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
   { key: "velocity", label: "Velocity" },
   { key: "footLabels", label: "Foot labels" },
   { key: "stepMarks", label: "Step marks" },
-  { key: "debug", label: "Alignment debug" },
+  // "Alignment debug" is intentionally not exposed in the customer UI — the
+  // capability still exists (DEFAULT_TOGGLES.debug stays false) but is dev-only.
 ];
 
 /** Pointer-to-joint hit radius, in CSS pixels. */

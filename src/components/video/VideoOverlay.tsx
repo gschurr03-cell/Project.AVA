@@ -795,6 +795,22 @@ export default function VideoOverlay({
 
 
       if (show.debug) {
+        if (frame.comparisonLandmarks) {
+          ctx.save();
+          ctx.translate(correction.dx * picture.width, correction.dy * picture.height);
+          ctx.strokeStyle = "#c084fc";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 3]);
+          for (const [aName, bName] of bones) {
+            const a = frame.comparisonLandmarks[aName];
+            const b = frame.comparisonLandmarks[bName];
+            if (!a || !b) continue;
+            const ap = project(a); const bp = project(b);
+            ctx.beginPath(); ctx.moveTo(ap.x, ap.y); ctx.lineTo(bp.x, bp.y); ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
         const rawHip = correction.detectedHip ? project(correction.detectedHip) : null;
         const marker = correction.marker ? project(correction.marker) : null;
         if (rawHip) {
@@ -810,7 +826,9 @@ export default function VideoOverlay({
         const pxError = Math.hypot(correction.dx * picture.width, correction.dy * picture.height);
         const scale = athleteScalePxPerCm(frame, picture.height, athleteHeightCm);
         const lines = [
+          `primary ${frame.backend ?? "pose"} · comparison ${frame.comparisonBackend ?? "off"} · frame ${frame.frame}`,
           `video ${currentTime.toFixed(3)}s · pose ${frame.time.toFixed(3)}s`,
+          `tracking confidence ${frame.trackingConfidence?.toFixed(3) ?? "unavailable"}`,
           `render ${picture.width.toFixed(0)}×${picture.height.toFixed(0)} · canvas ${canvas.width}×${canvas.height} @${dpr.toFixed(2)}x`,
           `trochanter ${marker ? `${marker.x.toFixed(1)},${marker.y.toFixed(1)}` : "not set"} · offset ${(correction.dx * picture.width).toFixed(1)},${(correction.dy * picture.height).toFixed(1)}px`,
           `height ${athleteHeightCm ?? "—"}cm · scale ${scale?.toFixed(3) ?? "—"} px/cm · error ${pxError.toFixed(1)}px`,
