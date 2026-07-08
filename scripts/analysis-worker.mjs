@@ -308,30 +308,22 @@ async function processJob(job) {
       );
     }
     let sequence;
+    let comparison = null;
     try {
+      // MediaPipe is ALWAYS the primary engine — it drives every fly metric, so the
+      // fly metric math AND numbers are unchanged regardless of the selected engine.
+      // RTMPose is an EXPERIMENTAL, visual-only comparison skeleton: when the coach
+      // selects the rtmpose engine we ALSO run RTMPose and attach it as each frame's
+      // comparisonKeypoints (drawn dashed/purple in the overlay). It never becomes a
+      // metrics source and never replaces the trusted MediaPipe pose.
+      sequence = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
       if (requestedPoseEngine === "rtmpose") {
         try {
-          sequence = await rtmposeBackend.estimate({ signedUrl: signed.signedUrl }, opts);
-          if (process.env.RTMPOSE_COMPARE === "1") {
-            log("comparison mode: running MediaPipe reference skeleton");
-            const reference = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
-            if (reference.frames.length) {
-              for (const frame of sequence.frames) {
-                const nearest = reference.frames.reduce((best, candidate) =>
-                  Math.abs(candidate.tMs - frame.tMs) < Math.abs(best.tMs - frame.tMs)
-                    ? candidate : best,
-                reference.frames[0]);
-                frame.comparisonBackend = "mediapipe";
-                frame.comparisonKeypoints = nearest.keypoints;
-              }
-            }
-          }
+          log("experimental: running RTMPose comparison skeleton (visual only; metrics stay MediaPipe)");
+          comparison = await rtmposeBackend.estimate({ signedUrl: signed.signedUrl }, opts);
         } catch (rtmposeError) {
-          log(`RTMPose failed (${rtmposeError.message}); falling back to MediaPipe`);
-          sequence = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
+          log(`RTMPose comparison unavailable (${rtmposeError.message}); showing MediaPipe only`);
         }
-      } else {
-        sequence = await backend.estimate({ signedUrl: signed.signedUrl }, opts);
       }
     } finally {
       if (previousZoom == null) delete process.env.MEDIAPIPE_ROI_ZOOM;
@@ -342,6 +334,20 @@ async function processJob(job) {
       else process.env.MEDIAPIPE_ACCELERATION = previousAccelerationMode;
       if (previousSmoothWindow == null) delete process.env.MEDIAPIPE_ROI_SMOOTH_WINDOW;
       else process.env.MEDIAPIPE_ROI_SMOOTH_WINDOW = previousSmoothWindow;
+    }
+    // Attach the experimental RTMPose pose to each MediaPipe frame as a visual-only
+    // comparison layer, time-matched to the nearest RTMPose frame. Never read by metrics.
+    if (comparison?.frames.length) {
+      for (const frame of sequence.frames) {
+        const nearest = comparison.frames.reduce(
+          (best, candidate) =>
+            Math.abs(candidate.tMs - frame.tMs) < Math.abs(best.tMs - frame.tMs) ? candidate : best,
+          comparison.frames[0],
+        );
+        frame.comparisonBackend = "rtmpose";
+        frame.comparisonKeypoints = nearest.keypoints;
+      }
+      log(`comparison: attached RTMPose skeleton to ${sequence.frames.length} MediaPipe frames`);
     }
     log(
       `pose: ${sequence.frames.length} frames @ ${sequence.fps}fps ${sequence.width}x${sequence.height}`,

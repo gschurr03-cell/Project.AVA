@@ -34,8 +34,14 @@ export type OverlayToggles = {
   velocity: boolean;
   footLabels: boolean;
   stepMarks: boolean;
+  /** Experimental A/B pose comparison: overlays the second engine's skeleton
+   * (RTMPose) as a dashed purple stick figure over the solid MediaPipe primary,
+   * with a compact frame/timestamp/backend HUD. Visual only — never touches
+   * metrics. Off by default. */
+  compare: boolean;
   /** Hidden coaching-view declutter switch: shows step indices, the step path,
-   * and relative (uncalibrated) distances. Off by default. */
+   * relative (uncalibrated) distances, and the full alignment/follow diagnostics.
+   * Dev-only, off by default, and not exposed in the customer UI. */
   debug: boolean;
 };
 
@@ -794,11 +800,18 @@ export default function VideoOverlay({
       }
 
 
-      if (show.debug) {
+      // --- Comparison mode (experimental): draw the SECOND engine's pose
+      // (RTMPose, carried in comparisonLandmarks) as a DASHED PURPLE stick figure
+      // over the solid MediaPipe primary skeleton, plus a compact HUD with the
+      // engine names, frame index, and video/pose timestamps. Visual only — the
+      // comparison pose never enters any metric. Also shown inside the dev debug
+      // view so nothing is lost there. ---
+      const showComparison = show.compare || show.debug;
+      if (showComparison) {
         if (frame.comparisonLandmarks) {
           ctx.save();
           ctx.translate(correction.dx * picture.width, correction.dy * picture.height);
-          ctx.strokeStyle = "#c084fc";
+          ctx.strokeStyle = "#c084fc"; // purple-400 — RTMPose comparison skeleton
           ctx.lineWidth = 1.5;
           ctx.setLineDash([4, 3]);
           for (const [aName, bName] of bones) {
@@ -811,6 +824,28 @@ export default function VideoOverlay({
           ctx.setLineDash([]);
           ctx.restore();
         }
+        // Compact readout: primary vs comparison engine, the frame index, both
+        // clocks, and the person-track confidence — enough to line the two
+        // skeletons up frame by frame.
+        const hud = [
+          `primary ${frame.backend ?? "pose"} · comparison ${frame.comparisonBackend ?? "none"} · frame ${frame.frame}`,
+          `video ${currentTime.toFixed(3)}s · pose ${frame.time.toFixed(3)}s`,
+          `tracking confidence ${frame.trackingConfidence?.toFixed(3) ?? "unavailable"}`,
+        ];
+        ctx.font = "600 10px ui-monospace, monospace";
+        const hudW = Math.min(picture.width - 16, 380);
+        ctx.textAlign = "left";
+        ctx.fillStyle = "rgba(3,7,18,.82)";
+        ctx.fillRect(8, 28, hudW, hud.length * 15 + 24);
+        ctx.fillStyle = "#e2e8f0";
+        hud.forEach((line, i) => ctx.fillText(line, 14, 40 + i * 15));
+        // Legend so the dashed figure is unambiguous during the demo.
+        ctx.fillStyle = "#c084fc";
+        ctx.fillText("╌╌ RTMPose (experimental)   ── MediaPipe", 14, 40 + hud.length * 15 + 4);
+        ctx.font = DEFAULT_LABEL_FONT;
+      }
+
+      if (show.debug) {
         const rawHip = correction.detectedHip ? project(correction.detectedHip) : null;
         const marker = correction.marker ? project(correction.marker) : null;
         if (rawHip) {

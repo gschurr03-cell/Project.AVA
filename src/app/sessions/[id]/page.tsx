@@ -88,13 +88,23 @@ export default async function SessionPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: session } = await supabase
+  const { data: session, error: sessionError } = await supabase
     .from("sessions")
     .select(
       "id, name, notes, original_filename, video_path, status, created_at, athlete_id, analysis_type, pose_engine, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
+
+  // A query *error* (e.g. a selected column missing because a migration hasn't
+  // been applied locally) is NOT the same as a genuinely missing row — but with
+  // `.single()` both surface as a null `data`, which previously collapsed into a
+  // silent 404. Log the real Postgres error so schema drift is diagnosable
+  // instead of masquerading as "session not found".
+  // PGRST116 = no rows matched (a real not-found); anything else is a query fault.
+  if (sessionError && sessionError.code !== "PGRST116") {
+    console.error(`[session ${id}] Supabase query failed:`, sessionError);
+  }
 
   if (!session) notFound();
 
@@ -713,9 +723,15 @@ export default async function SessionPage({
             {/* Recording-quality trust indicator (collapsed). */}
             {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
 
-            {/* Everything else is experimental / not-yet-trusted. */}
+            {/* Everything else is experimental / not-yet-trusted. Pass the recording's
+                pose-tracking confidence so confidence-limited metrics (and ≥120 fps
+                timing) are gated honestly rather than shown as trusted. */}
             {session.analysis_type === "fly" && parsedMetrics?.success && (
-              <MetricsPanel metrics={parsedMetrics.data} activeFps={activeFps} />
+              <MetricsPanel
+                metrics={parsedMetrics.data}
+                activeFps={activeFps}
+                poseConfidence={poseQuality?.poseConfidence ?? null}
+              />
             )}
 
             {/* Detailed Systems — secondary engines + validation, collapsed. */}

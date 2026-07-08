@@ -2,7 +2,12 @@ import { AvaMetricCard } from "@/components/ava/AvaMetricCard";
 import { AvaCautionPanel } from "@/components/ava/AvaCautionPanel";
 import { type AvaMetricStatus } from "@/lib/design/ava";
 import { type AnalysisMetrics, formatMetricValue, metricsDisplay } from "@/lib/biomechanics/types";
-import { isPrecisionLimited, TIMING_METRIC_KEYS } from "@/lib/benchmark/precision";
+import {
+  isPrecisionLimited,
+  metricTrust,
+  EXPERIMENTAL_BIN_DESCRIPTION,
+  type MetricTrust,
+} from "@/lib/benchmark/precision";
 
 /**
  * Metrics that depend on camera calibration we don't have yet.
@@ -11,20 +16,27 @@ import { isPrecisionLimited, TIMING_METRIC_KEYS } from "@/lib/benchmark/precisio
  */
 const CALIBRATION_DEPENDENT: (keyof AnalysisMetrics)[] = ["topSpeedMps", "avgStrideLengthM"];
 
+/** Short, honest note explaining why a metric is showing a placeholder, not a value. */
+function noteForTrust(trust: MetricTrust): string {
+  switch (trust.state) {
+    case "needsHigherFps":
+      return "High-precision timing needs 120fps+ video at this frame rate.";
+    case "needsConfidence":
+      return "Tracking confidence is too low to trust this yet.";
+    case "comingSoon":
+      return "Not yet measurable for this recording.";
+    default:
+      return "";
+  }
+}
+
 function statusForMetric({
   metricKey,
   value,
-  uncalibrated,
-  muted,
 }: {
   metricKey: keyof AnalysisMetrics;
   value: number;
-  uncalibrated: boolean;
-  muted?: boolean;
 }): AvaMetricStatus {
-  if (uncalibrated || value == null || Number.isNaN(value)) return "missing";
-  if (muted) return "moderate";
-
   switch (metricKey) {
     case "topSpeedMps":
       if (value >= 10.8) return "excellent";
@@ -67,55 +79,82 @@ function MetricCard({
   unit,
   decimals,
   metrics,
-  muted = false,
+  activeFps,
+  poseConfidence,
 }: {
   metricKey: keyof AnalysisMetrics;
   label: string;
   unit: string;
   decimals: number;
   metrics: AnalysisMetrics;
-  muted?: boolean;
+  activeFps: number | null;
+  poseConfidence: number | null;
 }) {
   const value = metrics[metricKey];
-  const uncalibrated = CALIBRATION_DEPENDENT.includes(metricKey) && value === 0;
-  const status = statusForMetric({ metricKey, value, uncalibrated, muted });
+
+  // Calibration-dependent zeros keep their precise, existing message.
+  if (CALIBRATION_DEPENDENT.includes(metricKey) && value === 0) {
+    return <AvaMetricCard label={label} value="—" status="missing" note="Calibration Required" />;
+  }
+
+  // Otherwise decide trust for THIS recording. Anything not "available" is shown as an
+  // honest placeholder string ("Needs 120fps+", "Needs higher confidence", "Coming
+  // soon") — never a muted number and never a fake 0.
+  const trust = metricTrust({ key: metricKey, activeFps, poseConfidence, value });
+  if (trust.state !== "available") {
+    return (
+      <AvaMetricCard
+        label={label}
+        value={trust.message}
+        status="missing"
+        muted
+        note={noteForTrust(trust)}
+      />
+    );
+  }
 
   return (
     <AvaMetricCard
       label={label}
-      value={uncalibrated ? "—" : formatMetricValue(value, decimals)}
-      unit={uncalibrated ? undefined : unit}
-      status={status}
-      muted={muted}
-      note={uncalibrated ? "Calibration Required" : muted ? "Lower confidence at this FPS" : undefined}
+      value={formatMetricValue(value, decimals)}
+      unit={unit}
+      status={statusForMetric({ metricKey, value })}
     />
   );
 }
 
 /**
- * Renders a completed analysis's biomechanics metrics.
+ * Renders a completed analysis's biomechanics metrics as the "Coming Soon /
+ * Experimental Metrics" bin.
  *
  * The four TRUSTED sprint metrics (top speed, average velocity, step length,
- * cadence) live in the Trusted Sprint Metrics card. Every OTHER biomechanics metric
- * — stride length/frequency, ground contact, flight time, joint angles — is not yet
- * production-trusted, so it lives here inside the Experimental Metrics accordion,
- * rendered dimmed + flagged. The underlying calculations are unchanged.
+ * cadence) live in the Trusted Sprint Metrics card above. Everything here is either
+ * still being validated OR gated by this recording's frame rate / tracking
+ * confidence. Frame-rate-limited timing (ground contact, flight time, and their
+ * derivatives) shows "Needs 120fps+" below 120 fps; confidence-limited metrics show
+ * "Needs higher confidence"; anything otherwise unmeasurable shows "Coming soon".
+ * No underlying metric math is changed — this only gates presentation.
  */
 export default function MetricsPanel({
   metrics,
   activeFps = null,
+  poseConfidence = null,
 }: {
   metrics: AnalysisMetrics;
   activeFps?: number | null;
+  poseConfidence?: number | null;
 }) {
   const precisionLimited = isPrecisionLimited(activeFps);
+  const pill = precisionLimited
+    ? `${activeFps ? Math.round(activeFps) : "Low"} FPS · needs 120fps+`
+    : "Confidence-gated";
 
   return (
     <AvaCautionPanel
       title="Coming Soon"
       subtitle="Experimental Metrics"
-      pill={precisionLimited ? `${activeFps ?? "Low"} FPS` : "Not yet trusted"}
-      description="These biomechanics metrics are still being validated and are not yet part of AVA's trusted output set. The four trusted metrics are shown above; these are for internal review."
+      pill={pill}
+      description={EXPERIMENTAL_BIN_DESCRIPTION}
     >
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {metricsDisplay.map(({ key, label, unit, decimals }) => (
@@ -126,7 +165,8 @@ export default function MetricsPanel({
             unit={unit}
             decimals={decimals}
             metrics={metrics}
-            muted={precisionLimited && TIMING_METRIC_KEYS.has(key)}
+            activeFps={activeFps}
+            poseConfidence={poseConfidence}
           />
         ))}
       </dl>

@@ -86,10 +86,24 @@ def main():
     try:
         import cv2
         import numpy as np
+        import torch
         from ultralytics import YOLO
         from mmpose.apis import init_model, inference_topdown
     except ImportError as error:
         fail(f"Missing RTMPose dependency: {error}. Install requirements-rtmpose.txt.")
+
+    # PyTorch 2.6+ flipped torch.load's default to weights_only=True, which refuses
+    # to unpickle the metadata inside MMPose/MMEngine checkpoints and raises
+    # UnpicklingError during init_model. The RTMPose config + checkpoint are trusted,
+    # official OpenMMLab files that AVA ships, so restore full-unpickle loading for
+    # checkpoint reads. Scoped to this runner process — no site-packages are edited.
+    _original_torch_load = torch.load
+
+    def _torch_load_full_weights(*load_args, **load_kwargs):
+        load_kwargs["weights_only"] = False
+        return _original_torch_load(*load_args, **load_kwargs)
+
+    torch.load = _torch_load_full_weights
 
     source, temporary = local_input(args.input)
     capture = cv2.VideoCapture(source)
