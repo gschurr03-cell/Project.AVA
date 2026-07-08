@@ -10,6 +10,26 @@ import { MIN_FPS, MAX_FPS } from "@/lib/video/fps";
 import { calibrationGatesSchema, gatesToManualPoints } from "@/lib/calibration/gates";
 import { ANALYSIS_TYPE_CONFIG, isAnalysisType } from "@/lib/analysisTypes";
 
+/** Save the acceleration finish distance before the analysis is queued. */
+export async function setAccelerationFinishDistance(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const distance = Number(formData.get("finish_distance_m"));
+  if (!id) redirect("/dashboard");
+  if (![10, 20, 30].includes(distance)) {
+    redirect(
+      `/sessions/${id}?error=${encodeURIComponent("Choose a 10m, 20m, or 30m finish distance.")}`,
+    );
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sessions")
+    .update({ distance_m: distance, calibration_known_distance_m: distance })
+    .eq("id", id)
+    .eq("analysis_type", "acceleration");
+  if (error) redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  revalidatePath(`/sessions/${id}`);
+}
+
 /** Persist the coach's explicit mode choice before the first analysis runs. */
 export async function setSessionAnalysisType(formData: FormData) {
   const id = String(formData.get("id") ?? "");
@@ -150,13 +170,21 @@ export async function queueAnalysis(formData: FormData) {
   // Ownership check: RLS returns the row only if the coach owns the athlete.
   const { data: session } = await supabase
     .from("sessions")
-    .select("id, analysis_type")
+    .select("id, analysis_type, distance_m, calibration_known_distance_m")
     .eq("id", id)
     .single();
   if (!session) redirect("/dashboard");
   if (!isAnalysisType(session.analysis_type)) {
     redirect(
       `/sessions/${id}?error=${encodeURIComponent("Select an analysis type before running analysis.")}`,
+    );
+  }
+  if (
+    session.analysis_type === "acceleration" &&
+    ![10, 20, 30].includes(session.calibration_known_distance_m ?? session.distance_m ?? 0)
+  ) {
+    redirect(
+      `/sessions/${id}?error=${encodeURIComponent("Set finish distance before running acceleration analysis.")}`,
     );
   }
 
@@ -363,6 +391,39 @@ export async function saveManualCalibration(formData: FormData) {
 
 /** Parse a form coordinate/number field (blank → NaN so validation rejects it). */
 const numField = (formData: FormData, key: string): number => Number(formData.get(key) ?? "");
+
+/** Save an optional fly-only anatomical anchor. It is consumed only by rendering. */
+export async function saveTrochanterOverlayPoint(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const x = numField(formData, "trochanter_x");
+  const y = numField(formData, "trochanter_y");
+  const timeS = numField(formData, "trochanter_time_s");
+  if (!id) redirect("/dashboard");
+  if (![x, y, timeS].every(Number.isFinite) || x < 0 || x > 1 || y < 0 || y > 1 || timeS < 0) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Invalid trochanter overlay point.")}`);
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sessions")
+    .update({ overlay_trochanter_x: x, overlay_trochanter_y: y, overlay_trochanter_time_s: timeS })
+    .eq("id", id)
+    .eq("analysis_type", "fly");
+  if (error) redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  revalidatePath(`/sessions/${id}`);
+}
+
+export async function clearTrochanterOverlayPoint(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sessions")
+    .update({ overlay_trochanter_x: null, overlay_trochanter_y: null, overlay_trochanter_time_s: null })
+    .eq("id", id)
+    .eq("analysis_type", "fly");
+  if (error) redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  revalidatePath(`/sessions/${id}`);
+}
 
 /**
  * Save timing-gate BAR calibration (Day 66). The coach marks two physical timing

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { analysisMetricsSchema } from "@/lib/biomechanics/types";
+import { accelerationMetricsSchema } from "@/lib/acceleration/schema";
 import {
   ANALYSIS_STATUS_LABELS,
   formatBytes,
@@ -15,6 +16,7 @@ import {
   queueAnalysis,
   renameSession,
   setSessionAnalysisType,
+  setAccelerationFinishDistance,
 } from "@/app/sessions/actions";
 import VideoPlayer from "@/components/VideoPlayer";
 import { buildTimelineMarkersFromMetrics } from "@/lib/biomechanics/video/timelineMarkers";
@@ -57,7 +59,6 @@ import { AvaStatusPill } from "@/components/ava/AvaStatusPill";
 import { AvaInfoStat } from "@/components/ava/AvaInfoStat";
 import { buildRecordingQuality, summarisePoseQuality } from "@/lib/recording/quality";
 import { accelerationProfileLabel, analysisTypeConfig, isAnalysisType } from "@/lib/analysisTypes";
-import { computeAccelerationMetrics } from "@/lib/acceleration/metrics";
 import AccelerationMetricsPanel from "./AccelerationMetricsPanel";
 
 /** Pull a calibrated measurement value by key from a calibration report. */
@@ -89,7 +90,7 @@ export default async function SessionPage({
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, analysis_type, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, analysis_type, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -103,6 +104,9 @@ export default async function SessionPage({
     session.calibration_known_distance_m ??
     session.calibration_zone_distance_m ??
     session.distance_m;
+  const accelerationFinishDistance =
+    session.calibration_known_distance_m ?? session.distance_m ?? null;
+  const hasAccelerationFinishDistance = [10, 20, 30].includes(accelerationFinishDistance ?? 0);
 
   // Signed URL for the uploaded sprint video (1-hour expiry), if one exists.
   const { data: signedVideo } = session.video_path
@@ -124,7 +128,13 @@ export default async function SessionPage({
   // only ever receives a fully-typed object. A parse failure falls through to
   // a graceful fallback rather than crashing the page.
   const parsedMetrics =
-    analysis?.status === "complete" ? analysisMetricsSchema.safeParse(analysis.metrics) : null;
+    analysis?.status === "complete" && session.analysis_type === "fly"
+      ? analysisMetricsSchema.safeParse(analysis.metrics)
+      : null;
+  const parsedAccelerationMetrics =
+    analysis?.status === "complete" && session.analysis_type === "acceleration"
+      ? accelerationMetricsSchema.safeParse(analysis.metrics)
+      : null;
 
   // Step/contact markers for the video timeline. Empty until metrics carry
   // per-event timestamps; built here so the prop path is ready.
@@ -135,7 +145,8 @@ export default async function SessionPage({
   // Interactive-overlay frames come from the analysis's stored pose artifact
   // (analyses.keypoints_path). The loader is fully defensive: a missing path,
   // bucket, object, or malformed artifact resolves to [] (placeholder shown).
-  const { frames: rawOverlayFrames, meta: overlayMeta } = parsedMetrics?.success
+  const hasReadableResult = parsedMetrics?.success || parsedAccelerationMetrics?.success;
+  const { frames: rawOverlayFrames, meta: overlayMeta } = hasReadableResult
     ? await loadOverlayFrames(supabase, analysis?.keypoints_path)
     : { frames: [] as OverlayFrame[], meta: null };
 
@@ -230,13 +241,38 @@ export default async function SessionPage({
   // + per-side frequency, average/individual/per-side step length, and the three
   // cross-checked velocities. The manual calibration points supply both the scale
   // and the zone bounds; frames are already FPS-retimed above.
-  const measurements = session.analysis_type === "fly" && overlayFrames.length
-    ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight)
-    : null;
-  const accelerationMetrics =
-    session.analysis_type === "acceleration" && overlayFrames.length
-      ? computeAccelerationMetrics(overlayFrames, manualPoints)
+  const measurements =
+    session.analysis_type === "fly" && overlayFrames.length
+      ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight)
       : null;
+  const accelerationMetrics = parsedAccelerationMetrics?.success
+    ? parsedAccelerationMetrics.data
+    : null;
+  const accelerationOverlayMarkers = accelerationMetrics
+    ? [
+        ...(accelerationMetrics.startEvent.timestamp != null
+          ? [{ label: "Start", timeS: accelerationMetrics.startEvent.timestamp }]
+          : []),
+        ...Object.entries(accelerationMetrics.splits).flatMap(([label, elapsed]) =>
+          elapsed != null && accelerationMetrics.startEvent.timestamp != null
+            ? [
+                {
+                  label: label.replace("m", "Split ").replace("S", "m"),
+                  timeS: accelerationMetrics.startEvent.timestamp + elapsed,
+                },
+              ]
+            : [],
+        ),
+        ...(accelerationMetrics.finishCrossingTime != null
+          ? [
+              {
+                label: `Finish ${accelerationMetrics.finishDistanceM ?? ""}m`,
+                timeS: accelerationMetrics.finishCrossingTime,
+              },
+            ]
+          : []),
+      ]
+    : [];
 
   // The clock every timing-derived number (contact, flight, frequency, zone,
   // velocity, phases) uses: manual override, else the normalized detected rate.
@@ -364,19 +400,17 @@ export default async function SessionPage({
   // facing surface. Derived only from the calibrated measurement engine.
   const trusted = buildTrustedMetrics(measurements);
 
-  // Trochanter step-length optimizer (Day 80): judge step length relative to the
-  // athlete's body proportions. leg_length_cm is the trochanter-length proxy.
-  const legLengthCm = session.athletes?.leg_length_cm ?? null;
+  // Trochanter ratio uses only the dedicated metre-valued measurement.
+  const trochanterHeightM = session.athletes?.trochanter_height_m ?? null;
   // Uses the diagnosis stride length (peak when available).
   const trochanter = trusted
-    ? evaluateTrochanterStepLength({ stepLengthM: trusted.strideLengthM, legLengthCm })
+    ? evaluateTrochanterStepLength({ stepLengthM: trusted.strideLengthM, trochanterHeightM })
     : null;
 
   // Limiting-factor diagnosis (Day 79): ranks the four trusted metrics into the
   // customer-facing #1/#2/#3 factors + the Performance Potential projection — always
   // from the trusted values, so it can never disagree with the Trusted Metrics card.
-  // Day 80: pass leg length so the step-length factor is framed by trochanter ratio.
-  const diagnosis = trusted ? deriveLimitingFactors(trusted, { legLengthCm }) : null;
+  const diagnosis = trusted ? deriveLimitingFactors(trusted, { trochanterHeightM }) : null;
 
   // AVA Performance Score (Day 84): a single trusted-only 0–100 score. Uses ONLY
   // trusted metrics + recording quality — never ground contact / flight time / raw
@@ -389,13 +423,14 @@ export default async function SessionPage({
         avgStrideLengthM: trusted.avgStrideLengthM,
         peakStrideLengthM: trusted.peakStrideLengthM,
         strideRetentionPct: trusted.strideRetentionPct,
-        legLengthCm,
+        trochanterHeightM,
         recordingQualityScore: recordingQuality?.score ?? null,
       })
     : null;
 
   const analysisComplete = analysis?.status === "complete";
-  const metricsReady = analysisComplete && parsedMetrics?.success;
+  const metricsReady =
+    analysisComplete && (parsedMetrics?.success || parsedAccelerationMetrics?.success);
   const activeFpsLabel =
     activeFps != null
       ? `${Number.isInteger(activeFps) ? activeFps : Math.round(activeFps * 100) / 100} FPS`
@@ -492,6 +527,27 @@ export default async function SessionPage({
           eyebrow="Primary Review"
           title={analysisComplete ? "Interactive Overlay" : "Source Video"}
         >
+          {session.analysis_type === "acceleration" && (
+            <div className="mb-4 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+              <p className="text-sm text-[#A0A2A8]">
+                Set finish distance. AVA detects first movement automatically.
+              </p>
+              <div className="mt-3 inline-flex rounded-lg border border-white/[0.1] bg-[#121214] p-1">
+                {[10, 20, 30].map((distance) => (
+                  <form action={setAccelerationFinishDistance} key={distance}>
+                    <input type="hidden" name="id" value={session.id} />
+                    <input type="hidden" name="finish_distance_m" value={distance} />
+                    <button
+                      type="submit"
+                      className={`rounded-md px-4 py-2 text-sm font-semibold ${accelerationFinishDistance === distance ? "bg-[#D72638] text-white" : "text-[#A0A2A8] hover:bg-white/[0.06]"}`}
+                    >
+                      {distance}m
+                    </button>
+                  </form>
+                ))}
+              </div>
+            </div>
+          )}
           {!analysisInFlight && (
             <div className="mb-5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
               {!analysis && (
@@ -514,7 +570,8 @@ export default async function SessionPage({
                 </>
               )}
               <div className="mt-4">
-                {hasSelectedMode ? (
+                {hasSelectedMode &&
+                (session.analysis_type !== "acceleration" || hasAccelerationFinishDistance) ? (
                   <form action={queueAnalysis}>
                     <input type="hidden" name="id" value={session.id} />
                     <button
@@ -525,7 +582,11 @@ export default async function SessionPage({
                     </button>
                   </form>
                 ) : (
-                  <p className="text-xs text-[#6B7280]">Select one mode to enable analysis.</p>
+                  <p className="text-xs text-[#E4C25A]">
+                    {session.analysis_type === "acceleration"
+                      ? "Set finish distance before running acceleration analysis."
+                      : "Select one mode to enable analysis."}
+                  </p>
                 )}
               </div>
             </div>
@@ -545,6 +606,20 @@ export default async function SessionPage({
                 sessionId={session.id}
                 manualCalibration={manualPoints}
                 calibrationGates={calibrationGates}
+                accelerationMarkers={accelerationOverlayMarkers}
+                enableTrochanterAlignment={session.analysis_type !== "acceleration"}
+                athleteHeightCm={athleteProfile?.height_cm ?? null}
+                trochanterMarker={
+                  session.overlay_trochanter_x != null &&
+                  session.overlay_trochanter_y != null &&
+                  session.overlay_trochanter_time_s != null
+                    ? {
+                        x: session.overlay_trochanter_x,
+                        y: session.overlay_trochanter_y,
+                        timeS: session.overlay_trochanter_time_s,
+                      }
+                    : null
+                }
               />
             ) : (
               <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
@@ -607,8 +682,8 @@ export default async function SessionPage({
             {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
 
             {/* Everything else is experimental / not-yet-trusted. */}
-            {session.analysis_type === "fly" && (
-              <MetricsPanel metrics={parsedMetrics!.data} activeFps={activeFps} />
+            {session.analysis_type === "fly" && parsedMetrics?.success && (
+              <MetricsPanel metrics={parsedMetrics.data} activeFps={activeFps} />
             )}
 
             {/* Detailed Systems — secondary engines + validation, collapsed. */}

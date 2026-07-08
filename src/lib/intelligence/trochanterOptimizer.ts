@@ -6,13 +6,7 @@
  * length by the athlete's body proportions using the TROCHANTER LENGTH as the
  * reference:
  *
- *   trochanterLengthM = leg_length_cm / 100
- *   stepLengthRatio   = stepLengthM / trochanterLengthM
- *
- * TERMINOLOGY: the product concept is "trochanter length". The schema currently
- * stores `athletes.leg_length_cm`; until a dedicated trochanter field exists we
- * treat leg length as the trochanter-length PROXY. All UI copy says "trochanter
- * length"; swap the source field here if/when a real measurement lands.
+ *   trochanterRatio = strideLengthM / trochanterHeightM
  *
  * The band labels below are PRODUCT LANGUAGE for now. Thresholds are centralized in
  * {@link TROCHANTER_BANDS} / {@link TARGET_MILESTONES} so they can be tuned later
@@ -132,7 +126,7 @@ export function getNextTrochanterTarget({
 }
 
 export interface TrochanterEvaluation {
-  /** leg_length_cm ÷ 100 (trochanter-length proxy). */
+  /** Greater-trochanter-to-floor height in metres. */
   trochanterLengthM: number;
   /** stepLength ÷ trochanter length. */
   ratio: number;
@@ -156,16 +150,21 @@ export interface TrochanterEvaluation {
  */
 export function evaluateTrochanterStepLength({
   stepLengthM,
-  legLengthCm,
+  trochanterHeightM,
 }: {
   stepLengthM: number | null | undefined;
-  legLengthCm: number | null | undefined;
+  trochanterHeightM: number | null | undefined;
 }): TrochanterEvaluation | null {
-  if (stepLengthM == null || legLengthCm == null || legLengthCm <= 0 || stepLengthM <= 0) {
+  if (
+    stepLengthM == null ||
+    trochanterHeightM == null ||
+    trochanterHeightM <= 0 ||
+    stepLengthM <= 0
+  ) {
     return null;
   }
 
-  const trochanterLengthM = legLengthCm / 100;
+  const trochanterLengthM = trochanterHeightM;
   const ratio = stepLengthM / trochanterLengthM;
   const def = bandDefForRatio(ratio);
   const { nextTargetRatio } = getNextTrochanterTarget({ currentRatio: ratio });

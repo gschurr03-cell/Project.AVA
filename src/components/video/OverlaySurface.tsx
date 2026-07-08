@@ -12,6 +12,7 @@ import {
 import type { OverlayFrame } from "@/lib/video/overlay";
 import { getDisplayedVideoRect, projectLandmark, type Point2D } from "@/lib/video/coordinates";
 import {
+  anticipateFollowTarget,
   IDENTITY_FOLLOW,
   computeFollowTarget,
   followTransform,
@@ -26,6 +27,7 @@ import VideoOverlay, {
 } from "./VideoOverlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
 import type { CalibrationGates } from "@/lib/calibration/gates";
+import type { TrochanterMarker } from "@/lib/video/overlayAlignment";
 
 /**
  * Optional timing-gate calibration wiring for the single-player surface (Day 66):
@@ -43,6 +45,10 @@ export type SurfaceCalibration = {
   onClear: (formData: FormData) => void | Promise<void>;
   /** Recompute the zone-derived metrics from the saved gates (no worker rerun). */
   onRecompute: (formData: FormData) => void | Promise<void>;
+  trochanter?: TrochanterMarker | null;
+  athleteHeightCm?: number | null;
+  onSaveTrochanter?: (formData: FormData) => void | Promise<void>;
+  onClearTrochanter?: (formData: FormData) => void | Promise<void>;
 };
 
 /** Playback rates offered by the shared controls. 0.1× is included for slow-motion
@@ -68,6 +74,7 @@ const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
   { key: "velocity", label: "Velocity" },
   { key: "footLabels", label: "Foot labels" },
   { key: "stepMarks", label: "Step marks" },
+  { key: "debug", label: "Alignment debug" },
 ];
 
 /** Pointer-to-joint hit radius, in CSS pixels. */
@@ -176,12 +183,18 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   // frame; each carries its clip time `t` for world-coordinate anchoring under pan.
   const [calibrationMode, setCalibrationMode] = useState(false);
   const [pendingCones, setPendingCones] = useState<PendingCone[]>([]);
+  const [trochanterMode, setTrochanterMode] = useState(false);
+  const [pendingTrochanter, setPendingTrochanter] = useState<TrochanterMarker | null>(null);
 
   // Live copies for the rAF follow loop, so toggling/replaying doesn't restart it.
   const autoFollowRef = useRef(autoFollow);
   autoFollowRef.current = autoFollow;
   // The current (smoothed) camera state; eased toward the per-frame target.
   const followRef = useRef<FollowBox>(IDENTITY_FOLLOW);
+  const followStateRef = useRef<{ current: FollowBox; target: FollowBox }>({
+    current: IDENTITY_FOLLOW,
+    target: IDENTITY_FOLLOW,
+  });
 
   const onStateRef = useRef(onState);
   onStateRef.current = onState;
@@ -231,13 +244,17 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
         let target: FollowBox = IDENTITY_FOLLOW;
         if (autoFollowRef.current) {
           const frame = frames[frameIndexForTime(frames, video.currentTime)];
+          const futureFrame = frames[frameIndexForTime(frames, video.currentTime + 0.1)];
           // Coast on the last camera state when the frame is untrusted (too few
           // visible landmarks), avoiding a snap back to centre.
-          target = (frame && computeFollowTarget(frame)) ?? followRef.current;
+          const currentTarget = (frame && computeFollowTarget(frame)) ?? followRef.current;
+          const futureTarget = futureFrame ? computeFollowTarget(futureFrame) : null;
+          target = anticipateFollowTarget(currentTarget, futureTarget);
         }
         // Broadcast-style stabilization: dead-zone + damped vertical + separate,
         // deadbanded zoom so the viewport doesn't bounce or pulse each stride.
         const next = smoothFollowStable(followRef.current, target);
+        followStateRef.current = { current: next, target };
         if (followsDiffer(followRef.current, next)) {
           followRef.current = next;
           wrapper.style.transform = followTransform(next);
@@ -354,7 +371,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   };
 
   const handlePointerMove = (event: React.MouseEvent) => {
-    if (calibrationMode) return; // no joint hover while marking ground points
+    if (calibrationMode || trochanterMode) return;
     const hit = jointAtPointer(event.clientX, event.clientY);
     setHoveredJoint((prev) => (prev === hit ? prev : hit));
   };
@@ -362,6 +379,11 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   // In calibration mode a click drops a ground point (cone by cone). Outside
   // calibration mode clicks do nothing (the joint inspector was removed).
   const handlePointerClick = (event: React.MouseEvent) => {
+    if (trochanterMode) {
+      const point = groundPointAtPointer(event.clientX, event.clientY);
+      if (point) setPendingTrochanter({ ...point, timeS: videoRef.current?.currentTime ?? 0 });
+      return;
+    }
     if (!calibrationMode) return;
     const point = groundPointAtPointer(event.clientX, event.clientY);
     if (!point) return;
@@ -374,7 +396,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     setToggles((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // Known gate distance to display, from the new gate bars or a legacy calibration.
-  const savedDistanceM = calibration?.savedGates?.distanceM ?? calibration?.saved?.distanceM ?? null;
+  const savedDistanceM =
+    calibration?.savedGates?.distanceM ?? calibration?.saved?.distanceM ?? null;
   const hasCalibration = !!(calibration?.savedGates || calibration?.saved);
 
   return (
@@ -387,7 +410,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
         onMouseLeave={() => setHoveredJoint(null)}
         onClick={handlePointerClick}
         className={`relative overflow-hidden rounded-xl border border-white/[0.08] bg-black ${
-          calibrationMode ? "cursor-crosshair" : hoveredJoint ? "cursor-pointer" : ""
+          calibrationMode || trochanterMode ? "cursor-crosshair" : hoveredJoint ? "cursor-pointer" : ""
         }`}
       >
         {/* Auto-Follow transform target: the video and the pose overlay share this
@@ -401,9 +424,9 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             // PlayerControls transport (rendered outside this wrapper) drives
             // playback in that mode. They're also hidden while calibrating so the
             // control bar doesn't swallow clicks meant to place ground points.
-            controls={!autoFollow && !calibrationMode}
+            controls={!autoFollow && !calibrationMode && !trochanterMode}
             playsInline
-            className="block h-auto w-full"
+            className="block h-auto w-full object-contain object-center"
           />
           <VideoOverlay
             videoRef={videoRef}
@@ -415,6 +438,10 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             calibrationPoints={calibration?.saved ?? null}
             calibrationGates={calibration?.savedGates ?? null}
             pendingGates={calibrationMode ? pendingCones : []}
+            trochanterMarker={pendingTrochanter ?? calibration?.trochanter ?? null}
+            athleteHeightCm={calibration?.athleteHeightCm ?? null}
+            autoFollow={autoFollow}
+            followStateRef={followStateRef}
           />
           {overlaySlot}
         </div>
@@ -458,6 +485,26 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           </button>
         )}
 
+        {calibration?.onSaveTrochanter && (
+          <button
+            type="button"
+            onClick={() => {
+              setTrochanterMode((prev) => !prev);
+              setCalibrationMode(false);
+              setPendingTrochanter(null);
+            }}
+            aria-pressed={trochanterMode}
+            title="Set an optional display-only anatomical alignment anchor"
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              trochanterMode
+                ? "bg-[#D72638] text-white"
+                : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
+            }`}
+          >
+            {trochanterMode ? "◉" : "○"} Trochanter anchor
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => setLayersOpen((prev) => !prev)}
@@ -467,6 +514,33 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           {layersOpen ? "▾" : "▸"} Layers
         </button>
       </div>
+
+      {calibration?.onSaveTrochanter && (trochanterMode || calibration.trochanter) && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.06] bg-[#121214] p-3 text-xs text-[#A0A2A8]">
+          <span>
+            {pendingTrochanter
+              ? `Anchor x ${pendingTrochanter.x.toFixed(3)}, y ${pendingTrochanter.y.toFixed(3)} at ${pendingTrochanter.timeS.toFixed(2)}s`
+              : calibration.trochanter
+                ? `Saved at ${calibration.trochanter.timeS.toFixed(2)}s`
+                : "Pause on a clear frame, then click the athlete’s trochanter."}
+          </span>
+          {pendingTrochanter && (
+            <form action={calibration.onSaveTrochanter} className="ml-auto">
+              <input type="hidden" name="id" value={calibration.sessionId} />
+              <input type="hidden" name="trochanter_x" value={pendingTrochanter.x} />
+              <input type="hidden" name="trochanter_y" value={pendingTrochanter.y} />
+              <input type="hidden" name="trochanter_time_s" value={pendingTrochanter.timeS} />
+              <button type="submit" className="rounded-lg bg-[#D72638] px-3 py-1.5 font-semibold text-white">Save anchor</button>
+            </form>
+          )}
+          {calibration.trochanter && calibration.onClearTrochanter && (
+            <form action={calibration.onClearTrochanter}>
+              <input type="hidden" name="id" value={calibration.sessionId} />
+              <button type="submit" className="rounded-lg border border-white/[0.1] px-3 py-1.5">Clear</button>
+            </form>
+          )}
+        </div>
+      )}
 
       {/* Layers panel: a vertical, scrollable list of toggles (checkbox style). */}
       {layersOpen && (
@@ -517,7 +591,10 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
 
       {/* Calibration — collapsed by default (dark). */}
       {calibration && (
-        <details className="group rounded-xl border border-white/[0.06] bg-[#121214]" open={calibrationMode}>
+        <details
+          className="group rounded-xl border border-white/[0.06] bg-[#121214]"
+          open={calibrationMode}
+        >
           <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[#A0A2A8] [&::-webkit-details-marker]:hidden">
             <span className="inline-block text-[#6B7280] transition group-open:rotate-90">▸</span>
             Calibration
@@ -583,8 +660,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                   Mark the <span className="font-semibold text-[#F5F5F7]">start gate</span>: click{" "}
                   <span className="font-semibold text-[#F5F5F7]">cone 1</span> then{" "}
                   <span className="font-semibold text-[#F5F5F7]">cone 2</span>. Scrub to the finish,
-                  then mark the <span className="font-semibold text-[#F5F5F7]">finish gate</span> the
-                  same way. Enter the known distance and save.
+                  then mark the <span className="font-semibold text-[#F5F5F7]">finish gate</span>{" "}
+                  the same way. Enter the known distance and save.
                 </p>
                 <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-[#6B7280]">
                   {(

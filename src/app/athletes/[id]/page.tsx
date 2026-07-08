@@ -40,7 +40,7 @@ export default async function AthletePage({
   const { data: athlete } = await supabase
     .from("athletes")
     .select(
-      "id, full_name, height_cm, weight_kg, leg_length_cm, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m",
+      "id, full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m",
     )
     .eq("id", id)
     .single();

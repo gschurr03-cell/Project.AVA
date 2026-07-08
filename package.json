@@ -42,6 +42,7 @@
     "insights:sanity": "node scripts/insights-sanity.mjs",
     "trends:sanity": "node scripts/trends-sanity.mjs",
     "follow:sanity": "node scripts/follow-sanity.mjs",
+    "overlay-alignment:sanity": "node scripts/overlay-alignment-sanity.mjs",
     "calibration:sanity": "node scripts/calibration-sanity.mjs",
     "prediction:sanity": "node scripts/prediction-sanity.mjs",
     "phases:sanity": "node scripts/phases-sanity.mjs",

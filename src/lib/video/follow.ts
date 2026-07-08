@@ -77,13 +77,24 @@ export interface FollowSmoothing {
 }
 
 export const DEFAULT_FOLLOW_SMOOTHING: FollowSmoothing = {
-  panAlphaX: 0.14,
+  panAlphaX: 0.18,
   panAlphaY: 0.05,
   zoomAlpha: 0.05,
-  deadZoneX: 0.04,
+  deadZoneX: 0.025,
   deadZoneY: 0.1,
   zoomDeadband: 0.08,
 };
+
+/** Blend toward a short look-ahead target to reduce visual follow lag. */
+export function anticipateFollowTarget(current: FollowBox, future: FollowBox | null): FollowBox {
+  if (!future) return current;
+  return clampFollow({
+    cx: lerp(current.cx, future.cx, 0.35),
+    cy: lerp(current.cy, future.cy, 0.2),
+    // Uniform scale preserves the original video aspect ratio.
+    scale: lerp(current.scale, future.scale, 0.2),
+  });
+}
 
 /** The neutral camera: whole frame, centred, no zoom. */
 export const IDENTITY_FOLLOW: FollowBox = { cx: 0.5, cy: 0.5, scale: 1 };
@@ -162,7 +173,10 @@ export function computeFollowTarget(
   const boxW = Math.max((maxX - minX) * grow, 1e-3);
   const boxH = Math.max((maxY - minY) * grow, 1e-3);
   // Visual-only review zoom (×1.5). Does not affect analysis or measurements.
-  const scale = Math.max(1, VISUAL_ZOOM_BOOST * Math.min(config.maxScale, Math.min(1 / boxW, 1 / boxH)));
+  const scale = Math.max(
+    1,
+    VISUAL_ZOOM_BOOST * Math.min(config.maxScale, Math.min(1 / boxW, 1 / boxH)),
+  );
   return clampFollow({ cx, cy, scale });
 }
 

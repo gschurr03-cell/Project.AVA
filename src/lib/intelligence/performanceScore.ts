@@ -20,7 +20,7 @@ export interface AvaPerformanceScoreInput {
   avgStrideLengthM: number | null;
   peakStrideLengthM: number | null;
   strideRetentionPct: number | null;
-  legLengthCm: number | null;
+  trochanterHeightM: number | null;
   /** Optional 0–100 recording-quality score; excluded from the average when absent. */
   recordingQualityScore?: number | null;
 }
@@ -152,10 +152,10 @@ export function calculateAvaPerformanceScore(
     explanation: "Trusted calibrated step frequency (Hz). Elite turnover is 4.8–5.2 Hz.",
   });
 
-  // Peak stride length: score by TROCHANTER RATIO when leg length is known, else by a
+  // Peak stride length: score by TROCHANTER RATIO when trochanter height is known, else by a
   // generic peak-stride-length band.
-  if (input.legLengthCm != null && input.legLengthCm > 0) {
-    const ratio = peakStrideLengthM / (input.legLengthCm / 100);
+  if (input.trochanterHeightM != null && input.trochanterHeightM > 0) {
+    const ratio = peakStrideLengthM / input.trochanterHeightM;
     raw.push({
       name: "Peak Stride (trochanter ratio)",
       value: Number(ratio.toFixed(2)),
@@ -169,7 +169,7 @@ export function calculateAvaPerformanceScore(
       value: peakStrideLengthM,
       score: interp(peakStrideLengthM, PEAK_STRIDE_ANCHORS),
       weight: WEIGHTS.peakStride,
-      explanation: "Best-4 stride length (m). Add athlete leg length to score by body proportion.",
+      explanation: "Best-4 stride length (m). Add trochanter height to score by body proportion.",
     });
   }
 

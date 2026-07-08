@@ -92,25 +92,24 @@ try {
   const dLow = deriveLimitingFactors(trusted({ strideLengthM: 2.42 }));
   check("near-elite lever → LOW impact band", byKey(dLow, "stepLength")?.impactBand === "low");
 
-  // (2b) Day 81/82 — stride length judged by PEAK TROCHANTER ratio when leg length is
-  // present; average + retention carried as context.
-  const dTro = deriveLimitingFactors(trusted(), { legLengthCm: 99 });
+  // Stride length is judged by peak stride / dedicated trochanter height.
+  const dTro = deriveLimitingFactors(trusted(), { trochanterHeightM: 0.99 });
   const stepTro = byKey(dTro, "stepLength");
-  check("leg length present → stride target is peak trochanter next milestone (~2.48 m, not 2.45)", stepTro && near(stepTro.eliteTargetValue, 2.475, 0.02));
+  check("trochanter height present → ratio target is used", stepTro && near(stepTro.eliteTargetValue, 2.475, 0.02));
   check("stride factor carries PEAK trochanter data (2.33×, next 2.50×)", stepTro?.trochanter?.ratioText === "2.33×" && near(stepTro.trochanter.nextTargetRatio, 2.5));
   check("stride factor carries avg + retention context", stepTro?.trochanter?.avgStrideText === "2.16 m" && stepTro?.trochanter?.retentionText === "93.5%");
   check("stride benchmark copy is trochanter-based, not generic metres", /trochanter/.test(stepTro?.eliteBenchmarkText ?? "") && !/2\.45/.test(stepTro?.eliteBenchmarkText ?? ""));
 
   // Peak strong but average lagging → coaching note.
-  const dLag = deriveLimitingFactors(trusted({ strideRetentionPct: 88 }), { legLengthCm: 99 });
+  const dLag = deriveLimitingFactors(trusted({ strideRetentionPct: 88 }), { trochanterHeightM: 0.99 });
   check("strong peak + low retention → 'zone retention is lagging' note", /retention is lagging/i.test(byKey(dLag, "stepLength")?.trochanter?.retentionNote ?? ""));
 
-  // Fallback: no leg length → generic metre elite target 2.45 m, no trochanter data.
+  // Fallback: no trochanter height → generic metre target, no fabricated ratio.
   const stepGen = byKey(deriveLimitingFactors(trusted()), "stepLength");
-  check("no leg length → generic 2.45 m target + trochanter null (fallback preserved)", near(stepGen?.eliteTargetValue, 2.45) && stepGen?.trochanter == null);
+  check("no trochanter height → generic target + trochanter unavailable", near(stepGen?.eliteTargetValue, 2.45) && stepGen?.trochanter == null);
 
   // Review: peak ratio > 2.70× is a measurement check, NOT a ranked performance limiter.
-  const dReview = deriveLimitingFactors(trusted({ strideLengthM: 2.8 }), { legLengthCm: 100 });
+  const dReview = deriveLimitingFactors(trusted({ strideLengthM: 2.8 }), { trochanterHeightM: 1.00 });
   check(">2.70× → stride length dropped (measurement check, not a limiter)", !byKey(dReview, "stepLength") && dReview.factors.length === 3);
 
   // (3) All metrics elite → NEVER empty; "unlocks" mode ranked by closest margin.

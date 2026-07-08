@@ -3,7 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
-import { saveGateCalibration, removeCalibration, recomputeFromZone } from "@/app/sessions/actions";
+import {
+  saveGateCalibration,
+  removeCalibration,
+  recomputeFromZone,
+  saveTrochanterOverlayPoint,
+  clearTrochanterOverlayPoint,
+} from "@/app/sessions/actions";
 import OverlaySurface, {
   SPEEDS,
   frameIndexForTime,
@@ -16,6 +22,7 @@ import type { OverlayCalibrationPoints } from "./VideoOverlay";
 import type { CalibrationGates } from "@/lib/calibration/gates";
 import PlayerControls from "./PlayerControls";
 import TelestrationCanvas from "./TelestrationCanvas";
+import type { TrochanterMarker } from "@/lib/video/overlayAlignment";
 
 type Props = {
   videoUrl: string;
@@ -32,6 +39,11 @@ type Props = {
   manualCalibration?: OverlayCalibrationPoints | null;
   /** Saved timing-gate bars (Day 66) for this session, if any. */
   calibrationGates?: CalibrationGates | null;
+  /** Acceleration event/split labels rendered on the normal full-frame overlay. */
+  accelerationMarkers?: { label: string; timeS: number }[];
+  trochanterMarker?: TrochanterMarker | null;
+  athleteHeightCm?: number | null;
+  enableTrochanterAlignment?: boolean;
 };
 
 /**
@@ -48,6 +60,10 @@ export default function OverlayVideoPlayer({
   sessionId,
   manualCalibration = null,
   calibrationGates = null,
+  accelerationMarkers = [],
+  trochanterMarker = null,
+  athleteHeightCm = null,
+  enableTrochanterAlignment = false,
 }: Props) {
   const calibration: SurfaceCalibration | undefined = sessionId
     ? {
@@ -57,6 +73,10 @@ export default function OverlayVideoPlayer({
         onSave: saveGateCalibration,
         onClear: removeCalibration,
         onRecompute: recomputeFromZone,
+        trochanter: enableTrochanterAlignment ? trochanterMarker : null,
+        athleteHeightCm,
+        onSaveTrochanter: enableTrochanterAlignment ? saveTrochanterOverlayPoint : undefined,
+        onClearTrochanter: enableTrochanterAlignment ? clearTrochanterOverlayPoint : undefined,
       }
     : undefined;
   const surfaceRef = useRef<OverlaySurfaceHandle>(null);
@@ -102,7 +122,23 @@ export default function OverlayVideoPlayer({
       stepContactCount={stepContactCount}
       calibration={calibration}
       onState={setState}
-      overlaySlot={<TelestrationCanvas />}
+      overlaySlot={
+        <>
+          <TelestrationCanvas />
+          {accelerationMarkers.length > 0 && (
+            <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-1.5">
+              {accelerationMarkers.map((marker) => (
+                <span
+                  key={`${marker.label}-${marker.timeS}`}
+                  className="rounded bg-black/70 px-2 py-1 text-[10px] font-semibold text-white"
+                >
+                  {marker.label} · {marker.timeS.toFixed(2)}s
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      }
       controlsSlot={
         <PlayerControls
           hasFrames={hasFrames}

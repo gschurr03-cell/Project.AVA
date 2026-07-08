@@ -318,18 +318,21 @@ function scoreFactor(
  */
 export function deriveLimitingFactors(
   trusted: TrustedMetrics,
-  options?: { legLengthCm?: number | null },
+  options?: { trochanterHeightM?: number | null },
 ): LimitingFactorDiagnosis {
   const stepLengthConf = trusted.stepLengthConfidence as IntelligenceConfidence;
   const topSpeedBase = trusted.topSpeedMps ?? trusted.avgVelocityMps ?? null;
 
-  // Day 81/82: when leg length is known, judge STRIDE LENGTH by body proportions
+  // When trochanter height is known, judge STRIDE LENGTH by body proportions
   // (trochanter ratio) instead of the generic metre elite target — using the PEAK
   // stride (trusted.strideLengthM). A ratio > 2.70× is a measurement check, NOT a
   // limiter.
   const troEval =
-    options?.legLengthCm != null && trusted.strideLengthM != null
-      ? evaluateTrochanterStepLength({ stepLengthM: trusted.strideLengthM, legLengthCm: options.legLengthCm })
+    options?.trochanterHeightM != null && trusted.strideLengthM != null
+      ? evaluateTrochanterStepLength({
+          stepLengthM: trusted.strideLengthM,
+          trochanterHeightM: options.trochanterHeightM,
+        })
       : null;
 
   const scored = TRUSTED_FACTOR_DEFS.map((def) => {

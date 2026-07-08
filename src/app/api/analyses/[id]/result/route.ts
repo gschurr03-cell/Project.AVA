@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { analysisCallbackSchema } from "@/lib/biomechanics/types";
+import { analysisFailureSchema, analysisSuccessSchema } from "@/lib/biomechanics/types";
+import { accelerationAnalysisSuccessSchema } from "@/lib/acceleration/schema";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -23,13 +24,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const parsed = analysisCallbackSchema.safeParse(await request.json());
+  const supabase = createServiceClient();
+  const now = new Date().toISOString();
+  const body: unknown = await request.json();
+  const isComplete =
+    !!body && typeof body === "object" && "status" in body && body.status === "complete";
+
+  // Validation is selected by the session mode. The fly schema never imports or
+  // accepts acceleration, and acceleration never accepts the legacy fly object.
+  const { data: target } = await supabase
+    .from("analyses")
+    .select("session_id, sessions!inner(analysis_type)")
+    .eq("id", id)
+    .single();
+  if (!target) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const joined = Array.isArray(target.sessions) ? target.sessions[0] : target.sessions;
+  const sessionType = joined?.analysis_type ?? "fly";
+  const parsed = isComplete
+    ? (sessionType === "acceleration"
+        ? accelerationAnalysisSuccessSchema
+        : analysisSuccessSchema
+      ).safeParse(body)
+    : analysisFailureSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
-
-  const supabase = createServiceClient();
-  const now = new Date().toISOString();
 
   if (parsed.data.status === "complete") {
     const { data: analysis, error } = await supabase

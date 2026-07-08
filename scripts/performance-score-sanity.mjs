@@ -44,12 +44,12 @@ try {
   const elite = {
     topSpeedMps: 11.6, avgVelocityMps: 11.0, frequencyHz: 5.0,
     avgStrideLengthM: 2.4, peakStrideLengthM: 2.5, strideRetentionPct: 97,
-    legLengthCm: 100, recordingQualityScore: 95,
+    trochanterHeightM: 1.00, recordingQualityScore: 95,
   };
   const poor = {
     topSpeedMps: 8.5, avgVelocityMps: 8.5, frequencyHz: 4.0,
     avgStrideLengthM: 1.95, peakStrideLengthM: 2.0, strideRetentionPct: 82,
-    legLengthCm: 100, recordingQualityScore: 60,
+    trochanterHeightM: 1.00, recordingQualityScore: 60,
   };
 
   const rElite = calculateAvaPerformanceScore(elite);
@@ -72,13 +72,13 @@ try {
   const freq485 = calculateAvaPerformanceScore({ ...elite, frequencyHz: 4.85 }).components.find((c) => c.name === "Frequency");
   check("trusted 4.85 Hz frequency scores high (≥ 90), never 3.53-based", freq485.value === 4.85 && freq485.score >= 90);
 
-  // Leg length switches the stride subscore to a trochanter RATIO.
-  const withLeg = calculateAvaPerformanceScore({ ...elite, peakStrideLengthM: 2.16, legLengthCm: 99 });
-  const withoutLeg = calculateAvaPerformanceScore({ ...elite, peakStrideLengthM: 2.16, legLengthCm: null });
+  // Dedicated trochanter height switches the stride subscore to a trochanter ratio.
+  const withLeg = calculateAvaPerformanceScore({ ...elite, peakStrideLengthM: 2.16, trochanterHeightM: 0.99 });
+  const withoutLeg = calculateAvaPerformanceScore({ ...elite, peakStrideLengthM: 2.16, trochanterHeightM: null });
   const legComp = withLeg.components.find((c) => /trochanter/i.test(c.name));
   const genericComp = withoutLeg.components.find((c) => c.name === "Peak Stride Length");
-  check("leg length present → stride scored by trochanter ratio (~2.18×)", legComp != null && Math.abs(legComp.value - 2.16 / 0.99) < 0.02);
-  check("leg length missing → generic peak stride length band (value in metres)", genericComp != null && genericComp.value === 2.16);
+  check("trochanter height present → stride scored by ratio (~2.18×)", legComp != null && Math.abs(legComp.value - 2.16 / 0.99) < 0.02);
+  check("trochanter height missing → generic peak stride length band", genericComp != null && genericComp.value === 2.16);
 
   // Missing required trusted metrics → not enough trusted data (never a fake 0).
   const missing = calculateAvaPerformanceScore({ ...elite, peakStrideLengthM: null });

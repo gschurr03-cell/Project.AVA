@@ -43,9 +43,15 @@ try {
     path.join(out, "lib/intelligence/trochanterOptimizer.js"),
   );
 
-  // Real session: 2.16 m step, 99 cm trochanter → 2.18× → Elite minimum.
-  const e = evaluateTrochanterStepLength({ stepLengthM: 2.16, legLengthCm: 99 });
-  check("2.16 m / 99 cm → trochanter 0.99 m", near(e.trochanterLengthM, 0.99));
+  // Official formula: stride length metres ÷ trochanter height metres.
+  const exact244 = evaluateTrochanterStepLength({ stepLengthM: 2.39, trochanterHeightM: 0.98 });
+  const exact222 = evaluateTrochanterStepLength({ stepLengthM: 2.18, trochanterHeightM: 0.98 });
+  check("2.39m stride / 0.98m trochanter = 2.44x", near(exact244?.ratio, 2.44, 0.005));
+  check("2.18m stride / 0.98m trochanter = 2.22x", near(exact222?.ratio, 2.22, 0.005));
+  check("missing trochanter height returns unavailable", evaluateTrochanterStepLength({ stepLengthM: 2.39, trochanterHeightM: null }) === null);
+
+  const e = evaluateTrochanterStepLength({ stepLengthM: 2.16, trochanterHeightM: 0.99 });
+  check("trochanter height is consumed directly in metres", near(e.trochanterLengthM, 0.99));
   check("ratio ≈ 2.18×", near(e.ratio, 2.16 / 0.99, 0.005));
   check("band = elite-minimum (2.18× < 2.20×)", e.band === "elite-minimum" && e.label === "Elite minimum");
   check("next target = 2.30× (skips Solid)", near(e.nextTargetRatio, 2.3));
@@ -54,32 +60,31 @@ try {
   check("not flagged for review", e.reviewFlag === false);
 
   // 2.30× → Rising star.
-  const rs = evaluateTrochanterStepLength({ stepLengthM: 2.3, legLengthCm: 100 });
+  const rs = evaluateTrochanterStepLength({ stepLengthM: 2.3, trochanterHeightM: 1.00 });
   check("2.30× → Rising star", rs.band === "rising-star" && rs.label === "Rising star");
   check("2.30× next target = 2.50×", near(rs.nextTargetRatio, 2.5));
 
   // 2.50× → Olympic caliber.
-  const oly = evaluateTrochanterStepLength({ stepLengthM: 2.5, legLengthCm: 100 });
+  const oly = evaluateTrochanterStepLength({ stepLengthM: 2.5, trochanterHeightM: 1.00 });
   check("2.50× → Olympic caliber", oly.band === "olympic" && oly.label === "Olympic caliber");
   check("2.50× next target = 2.70×", near(oly.nextTargetRatio, 2.7));
 
   // Boundary: below elite minimum (1.9×) → targets elite minimum 2.00×.
-  const low = evaluateTrochanterStepLength({ stepLengthM: 1.9, legLengthCm: 100 });
+  const low = evaluateTrochanterStepLength({ stepLengthM: 1.9, trochanterHeightM: 1.00 });
   check("1.90× → Below elite minimum", low.band === "below-elite");
   check("below-elite next target = 2.00×", near(low.nextTargetRatio, 2.0));
 
   // > 2.70× → review flag true, no higher target.
-  const hi = evaluateTrochanterStepLength({ stepLengthM: 2.8, legLengthCm: 100 });
+  const hi = evaluateTrochanterStepLength({ stepLengthM: 2.8, trochanterHeightM: 1.00 });
   check("2.80× → review band + reviewFlag true", hi.band === "review" && hi.reviewFlag === true);
   check("review → no higher next target", hi.nextTargetRatio === null && hi.nextTargetStepLengthM === null);
 
   // getNextTrochanterTarget standalone.
   check("getNextTrochanterTarget(2.18) = 2.30 (Rising star)", getNextTrochanterTarget({ currentRatio: 2.18 }).nextTargetRatio === 2.3 && getNextTrochanterTarget({ currentRatio: 2.18 }).label === "Rising star");
 
-  // Missing / invalid leg length → null (unavailable), never a bogus ratio.
-  check("missing leg length → null", evaluateTrochanterStepLength({ stepLengthM: 2.16, legLengthCm: null }) === null);
-  check("zero leg length → null", evaluateTrochanterStepLength({ stepLengthM: 2.16, legLengthCm: 0 }) === null);
-  check("missing step length → null", evaluateTrochanterStepLength({ stepLengthM: null, legLengthCm: 99 }) === null);
+  // Missing / invalid trochanter height → null (unavailable), never a bogus ratio.
+  check("zero trochanter height → null", evaluateTrochanterStepLength({ stepLengthM: 2.16, trochanterHeightM: 0 }) === null);
+  check("missing stride length → null", evaluateTrochanterStepLength({ stepLengthM: null, trochanterHeightM: 0.99 }) === null);
 
   console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");
 } finally {

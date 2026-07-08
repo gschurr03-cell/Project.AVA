@@ -1,91 +1,149 @@
-import type { OverlayFrame, OverlayPoint } from "@/lib/video/overlay";
+import type { AccelerationFrame, AccelerationPoint } from "./types";
 
-export const HAND_LEAVE_GROUND = "hand_leave_ground" as const;
+export const FIRST_DETECTED_MOVEMENT = "FIRST_DETECTED_MOVEMENT" as const;
+export const NEEDS_REVIEW = "NEEDS_REVIEW" as const;
+export type MovementSignal = "torso" | "shoulder" | "wrist" | "pose_anchor";
 
-export interface HandLeaveGroundEvent {
-  type: typeof HAND_LEAVE_GROUND;
-  status: "detected" | "needs_review";
+export interface MovementCandidateDebug {
   frame: number | null;
-  timeS: number | null;
-  confidence: number;
+  timestamp: number | null;
+  passed: boolean;
   reason: string;
 }
 
-const visible = (point?: OverlayPoint): point is OverlayPoint =>
-  !!point && (point.visibility ?? 1) >= 0.5;
+export interface AccelerationStartEvent {
+  type: typeof FIRST_DETECTED_MOVEMENT | typeof NEEDS_REVIEW;
+  signal: MovementSignal | null;
+  frame: number | null;
+  timestamp: number | null;
+  confidence: number;
+  reason: string;
+  debug: { candidates: Record<MovementSignal, MovementCandidateDebug> };
+}
 
-const points = (frame: OverlayFrame, names: string[]) =>
-  names.map((name) => frame.landmarks[name]).filter(visible);
+const SIGNALS: MovementSignal[] = ["torso", "shoulder", "wrist", "pose_anchor"];
+const visible = (point?: AccelerationPoint): point is AccelerationPoint =>
+  !!point && (point.visibility ?? 1) >= 0.35;
+const meanPoint = (points: AccelerationPoint[]) =>
+  points.length
+    ? {
+        x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+        y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+      }
+    : null;
+const failed = (reason: string): MovementCandidateDebug => ({
+  frame: null,
+  timestamp: null,
+  passed: false,
+  reason,
+});
 
-/**
- * Detect the first sustained frame after a visibly grounded starting hand is no
- * longer on the ground. This event — never torso/hip motion or a first step — is
- * acceleration t=0. Ambiguous footage returns needs_review rather than guessing.
- */
-export function detectHandLeaveGround(frames: OverlayFrame[]): HandLeaveGroundEvent {
-  const review = (reason: string): HandLeaveGroundEvent => ({
-    type: HAND_LEAVE_GROUND,
-    status: "needs_review",
-    frame: null,
-    timeS: null,
-    confidence: 0,
-    reason,
+type SignalSample = {
+  frame: AccelerationFrame;
+  point: { x: number; y: number };
+  scale: number;
+  confidence: number;
+};
+
+function frameScale(frame: AccelerationFrame): number {
+  const values = Object.values(frame.landmarks).filter(visible);
+  if (values.length < 2) return 0.35;
+  return Math.max(
+    0.1,
+    Math.max(...values.map((point) => point.y)) - Math.min(...values.map((point) => point.y)),
+  );
+}
+
+function signalPoint(frame: AccelerationFrame, signal: MovementSignal) {
+  const lm = frame.landmarks;
+  const hips = [lm.leftHip, lm.rightHip].filter(visible);
+  const shoulders = [lm.leftShoulder, lm.rightShoulder].filter(visible);
+  const wrists = [lm.leftWrist, lm.rightWrist].filter(visible);
+  if (signal === "torso") return hips.length === 2 ? meanPoint(hips) : frame.centerOfMass;
+  if (signal === "shoulder") return shoulders.length === 2 ? meanPoint(shoulders) : null;
+  if (signal === "wrist") {
+    const wrist = meanPoint(wrists);
+    if (!wrist) return null;
+    const anchor = meanPoint([...hips, ...shoulders]);
+    return anchor ? { x: wrist.x - anchor.x, y: wrist.y - anchor.y } : wrist;
+  }
+  return meanPoint(Object.values(lm).filter(visible));
+}
+
+function track(frames: AccelerationFrame[], signal: MovementSignal): SignalSample[] {
+  return frames.flatMap((frame) => {
+    const point = signalPoint(frame, signal);
+    if (!point) return [];
+    const used = Object.values(frame.landmarks).filter(visible);
+    const confidence = used.length
+      ? used.reduce((sum, item) => sum + (item.visibility ?? 1), 0) / used.length
+      : 0.45;
+    return [{ frame, point, scale: frameScale(frame), confidence }];
   });
-  if (frames.length < 6) return review("Not enough tracked frames to verify hand release.");
+}
 
-  const observations = frames.map((frame) => {
-    const hands = points(frame, ["leftWrist", "rightWrist"]);
-    const groundPoints = points(frame, [
-      "leftAnkle",
-      "rightAnkle",
-      "leftHeel",
-      "rightHeel",
-      "leftFootIndex",
-      "rightFootIndex",
-    ]);
-    const head = points(frame, ["nose"])[0];
-    if (!hands.length || !groundPoints.length) return null;
-    const groundY = Math.max(...groundPoints.map((point) => point.y));
-    const bodyHeight = head ? Math.max(0.1, groundY - head.y) : 0.35;
-    const contactTolerance = Math.max(0.012, bodyHeight * 0.06);
-    const releaseClearance = Math.max(0.02, bodyHeight * 0.1);
-    const minHandClearance = Math.min(...hands.map((hand) => groundY - hand.y));
+function assess(frames: AccelerationFrame[], signal: MovementSignal) {
+  const samples = track(frames, signal);
+  if (samples.length < 5) {
     return {
-      frame,
-      grounded: hands.some((hand) => Math.abs(groundY - hand.y) <= contactTolerance),
-      released: minHandClearance >= releaseClearance,
-      visibility:
-        [...hands, ...groundPoints].reduce((sum, p) => sum + (p.visibility ?? 1), 0) /
-        (hands.length + groundPoints.length),
-    };
-  });
-
-  let groundedRun = 0;
-  let bestGroundedRun = 0;
-  for (let i = 0; i < observations.length; i++) {
-    const observation = observations[i];
-    groundedRun = observation?.grounded ? groundedRun + 1 : 0;
-    bestGroundedRun = Math.max(bestGroundedRun, groundedRun);
-    if (bestGroundedRun < 3 || !observation?.released) continue;
-    const sustained = observations.slice(i, i + 3);
-    if (sustained.length < 3 || !sustained.every((item) => item?.released)) continue;
-    const confidence = Math.min(
-      1,
-      observation.visibility * 0.7 + Math.min(bestGroundedRun / 6, 1) * 0.3,
-    );
-    if (confidence < 0.7) return review("Hand release was visible but confidence was too low.");
-    return {
-      type: HAND_LEAVE_GROUND,
-      status: "detected",
-      frame: observation.frame.frame,
-      timeS: observation.frame.time,
-      confidence,
-      reason: "A grounded hand was followed by sustained visible hand clearance.",
+      event: null,
+      debug: failed(`Only ${samples.length} usable ${signal} frames were found.`),
     };
   }
-  return review(
-    bestGroundedRun >= 3
-      ? "Grounded hands were visible, but a sustained release could not be confirmed."
-      : "A grounded starting hand could not be confidently identified.",
-  );
+  const baselineCount = Math.min(5, Math.max(3, Math.floor(samples.length * 0.06)));
+  const baseline = meanPoint(samples.slice(0, baselineCount).map((sample) => sample.point))!;
+  let earliest: SignalSample | null = null;
+  for (let i = baselineCount; i + 1 < samples.length; i++) {
+    const window = samples.slice(i, i + 3);
+    const moved = window.map((sample) => {
+      const displacement = Math.hypot(sample.point.x - baseline.x, sample.point.y - baseline.y);
+      const factor = signal === "wrist" ? 0.014 : signal === "pose_anchor" ? 0.012 : 0.016;
+      return displacement >= Math.max(0.0045, sample.scale * factor);
+    });
+    if (moved[0]) earliest ??= window[0];
+    if (!moved[0] || !moved[1] || (moved.length === 3 && !moved[2])) continue;
+    const sample = window[0];
+    const signalBase = signal === "torso" ? 0.62 : signal === "shoulder" ? 0.57 : 0.5;
+    const confidence = Math.min(0.92, signalBase + sample.confidence * 0.28);
+    const reason = `${signal} displacement exceeded the normalized set-position threshold for consecutive frames.`;
+    return {
+      event: {
+        type: FIRST_DETECTED_MOVEMENT as typeof FIRST_DETECTED_MOVEMENT,
+        signal,
+        frame: sample.frame.frame,
+        timestamp: sample.frame.time,
+        confidence,
+        reason,
+      },
+      debug: { frame: sample.frame.frame, timestamp: sample.frame.time, passed: true, reason },
+    };
+  }
+  const reason = `No sustained ${signal} displacement exceeded its jitter threshold.`;
+  return {
+    event: null,
+    debug: earliest
+      ? { frame: earliest.frame.frame, timestamp: earliest.frame.time, passed: false, reason }
+      : failed(reason),
+  };
+}
+
+/** Official t0 with torso → shoulder → wrist → generic-anchor fallbacks. */
+export function detectAccelerationStartEvent(frames: AccelerationFrame[]): AccelerationStartEvent {
+  const candidates = Object.fromEntries(
+    SIGNALS.map((signal) => [signal, failed("Not evaluated.")]),
+  ) as Record<MovementSignal, MovementCandidateDebug>;
+  for (const signal of SIGNALS) {
+    const result = assess(frames, signal);
+    candidates[signal] = result.debug;
+    if (result.event) return { ...result.event, debug: { candidates } };
+  }
+  return {
+    type: NEEDS_REVIEW,
+    signal: null,
+    frame: null,
+    timestamp: null,
+    confidence: 0,
+    reason: "No reliable pose signal showed sustained movement from a usable baseline.",
+    debug: { candidates },
+  };
 }

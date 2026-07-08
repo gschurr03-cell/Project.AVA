@@ -17,6 +17,7 @@ export type AthleteProfileKey =
   | "height_cm"
   | "weight_kg"
   | "leg_length_cm"
+  | "trochanter_height_m"
   | "personal_best_60m"
   | "personal_best_100m"
   | "personal_best_200m"
@@ -59,6 +60,16 @@ export const PROFILE_FIELDS: readonly ProfileFieldDef[] = [
     step: 0.1,
     group: "physical",
     help: "Measured from the greater trochanter (the bony point on the outside of the hip) straight down to the floor.",
+  },
+  {
+    key: "trochanter_height_m",
+    label: "Trochanter height",
+    unit: "m",
+    min: 0.3,
+    max: 1.6,
+    step: 0.01,
+    group: "physical",
+    help: "Measured vertically from the greater trochanter to the ground. Used directly in stride ÷ trochanter-height ratio.",
   },
   { key: "personal_best_60m", label: "60 m", unit: "s", min: 5, max: 20, step: 0.01, group: "personalBest" },
   { key: "personal_best_100m", label: "100 m", unit: "s", min: 8, max: 30, step: 0.01, group: "personalBest" },

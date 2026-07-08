@@ -94,6 +94,12 @@ EFF_MIN_SIDE_FRAC = ROI_MIN_SIDE_FRAC / ROI_ZOOM
 # earliest far contacts best; smoothing shifts the far crop and drops them. Tunable
 # for footage where a jittery box needs stabilising.
 ROI_SMOOTH_WINDOW = int(_num("MEDIAPIPE_ROI_SMOOTH_WINDOW", 1))
+# Acceleration V2: the early set/start occupies the smallest part of many clips.
+# Tighten only the INTERNAL analysis crop during that window. Landmarks are still
+# remapped to original-frame coordinates below; replay never sees this crop.
+ACCELERATION_MODE = os.environ.get("MEDIAPIPE_ACCELERATION", "").strip().lower() in ("1", "true", "yes", "on")
+ACCEL_START_SECONDS = _num("MEDIAPIPE_ACCEL_START_SECONDS", 2.5)
+ACCEL_START_ZOOM = _num("MEDIAPIPE_ACCEL_START_ZOOM", 1.3)
 
 
 def fail(message, code=1):
@@ -195,7 +201,7 @@ def _moving_avg(track, window):
     return out
 
 
-def plan_crops(boxes, width, height):
+def plan_crops(boxes, width, height, fps):
     """Per-frame square crop (x0,y0,x1,y1) around the athlete. A full-video planning
     pass: detected frames use their bounding box; undetected frames (e.g. the far end
     before MediaPipe could see the small athlete) EXTRAPOLATE the centre + size from
@@ -217,8 +223,11 @@ def plan_crops(boxes, width, height):
     ]
     track = _moving_avg(raw, ROI_SMOOTH_WINDOW)
     crops = []
-    for cx, cy, h in track:
+    for i, (cx, cy, h) in enumerate(track):
         side = max(min_side, EFF_PADDING * max(h, 1.0))
+        if ACCELERATION_MODE and i / fps <= ACCEL_START_SECONDS:
+            # Never crop inside the detected body box: hands and feet remain visible.
+            side = max(1.08 * max(h, 1.0), side / ACCEL_START_ZOOM)
         half = side / 2.0
         x0, y0, x1, y1 = cx - half, cy - half, cx + half, cy + half
         # Shift (don't shrink) back inside the frame to keep the crop square.
@@ -290,7 +299,7 @@ def main():
         finally:
             loc.close()
             cap.release()
-        crops = plan_crops(boxes, width, height)
+        crops = plan_crops(boxes, width, height, fps)
         detected = sum(1 for b in boxes if b is not None)
         print("ROI pass 1: located athlete in %d/%d frames" % (detected, len(boxes)), file=sys.stderr)
         cap = cv2.VideoCapture(args.input)  # reopen for pass 2

@@ -15,6 +15,12 @@ import {
   type Point2D,
 } from "@/lib/video/coordinates";
 import type { CalibrationGates } from "@/lib/calibration/gates";
+import {
+  athleteScalePxPerCm,
+  trochanterDisplayCorrection,
+  type TrochanterMarker,
+} from "@/lib/video/overlayAlignment";
+import type { FollowBox } from "@/lib/video/follow";
 
 /** A cone placed while marking a timing-gate bar (carries its clip time). */
 export type PendingCone = Point2D & { t: number };
@@ -67,6 +73,10 @@ type Props = {
   calibrationGates?: CalibrationGates | null;
   /** Cones placed so far while marking gates (0–4): [startC1, startC2, finishC1, finishC2]. */
   pendingGates?: PendingCone[];
+  trochanterMarker?: TrochanterMarker | null;
+  athleteHeightCm?: number | null;
+  autoFollow?: boolean;
+  followStateRef?: React.RefObject<{ current: FollowBox; target: FollowBox } | null>;
 };
 
 const bones = [
@@ -114,7 +124,7 @@ const COLORS = {
 } as const;
 
 /** Default overlay label font, and a smaller one for the decluttered step labels. */
-const DEFAULT_LABEL_FONT = "600 13px system-ui, sans-serif";
+const DEFAULT_LABEL_FONT = "600 7px system-ui, sans-serif";
 const STEP_LABEL_FONT = "600 11px system-ui, sans-serif";
 
 /** Axis-aligned box a pill label occupies, used to keep labels from overlapping. */
@@ -122,9 +132,9 @@ type LabelBox = { x: number; y: number; w: number; h: number };
 
 /** The box {@link drawLabel} paints for `text` anchored at (x, y). */
 function labelBox(ctx: CanvasRenderingContext2D, text: string, x: number, y: number): LabelBox {
-  const padX = 5;
-  const padY = 3;
-  const h = 16;
+  const padX = 3;
+  const padY = 2;
+  const h = 9;
   const w = ctx.measureText(text).width;
   return { x: x - padX, y: y - h / 2 - padY, w: w + padX * 2, h: h + padY * 2 };
 }
@@ -168,9 +178,9 @@ function placeLabel(
 
 /** Draw a small pill-backed label so text stays readable over any footage. */
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string) {
-  const padX = 5;
-  const padY = 3;
-  const h = 16;
+  const padX = 3;
+  const padY = 2;
+  const h = 9;
   const w = ctx.measureText(text).width;
 
   ctx.fillStyle = COLORS.labelBg;
@@ -196,6 +206,10 @@ export default function VideoOverlay({
   calibrationPoints = null,
   calibrationGates = null,
   pendingGates = [],
+  trochanterMarker = null,
+  athleteHeightCm = null,
+  autoFollow = false,
+  followStateRef,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -220,6 +234,8 @@ export default function VideoOverlay({
   calibrationGatesRef.current = calibrationGates;
   const pendingRef = useRef(pendingGates);
   pendingRef.current = pendingGates;
+  const trochanterRef = useRef(trochanterMarker);
+  trochanterRef.current = trochanterMarker;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -269,14 +285,9 @@ export default function VideoOverlay({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, picture.width, picture.height);
 
-      // Sync (Day 75): the canvas paints ~one animation frame AFTER we read the
-      // video clock, during which the video advances by playbackRate × a frame — so
-      // at fast playback (e.g. 2.5×) the skeleton visibly trails the runner. Lead the
-      // clock by that amount to land the pose on the frame the video is about to
-      // show, and pick the NEAREST pose frame (not the last one at/before), which
-      // halves the residual lag. Display-only — analysis uses the frames' own clock.
-      const lead = (video.playbackRate || 1) / 60;
-      const currentTime = video.currentTime + lead;
+      // The media clock is authoritative at every playback rate. A fixed guessed
+      // frame lead caused visible drift on non-60fps footage and while rate changed.
+      const currentTime = video.currentTime;
       let frame = frames[0];
       for (let i = 0; i < frames.length; i++) {
         if (frames[i].time <= currentTime) {
@@ -312,6 +323,12 @@ export default function VideoOverlay({
       // Ground-anchored layers (step marks, gates) are unaffected and always drawn.
       const showPose = video.paused || video.playbackRate < 0.4;
 
+      // A trochanter anchor is a small DISPLAY-ONLY translation. It never enters
+      // the stored landmarks, gate projection, step marks, or metric pipeline.
+      const correction = trochanterDisplayCorrection(frames, trochanterRef.current);
+      ctx.save();
+      ctx.translate(correction.dx * picture.width, correction.dy * picture.height);
+
       // --- Skeleton (bones + joints) ---
       if (show.skeleton && showPose) {
         for (const [aName, bName] of bones) {
@@ -326,7 +343,7 @@ export default function VideoOverlay({
           const onSelected = aName === selected || bName === selected;
           const onHovered = aName === hovered || bName === hovered;
           ctx.strokeStyle = onSelected ? COLORS.selected : onHovered ? COLORS.hover : COLORS.bone;
-          ctx.lineWidth = onSelected || onHovered ? 5 : 3;
+          ctx.lineWidth = onSelected || onHovered ? 3.75 : 2.25;
 
           ctx.beginPath();
           ctx.moveTo(ap.x, ap.y);
@@ -362,7 +379,7 @@ export default function VideoOverlay({
         }
 
         ctx.strokeStyle = COLORS.arm;
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 3;
         for (const [aName, bName] of armSegments) {
           const a = frame.landmarks[aName];
           const b = frame.landmarks[bName];
@@ -548,6 +565,9 @@ export default function VideoOverlay({
           );
         }
       }
+
+      // End pose-only anatomical correction before ground/gate annotations.
+      ctx.restore();
 
       // --- Step marks (Day 56, ground-fixed Day 62, decluttered Day 63): each
       // ground contact leaves ONE permanent dot at the exact spot the foot struck
@@ -741,11 +761,11 @@ export default function VideoOverlay({
         if (finishG) strokeBar(finishG, COLORS.calibration, "Finish");
         // Label the known distance between the bars only when both are in view.
         if (startG && finishG) {
-          placeLabel(
-            ctx, `${savedGates.distanceM} m`,
-            (startG.mid.x + finishG.mid.x) / 2, (startG.mid.y + finishG.mid.y) / 2,
-            COLORS.calibration, placedLabels,
-          );
+          const label = `${savedGates.distanceM}m`;
+          ctx.font = "700 11px system-ui, sans-serif";
+          placeLabel(ctx, label, Math.max(8, (picture.width - ctx.measureText(label).width) / 2), 14,
+            COLORS.calibration, placedLabels);
+          ctx.font = DEFAULT_LABEL_FONT;
         }
       } else if (savedCalibration) {
         // Backward-compat: old two-point calibrations render as vertical lines.
@@ -771,6 +791,37 @@ export default function VideoOverlay({
         else if (pending.length === 1) drawPendingCone(pending[0]);
         if (pending.length >= 4) drawBar(pending[2], pending[3], pending[2].t, pc, "Finish");
         else if (pending.length === 3) drawPendingCone(pending[2]);
+      }
+
+
+      if (show.debug) {
+        const rawHip = correction.detectedHip ? project(correction.detectedHip) : null;
+        const marker = correction.marker ? project(correction.marker) : null;
+        if (rawHip) {
+          ctx.fillStyle = "#38bdf8";
+          ctx.beginPath(); ctx.arc(rawHip.x, rawHip.y, 4, 0, Math.PI * 2); ctx.fill();
+        }
+        if (marker) {
+          ctx.strokeStyle = "#f472b6"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(marker.x, marker.y, 6, 0, Math.PI * 2); ctx.stroke();
+          if (rawHip) { ctx.beginPath(); ctx.moveTo(rawHip.x, rawHip.y); ctx.lineTo(marker.x, marker.y); ctx.stroke(); }
+        }
+        const follow = followStateRef?.current;
+        const pxError = Math.hypot(correction.dx * picture.width, correction.dy * picture.height);
+        const scale = athleteScalePxPerCm(frame, picture.height, athleteHeightCm);
+        const lines = [
+          `video ${currentTime.toFixed(3)}s · pose ${frame.time.toFixed(3)}s`,
+          `render ${picture.width.toFixed(0)}×${picture.height.toFixed(0)} · canvas ${canvas.width}×${canvas.height} @${dpr.toFixed(2)}x`,
+          `trochanter ${marker ? `${marker.x.toFixed(1)},${marker.y.toFixed(1)}` : "not set"} · offset ${(correction.dx * picture.width).toFixed(1)},${(correction.dy * picture.height).toFixed(1)}px`,
+          `height ${athleteHeightCm ?? "—"}cm · scale ${scale?.toFixed(3) ?? "—"} px/cm · error ${pxError.toFixed(1)}px`,
+          `follow ${autoFollow ? "on" : "off"} · transform ${follow ? `${follow.current.scale.toFixed(3)} @ ${follow.current.cx.toFixed(3)},${follow.current.cy.toFixed(3)}` : "identity"}`,
+          `target ${follow ? `${follow.target.cx.toFixed(3)},${follow.target.cy.toFixed(3)}` : "—"} · offset ${follow ? `${(follow.current.cx - .5).toFixed(3)},${(follow.current.cy - .5).toFixed(3)}` : "0,0"}`,
+        ];
+        ctx.font = "600 10px ui-monospace, monospace";
+        const panelW = Math.min(picture.width - 16, 520);
+        ctx.fillStyle = "rgba(3,7,18,.82)"; ctx.fillRect(8, 28, panelW, lines.length * 15 + 12);
+        ctx.fillStyle = "#e2e8f0";
+        lines.forEach((line, i) => ctx.fillText(line, 14, 40 + i * 15));
       }
 
       animationRef.current = requestAnimationFrame(draw);

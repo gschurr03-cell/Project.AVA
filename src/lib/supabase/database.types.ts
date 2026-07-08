@@ -108,6 +108,7 @@ export type Database = {
           personal_best_200m: number | null
           personal_best_60m: number | null
           sex: string | null
+          trochanter_height_m: number | null
           weight_kg: number | null
         }
         Insert: {
@@ -125,6 +126,7 @@ export type Database = {
           personal_best_200m?: number | null
           personal_best_60m?: number | null
           sex?: string | null
+          trochanter_height_m?: number | null
           weight_kg?: number | null
         }
         Update: {
@@ -142,6 +144,7 @@ export type Database = {
           personal_best_200m?: number | null
           personal_best_60m?: number | null
           sex?: string | null
+          trochanter_height_m?: number | null
           weight_kg?: number | null
         }
         Relationships: [
@@ -203,6 +206,9 @@ export type Database = {
           id: string
           name: string | null
           notes: string | null
+          overlay_trochanter_time_s: number | null
+          overlay_trochanter_x: number | null
+          overlay_trochanter_y: number | null
           original_filename: string | null
           recorded_at: string
           size_bytes: number | null
@@ -237,6 +243,9 @@ export type Database = {
           id?: string
           name?: string | null
           notes?: string | null
+          overlay_trochanter_time_s?: number | null
+          overlay_trochanter_x?: number | null
+          overlay_trochanter_y?: number | null
           original_filename?: string | null
           recorded_at?: string
           size_bytes?: number | null
@@ -271,6 +280,9 @@ export type Database = {
           id?: string
           name?: string | null
           notes?: string | null
+          overlay_trochanter_time_s?: number | null
+          overlay_trochanter_x?: number | null
+          overlay_trochanter_y?: number | null
           original_filename?: string | null
           recorded_at?: string
           size_bytes?: number | null

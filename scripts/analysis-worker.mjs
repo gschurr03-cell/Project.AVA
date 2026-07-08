@@ -48,7 +48,9 @@ const missing = [
   .filter(([, v]) => !v)
   .map(([k]) => k);
 if (missing.length) {
-  console.error(`[analysis-worker] missing env: ${missing.join(", ")}. Run via: npm run worker:analysis`);
+  console.error(
+    `[analysis-worker] missing env: ${missing.join(", ")}. Run via: npm run worker:analysis`,
+  );
   process.exit(1);
 }
 
@@ -57,6 +59,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // --- compile the TS pipeline once at startup ---
 const buildDir = path.join(root, ".analysis-worker-build");
+const accelerationBuildDir = path.join(buildDir, "acceleration-v1");
 log("compiling analysis pipeline...");
 rmSync(buildDir, { recursive: true, force: true });
 mkdirSync(buildDir, { recursive: true });
@@ -80,6 +83,25 @@ try {
     ],
     { cwd: root, stdio: ["ignore", "ignore", "inherit"] },
   );
+  execFileSync(
+    "npx",
+    [
+      "tsc",
+      "src/lib/acceleration/metrics.ts",
+      "--outDir",
+      accelerationBuildDir,
+      "--rootDir",
+      "src/lib",
+      "--module",
+      "commonjs",
+      "--target",
+      "es2022",
+      "--skipLibCheck",
+      "--esModuleInterop",
+      "--strict",
+    ],
+    { cwd: root, stdio: ["ignore", "ignore", "inherit"] },
+  );
 } catch (err) {
   console.error(`[analysis-worker] failed to compile pipeline: ${err.message}`);
   process.exit(1);
@@ -87,6 +109,51 @@ try {
 const { MediaPipePoseBackend } = require(path.join(buildDir, "mediapipe/index.js"));
 const { analyzeSprint } = require(path.join(buildDir, "analysis/index.js"));
 const { toAnalysisMetrics } = require(path.join(buildDir, "worker/index.js"));
+const { computeAccelerationMetrics } = require(
+  path.join(accelerationBuildDir, "acceleration/metrics.js"),
+);
+
+/** Canonical pose artifact → the full-frame overlay coordinates acceleration v1 consumes. */
+function accelerationOverlayFrames(sequence) {
+  const joint = (frame, name) => {
+    const point = frame.keypoints[name];
+    return point
+      ? { x: point.x, y: point.y, visibility: point.visibility ?? point.score }
+      : undefined;
+  };
+  return sequence.frames.map((frame) => {
+    const landmarks = {
+      nose: joint(frame, "nose"),
+      leftShoulder: joint(frame, "left_shoulder"),
+      rightShoulder: joint(frame, "right_shoulder"),
+      leftHip: joint(frame, "left_hip"),
+      rightHip: joint(frame, "right_hip"),
+      leftWrist: joint(frame, "left_wrist"),
+      rightWrist: joint(frame, "right_wrist"),
+      leftAnkle: joint(frame, "left_ankle"),
+      rightAnkle: joint(frame, "right_ankle"),
+      leftHeel: joint(frame, "left_heel"),
+      rightHeel: joint(frame, "right_heel"),
+      leftFootIndex: joint(frame, "left_toe"),
+      rightFootIndex: joint(frame, "right_toe"),
+    };
+    const leftHip = landmarks.leftHip;
+    const rightHip = landmarks.rightHip;
+    const centerOfMass =
+      leftHip && rightHip
+        ? { x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2 }
+        : null;
+    return {
+      frame: frame.index,
+      time: frame.tMs / 1000,
+      landmarks,
+      centerOfMass,
+      angles: {},
+      velocity: null,
+      footContact: { left: false, right: false },
+    };
+  });
+}
 
 // Benchmark-grade pose (Day 73b): the worker analyses real sprints where the athlete
 // is often small/distant, so it runs the ROI "detection zoom" by default — the SAME
@@ -185,14 +252,20 @@ async function processJob(job) {
 
   const { data: session } = await supabase
     .from("sessions")
-    .select("video_path, athlete_id, analysis_type")
+    .select(
+      "video_path, athlete_id, analysis_type, distance_m, calibration_point_bx, calibration_known_distance_m",
+    )
     .eq("id", claimed.session_id)
     .single();
 
   if (!session?.video_path) {
     log(`session ${claimed.session_id} has no video — marking failed`);
     try {
-      await callback(claimed.id, { status: "failed", modelVersion: MODEL_VERSION, error: "Session has no uploaded video." });
+      await callback(claimed.id, {
+        status: "failed",
+        modelVersion: MODEL_VERSION,
+        error: "Session has no uploaded video.",
+      });
     } catch (err) {
       await release(claimed);
       log(`could not deliver failure (${err.message}) → released`);
@@ -208,7 +281,9 @@ async function processJob(job) {
       throw new Error(`could not sign video URL: ${signErr?.message ?? "unknown"}`);
     }
 
-    log(`running MediaPipe on ${session.video_path}${MAX_FRAMES ? ` (maxFrames=${MAX_FRAMES})` : ""}...`);
+    log(
+      `running MediaPipe on ${session.video_path}${MAX_FRAMES ? ` (maxFrames=${MAX_FRAMES})` : ""}...`,
+    );
     const opts = MAX_FRAMES ? { maxFrames: MAX_FRAMES } : {};
     // Acceleration start detection needs unusually clear wrist/ground landmarks.
     // Tighten the existing INTERNAL inference ROI for this job only. The Python
@@ -216,10 +291,15 @@ async function processJob(job) {
     // stored artifact and user-facing follow/overlay retain their normal scale.
     const previousZoom = process.env.MEDIAPIPE_ROI_ZOOM;
     const previousPadding = process.env.MEDIAPIPE_ROI_PADDING;
+    const previousAccelerationMode = process.env.MEDIAPIPE_ACCELERATION;
+    const previousSmoothWindow = process.env.MEDIAPIPE_ROI_SMOOTH_WINDOW;
     if (session.analysis_type === "acceleration") {
       process.env.MEDIAPIPE_ROI = "1";
       process.env.MEDIAPIPE_ROI_ZOOM = process.env.MEDIAPIPE_ACCEL_START_ZOOM ?? "1.35";
       process.env.MEDIAPIPE_ROI_PADDING = process.env.MEDIAPIPE_ACCEL_START_PADDING ?? "1.2";
+      process.env.MEDIAPIPE_ACCELERATION = "1";
+      process.env.MEDIAPIPE_ROI_SMOOTH_WINDOW =
+        process.env.MEDIAPIPE_ACCEL_SMOOTH_WINDOW ?? "3";
       log(
         "acceleration start detection: tighter internal ROI enabled (display coordinates unchanged)",
       );
@@ -232,19 +312,59 @@ async function processJob(job) {
       else process.env.MEDIAPIPE_ROI_ZOOM = previousZoom;
       if (previousPadding == null) delete process.env.MEDIAPIPE_ROI_PADDING;
       else process.env.MEDIAPIPE_ROI_PADDING = previousPadding;
+      if (previousAccelerationMode == null) delete process.env.MEDIAPIPE_ACCELERATION;
+      else process.env.MEDIAPIPE_ACCELERATION = previousAccelerationMode;
+      if (previousSmoothWindow == null) delete process.env.MEDIAPIPE_ROI_SMOOTH_WINDOW;
+      else process.env.MEDIAPIPE_ROI_SMOOTH_WINDOW = previousSmoothWindow;
     }
-    log(`pose: ${sequence.frames.length} frames @ ${sequence.fps}fps ${sequence.width}x${sequence.height}`);
-
-    const analysis = analyzeSprint(sequence);
-    const mapped = toAnalysisMetrics(analysis, MODEL_VERSION);
-    const mm = mapped.metrics;
     log(
-      `metrics: strideHz=${mm.strideFrequencyHz} gc=${mm.groundContactTimeMs}ms flight=${mm.flightTimeMs}ms ` +
-        `peakKnee=${mm.peakKneeFlexionDeg}° trunk=${mm.avgTrunkLeanDeg}° (topSpeed/strideLen=0 placeholder)`,
+      `pose: ${sequence.frames.length} frames @ ${sequence.fps}fps ${sequence.width}x${sequence.height}`,
     );
-    if (mapped.warnings.length) log(`warnings: ${mapped.warnings.join(" | ")}`);
 
-    writeArtifacts(claimed.id, sequence, analysis, mapped.warnings);
+    let persistedMetrics;
+    let artifactAnalysis;
+    let warnings;
+    if (session.analysis_type === "acceleration") {
+      const finishDistanceM = session.calibration_known_distance_m ?? session.distance_m;
+      const hasCalibration = session.calibration_point_bx != null && finishDistanceM != null;
+      const calibration = hasCalibration
+        ? {
+            finishX: session.calibration_point_bx,
+            finishDistanceM,
+          }
+        : null;
+      persistedMetrics = computeAccelerationMetrics(
+        accelerationOverlayFrames(sequence),
+        calibration,
+      );
+      artifactAnalysis = { metrics: persistedMetrics, source: "acceleration-v1" };
+      warnings = persistedMetrics.warnings;
+      const splitCount = Object.values(persistedMetrics.splits).filter(
+        (value) => value != null,
+      ).length;
+      log(
+        `acceleration result: session=${claimed.session_id} analysis_type=${session.analysis_type} ` +
+          `start=${persistedMetrics.startEvent.type}@${persistedMetrics.startEvent.timestamp ?? "n/a"} ` +
+          `confidence=${persistedMetrics.startEvent.confidence.toFixed(2)} splits=${splitCount} ` +
+          `finish=${persistedMetrics.finishDistanceM ?? "n/a"}m ` +
+          `runTime=${persistedMetrics.runTime ?? "n/a"}s status=${persistedMetrics.status}`,
+      );
+      log(`movement candidates: ${JSON.stringify(persistedMetrics.startEvent.debug.candidates)}`);
+    } else {
+      // Fly remains on the existing analyzer + mapper, byte-for-byte in result shape.
+      const analysis = analyzeSprint(sequence);
+      const mapped = toAnalysisMetrics(analysis, MODEL_VERSION);
+      persistedMetrics = mapped.metrics;
+      artifactAnalysis = analysis;
+      warnings = mapped.warnings;
+      log(
+        `metrics: strideHz=${persistedMetrics.strideFrequencyHz} gc=${persistedMetrics.groundContactTimeMs}ms flight=${persistedMetrics.flightTimeMs}ms ` +
+          `peakKnee=${persistedMetrics.peakKneeFlexionDeg}° trunk=${persistedMetrics.avgTrunkLeanDeg}° (topSpeed/strideLen=0 placeholder)`,
+      );
+    }
+    if (warnings.length) log(`warnings: ${warnings.join(" | ")}`);
+
+    writeArtifacts(claimed.id, sequence, artifactAnalysis, warnings);
     const keypointsPath = await uploadPoseArtifact(
       session.athlete_id,
       claimed.session_id,
@@ -255,7 +375,7 @@ async function processJob(job) {
     await callback(claimed.id, {
       status: "complete",
       modelVersion: MODEL_VERSION,
-      metrics: mm,
+      metrics: persistedMetrics,
       ...(keypointsPath ? { keypointsPath } : {}),
     });
     log(`delivered ${claimed.id} → complete`);
@@ -264,7 +384,11 @@ async function processJob(job) {
     // unreachable, release the claim so the job is retried.
     log(`processing error for ${claimed.id}: ${err.message}`);
     try {
-      await callback(claimed.id, { status: "failed", modelVersion: MODEL_VERSION, error: err.message });
+      await callback(claimed.id, {
+        status: "failed",
+        modelVersion: MODEL_VERSION,
+        error: err.message,
+      });
       log(`marked ${claimed.id} → failed`);
     } catch (deliverErr) {
       await release(claimed);
