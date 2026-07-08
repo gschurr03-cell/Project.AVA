@@ -38,6 +38,7 @@
     "contacts:sanity": "node scripts/contacts-sanity.mjs",
     "precision:sanity": "node scripts/precision-sanity.mjs",
     "metric-trust:sanity": "node scripts/metric-trust-sanity.mjs",
+    "recommendations:sanity": "node scripts/recommendations-sanity.mjs",
     "quality:sanity": "node scripts/quality-sanity.mjs",
     "fullrun:sanity": "node scripts/fullrun-sanity.mjs",
     "fps:sanity": "node scripts/fps-sanity.mjs",

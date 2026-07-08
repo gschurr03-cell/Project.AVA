@@ -42,6 +42,7 @@ import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
 import { deriveLimitingFactors } from "@/lib/intelligence/limitingFactors";
 import { buildTrustedMetrics } from "@/lib/intelligence/trustedMetrics";
+import { buildRecommendations } from "@/lib/intelligence/recommendations";
 import { calculateAvaPerformanceScore } from "@/lib/intelligence/performanceScore";
 import { evaluateTrochanterStepLength } from "@/lib/intelligence/trochanterOptimizer";
 import MetricsPanel from "./MetricsPanel";
@@ -55,6 +56,7 @@ import CalibrationControlsForm from "./CalibrationControlsForm";
 import CoachNotesForm from "./CoachNotesForm";
 import RecordingQualityCard from "./RecordingQualityCard";
 import PerformanceSummaryCard from "./PerformanceSummaryCard";
+import CoachingRecommendationsCard from "./CoachingRecommendationsCard";
 import { AvaPanel } from "@/components/ava/AvaPanel";
 import { AvaStatusPill } from "@/components/ava/AvaStatusPill";
 import { AvaInfoStat } from "@/components/ava/AvaInfoStat";
@@ -423,6 +425,25 @@ export default async function SessionPage({
   // from the trusted values, so it can never disagree with the Trusted Metrics card.
   const diagnosis = trusted ? deriveLimitingFactors(trusted, { trochanterHeightM }) : null;
 
+  // Coaching Recommendations V2: translate the trusted limiting factors + velocity
+  // consistency + left/right trends + recording quality into specific "what to work
+  // on next" guidance. Reads ONLY 60 fps-trusted metrics as primary causes; FPS-gated
+  // timing is confined to its experimental bin. Changes no metric math.
+  const recommendations = buildRecommendations({
+    trusted,
+    measurements,
+    activeFps,
+    trochanterHeightM,
+    quality: recordingQuality
+      ? {
+          calibrationPresent: !!(calibrationGates || manualPoints),
+          trackingCoverage: measurements?.diagnostics.trackingCoverage ?? null,
+          poseConfidence: poseQuality?.poseConfidence ?? null,
+          score: recordingQuality.score,
+        }
+      : null,
+  });
+
   // AVA Performance Score (Day 84): a single trusted-only 0–100 score. Uses ONLY
   // trusted metrics + recording quality — never ground contact / flight time / raw
   // frequency. Unavailable (not a fake 0) until a calibrated run exists.
@@ -700,6 +721,12 @@ export default async function SessionPage({
             {/* Performance headroom from correcting those factors. */}
             {session.analysis_type === "fly" && diagnosis && (
               <PerformancePotentialCard potential={diagnosis.potential} />
+            )}
+
+            {/* Coaching Recommendations V2: the actionable "what to do next" layer,
+                grounded in the trusted metrics; FPS-gated timing stays experimental. */}
+            {session.analysis_type === "fly" && recommendations.available && (
+              <CoachingRecommendationsCard report={recommendations} />
             )}
 
             {/* Trochanter stride-length optimizer + unlock simulator (needs leg length). */}
