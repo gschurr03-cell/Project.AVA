@@ -21,8 +21,9 @@ npm run format       # prettier
 
 # Supabase (requires Supabase CLI + Docker)
 supabase start       # boot local Postgres/Auth/Storage stack
-npm run db:reset     # drop + re-apply all migrations in supabase/migrations
+npm run db:reset     # drop + re-apply all migrations, then re-seed (dev:seed)
 npm run db:push      # push migrations to the linked remote project
+npm run dev:seed     # (re)seed the permanent LOCAL dev accounts (idempotent)
 npm run db:types     # regenerate src/lib/supabase/database.types.ts from the live DB
 
 # Benchmark / real-world validation (reporting only — never changes analysis math)
@@ -31,6 +32,10 @@ npm run benchmark:steps                # AVA vs VueMotion per-step diagnostic
 npm run field:validation -- --truth trial.json   # AVA vs timing-gate + tape-grid trial
 npm run field:sanity                   # unit-check the field-validation module
 ```
+
+The canonical permanent LOCAL dev login (Founder / Super Admin) is documented in
+`docs/permanent-dev-login.md`. It is seeded only in local development and is never
+created in staging or production.
 
 For the Tuesday testing-day capture + comparison workflow see
 `docs/field-validation-protocol.md`.

@@ -60,7 +60,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
-    "db:reset": "supabase db reset",
+    "db:reset": "supabase db reset && npm run dev:seed",
     "db:push": "supabase db push"
   },
   "dependencies": {

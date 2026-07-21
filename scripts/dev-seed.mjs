@@ -10,6 +10,13 @@
 //   • auth user  dev@projectava.local  (email pre-confirmed)
 //   • its profile (coach) + one athlete with a complete physical/PB/goal profile
 //   • the permanent AVA Calab Vid 1 (VueMotion 20 m) benchmark reference row
+//   • the CANONICAL PERMANENT Founder / Super Admin dev login
+//     commander@atreides.local (profile role = admin). See
+//     docs/permanent-dev-login.md. This account exists ONLY in local
+//     development — the non-local guard below refuses to run against any
+//     remote/staging/production Supabase, so it can never be created there.
+//     Its password is a fixed, documented value that is NEVER rotated
+//     automatically and is NEVER printed to logs / telemetry / API output.
 //
 // Day 66: the seed no longer creates the retired "30 m fly" demo session — the
 // dev dataset now focuses solely on the static 20 m benchmark. Any previously
@@ -33,6 +40,23 @@ const EMAIL = "dev@projectava.local";
 const DEFAULT_PASSWORD = "dev-password-123"; // documented local-only default
 const PASSWORD = process.env.DEV_SEED_PASSWORD || DEFAULT_PASSWORD;
 const FULL_NAME = "Dev Coach";
+
+// --- Canonical PERMANENT Founder / Super Admin dev login (LOCAL DEV ONLY) -----
+// The single permanent super-admin account for local AVA development. Documented
+// in docs/permanent-dev-login.md. Fixed, documented credentials — the password is
+// NEVER rotated/regenerated automatically and is NEVER logged. Reachable only in
+// local dev: the non-local guard above aborts before this runs on any remote DB.
+// `admin` is AVA's highest user_role (see 0001_initial_schema: user_role enum) —
+// i.e. Founder / Super Admin. On re-run this account is UPDATED in place (keyed by
+// its fixed email), never duplicated.
+const FOUNDER_ACCOUNT = {
+  email: "commander@atreides.local",
+  // Fixed, documented local-only credential. Not a production secret; the local
+  // Supabase stack is disposable. Never printed to logs / telemetry / API output.
+  password: "ATREIDES-DEV-PRIME-2026",
+  fullName: "Atreides Commander",
+  role: "admin",
+};
 
 // Fixed UUIDs so re-seeding upserts the same rows instead of making new ones.
 const ATHLETE_ID = "11111111-1111-4111-8111-111111111111";
@@ -138,32 +162,65 @@ async function findUserByEmail(email) {
   }
 }
 
-/** Create the dev user, or reset its password if it already exists. */
-async function upsertUser() {
-  const existing = await findUserByEmail(EMAIL);
+/**
+ * Create an auth user, or update it in place if it already exists (keyed by the
+ * fixed email → never duplicated). Re-asserts the same documented password each
+ * run; this is not rotation (the value is unchanged), it just guarantees the
+ * documented credential always works after a reset.
+ */
+async function upsertUser({ email, password, fullName }) {
+  const existing = await findUserByEmail(email);
   if (existing) {
     const { error } = await supabase.auth.admin.updateUserById(existing.id, {
-      password: PASSWORD,
+      password,
       email_confirm: true,
-      user_metadata: { full_name: FULL_NAME },
+      user_metadata: { full_name: fullName },
     });
     if (error) throw new Error(`updateUser: ${error.message}`);
-    log(`user exists → password reset (${EMAIL})`);
+    log(`user exists → updated in place (${email})`);
     return existing.id;
   }
   const { data, error } = await supabase.auth.admin.createUser({
-    email: EMAIL,
-    password: PASSWORD,
+    email,
+    password,
     email_confirm: true,
-    user_metadata: { full_name: FULL_NAME },
+    user_metadata: { full_name: fullName },
   });
   if (error) throw new Error(`createUser: ${error.message}`);
-  log(`user created (${EMAIL})`);
+  log(`user created (${email})`);
   return data.user.id;
 }
 
+/** Upsert a profile row's name + role (the on-signup trigger creates the row). */
+async function ensureProfile(userId, fullName, role) {
+  const { error } = await supabase
+    .from("profiles")
+    .upsert({ id: userId, full_name: fullName, role }, { onConflict: "id" });
+  if (error) throw new Error(`profiles upsert (${role}): ${error.message}`);
+}
+
 async function main() {
-  const userId = await upsertUser();
+  const userId = await upsertUser({ email: EMAIL, password: PASSWORD, fullName: FULL_NAME });
+
+  // Canonical PERMANENT Founder / Super Admin login. Created / updated in place
+  // and always granted the highest role. The password is never logged — only the
+  // email is surfaced below.
+  //
+  // Hard local-only rule: this super-admin account is created ONLY against a local
+  // Supabase, with NO override. Even the DEV_SEED_ALLOW_REMOTE escape hatch (which
+  // exists so benchmark rows can be re-asserted on a remote) must NOT be able to
+  // mint a super-admin on staging/production. `isLocal` is computed in preflight.
+  if (isLocal) {
+    const founderId = await upsertUser({
+      email: FOUNDER_ACCOUNT.email,
+      password: FOUNDER_ACCOUNT.password,
+      fullName: FOUNDER_ACCOUNT.fullName,
+    });
+    await ensureProfile(founderId, FOUNDER_ACCOUNT.fullName, FOUNDER_ACCOUNT.role);
+    log(`founder/super-admin ensured (${FOUNDER_ACCOUNT.email}, role=${FOUNDER_ACCOUNT.role})`);
+  } else {
+    log(`skipped founder/super-admin on non-local Supabase (local dev only) — ${FOUNDER_ACCOUNT.email}`);
+  }
 
   // benchmarks: the AVA Calab Vid 1 (VueMotion 20 m) reference must ALWAYS exist
   // — it is AVA's permanent accuracy target. It's seeded by migration 0009, but
@@ -207,13 +264,8 @@ async function main() {
 
   // profiles: a row is auto-created by the on-signup trigger; make sure the dev
   // user's name/role are set (upsert covers both new and existing users).
-  {
-    const { error } = await supabase
-      .from("profiles")
-      .upsert({ id: userId, full_name: FULL_NAME, role: "coach" }, { onConflict: "id" });
-    if (error) throw new Error(`profiles upsert: ${error.message}`);
-    log("profile upserted (coach)");
-  }
+  await ensureProfile(userId, FULL_NAME, "coach");
+  log("profile upserted (coach)");
 
   // athletes: one athlete with a complete physical / PB / goal profile.
   {
@@ -246,6 +298,9 @@ async function main() {
       "  Sign in at http://localhost:3000/login",
       `    email:    ${EMAIL}`,
       `    password: ${PASSWORD}${PASSWORD === DEFAULT_PASSWORD ? "  (local default — set DEV_SEED_PASSWORD to change)" : "  (from DEV_SEED_PASSWORD)"}`,
+      "",
+      `  Founder / Super Admin (local dev only): ${FOUNDER_ACCOUNT.email}`,
+      "    password: (hidden — see docs/permanent-dev-login.md)",
       "",
       "  The static 20 m benchmark is the accuracy reference; upload the 20 m",
       "  Calab video as a session and link it to the AVA Calab Vid 1 benchmark.",
