@@ -1,0 +1,121 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import {
+  computeAnalysisProgress,
+  type AnalysisProgress,
+} from "@/lib/intelligence/performanceGap/presentation";
+
+/**
+ * Stage-based analysis progress (Part B). Replaces the loading spinner with a true
+ * ten-stage experience driven by the REAL worker job status (polled). Never fakes
+ * progress: the active stage comes from the live signal; a slow stage is reported as
+ * still-running; time remaining is clearly an estimate.
+ */
+const TERMINAL = new Set(["completed", "failed", "dead_lettered", "cancelled"]);
+
+export default function AnalysisProgressExperience({
+  analysisId,
+  initialStatus,
+  startedAtMs,
+}: {
+  analysisId: string;
+  initialStatus: string;
+  startedAtMs: number;
+}) {
+  const router = useRouter();
+  const [status, setStatus] = useState(initialStatus);
+  const [now, setNow] = useState(() => Date.now());
+  const startRef = useRef(startedAtMs);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    if (TERMINAL.has(status)) {
+      if (status === "completed") router.refresh();
+      return;
+    }
+    const supabase = createClient();
+    let stopped = false;
+    const timer = window.setInterval(async () => {
+      const { data } = await supabase.rpc("get_analysis_job_status", { p_analysis_id: analysisId });
+      const row = data?.[0];
+      if (stopped || !row) return;
+      // `status` from the queue IS the fine-grained worker stage (downloading,
+      // validating, completing, …) — the real signal, never faked.
+      setStatus(row.status);
+      if (TERMINAL.has(row.status)) {
+        stopped = true;
+        window.clearInterval(timer);
+        if (row.status === "completed") router.refresh();
+      }
+    }, 1500);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [analysisId, status, router]);
+
+  const elapsedSeconds = Math.max(0, Math.round((now - startRef.current) / 1000));
+  // The queue status is the fine-grained stage; normalize the terminal-failure
+  // variants to "failed" for the model, and pass the raw status as the stage.
+  const modelStatus =
+    status === "completed" ? "completed" : ["failed", "dead_lettered", "cancelled"].includes(status) ? "failed" : status;
+  const progress: AnalysisProgress = computeAnalysisProgress({ status: modelStatus, workerStage: status, elapsedSeconds });
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-[#141416] p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#D72638]">Analysing sprint</p>
+        <p className="text-sm font-semibold text-[#F5F5F7]">{progress.percent}%</p>
+      </div>
+
+      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/[0.06]">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${progress.failed ? "bg-[#ff8079]" : "bg-[#D72638]"}`}
+          style={{ width: `${progress.percent}%` }}
+        />
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className={`font-semibold ${progress.failed ? "text-[#ff8079]" : "text-[#F5F5F7]"}`}>
+          {progress.failed ? `Failed during: ${progress.activeStageLabel}` : progress.activeStageLabel}
+          {progress.stalled && !progress.failed && (
+            <span className="ml-2 text-[#E4C25A]">still running…</span>
+          )}
+        </span>
+        {!TERMINAL.has(status) && progress.estimatedRemainingSeconds != null && (
+          <span className="text-[#6B7280]">~{progress.estimatedRemainingSeconds}s remaining (estimated)</span>
+        )}
+      </div>
+
+      <ol className="mt-4 space-y-1.5">
+        {progress.stages.map((s) => (
+          <li key={s.id} className="flex items-center gap-2 text-xs">
+            <span
+              className={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                s.state === "complete" ? "bg-[#7ee08a]" : s.state === "active" ? "bg-[#D72638]" : "bg-white/15"
+              }`}
+            />
+            <span
+              className={
+                s.state === "complete"
+                  ? "text-[#7ee08a]"
+                  : s.state === "active"
+                    ? "font-semibold text-[#F5F5F7]"
+                    : "text-[#6B7280]"
+              }
+            >
+              {s.label}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
