@@ -49,6 +49,11 @@ import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
 import { deriveLimitingFactors } from "@/lib/intelligence/limitingFactors";
 import { buildTrustedMetrics } from "@/lib/intelligence/trustedMetrics";
+import {
+  buildTrustedMetricConfidence,
+  calculateMetricConfidence,
+  evidenceFromAnalysis,
+} from "@/lib/confidence";
 import { analyzeAsymmetry } from "@/lib/intelligence/asymmetry";
 import { buildRecommendations } from "@/lib/intelligence/recommendations";
 import { buildProgress, snapshotFromAnalysisMetrics } from "@/lib/intelligence/progress";
@@ -511,6 +516,16 @@ export default async function SessionPage({
         .limit(10)
     : { data: null };
   const trainingFocus = athleteAnalyses ? buildTrainingFocus(athleteAnalyses) : null;
+  const confidenceEvidence = evidenceFromAnalysis({
+    measurements,
+    poseQuality,
+    recordingQuality,
+    fps: activeFps,
+  });
+  const intelligenceMeasurementConfidence = calculateMetricConfidence(
+    "sprint_intelligence",
+    confidenceEvidence,
+  );
 
   // Sprint Intelligence (Day 60): synthesize the metrics, calibration, phases,
   // prediction, and training focus into a ranked, fully-explained set of
@@ -528,12 +543,17 @@ export default async function SessionPage({
         // Frequency is one concept: use the trusted calibrated cadence (matches the
         // Trusted Sprint Metrics card) over the raw worker strideFrequencyHz.
         calibratedStepFrequencyHz: measurements?.combinedStepFrequencyHz ?? null,
+        measurementConfidenceScore: intelligenceMeasurementConfidence.score,
+        activeFps,
       })
     : null;
 
   // Trusted Sprint Metrics (Day 79): THE single source of truth for every customer-
   // facing surface. Derived only from the calibrated measurement engine.
   const trusted = buildTrustedMetrics(measurements, cameraAssessment);
+  const trustedConfidence = trusted
+    ? buildTrustedMetricConfidence(trusted, confidenceEvidence)
+    : null;
 
   // Trochanter ratio uses only the dedicated metre-valued measurement.
   const trochanterHeightM = session.athletes?.trochanter_height_m ?? null;
@@ -1201,7 +1221,7 @@ export default async function SessionPage({
 
             {/* The four trusted metrics — the single source of truth. */}
             {session.analysis_type === "fly" && measurements && (
-              <PerformanceSummaryCard trusted={trusted} />
+              <PerformanceSummaryCard trusted={trusted} confidence={trustedConfidence} />
             )}
 
             {/* Recording-quality trust indicator (collapsed). */}
@@ -1239,6 +1259,7 @@ export default async function SessionPage({
                 metrics={parsedMetrics.data}
                 activeFps={activeFps}
                 poseConfidence={poseQuality?.poseConfidence ?? null}
+                confidenceEvidence={confidenceEvidence}
               />
             )}
 
@@ -1305,8 +1326,7 @@ export default async function SessionPage({
         ) : analysis?.status === "failed" ? (
           <AvaPanel eyebrow="Analysis" title="Analysis failed">
             <p className="text-sm text-[#ff8079]">
-              {jobStatus?.user_message ?? analysis.error ?? "The recording could not be analyzed."}{" "}
-              You can safely rerun after correcting the recording issue.
+              {jobStatus?.user_message ?? analysis.error ?? "The recording could not be analyzed."}
             </p>
             <div className="mt-4">
               <RerunAnalysisButton sessionId={session.id} label="Retry analysis" />

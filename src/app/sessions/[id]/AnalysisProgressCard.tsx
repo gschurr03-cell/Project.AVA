@@ -89,8 +89,7 @@ export default function AnalysisProgressCard({
     return (
       <AvaPanel eyebrow="Analysis" title="Analysis failed">
         <p className="text-sm text-[#ff8079]">
-          {message ?? "The recording could not be analyzed."} You can safely retry after
-          correcting the recording issue.
+          {message ?? "The recording could not be analyzed."}
         </p>
         <div className="mt-4">
           <RerunAnalysisButton sessionId={sessionId} label="Retry analysis" />
