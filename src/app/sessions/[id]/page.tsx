@@ -3,6 +3,9 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { analysisMetricsSchema } from "@/lib/biomechanics/types";
+import { explainableAnalysisResultSchema, provenanceSchema } from "@/lib/analysis/resultContract";
+import AnalysisMethodPanel from "./AnalysisMethodPanel";
+import { USER_JOB_LABELS } from "@/lib/jobs/policy";
 import { accelerationMetricsSchema } from "@/lib/acceleration/schema";
 import {
   ANALYSIS_STATUS_LABELS,
@@ -13,8 +16,9 @@ import {
 } from "@/lib/sessions";
 import {
   deleteSession,
-  queueAnalysis,
   renameSession,
+  resetWorkingAnalysis,
+  saveAnalysisVersion,
   setSessionAnalysisType,
   setAccelerationFinishDistance,
   setFlyPoseEngine,
@@ -36,13 +40,18 @@ import { detectStepMarks, type StepDistanceScale } from "@/lib/video/steps";
 import { stepFrequencyFromContacts } from "@/lib/video/cadence";
 import type { ManualCalibrationPoints } from "@/lib/calibration";
 import { calibrationGatesSchema, type CalibrationGates } from "@/lib/calibration/gates";
+import { calibrationAuthority, mergeCalibrationAuthority, normalizeCalibrationAuthority } from "@/lib/calibration/authority";
+import { calibrationRevisionOf, classifyResultStatus } from "@/lib/calibration/lifecycle";
+import CalibrationAuthorityControls from "./CalibrationAuthorityControls";
 import { computeSprintMeasurements } from "@/lib/benchmark/measurements";
 import { isPrecisionLimited } from "@/lib/benchmark/precision";
 import { buildTrainingFocus } from "@/lib/coaching/focus";
 import { buildSprintIntelligence } from "@/lib/intelligence";
 import { deriveLimitingFactors } from "@/lib/intelligence/limitingFactors";
 import { buildTrustedMetrics } from "@/lib/intelligence/trustedMetrics";
+import { analyzeAsymmetry } from "@/lib/intelligence/asymmetry";
 import { buildRecommendations } from "@/lib/intelligence/recommendations";
+import { buildProgress, snapshotFromAnalysisMetrics } from "@/lib/intelligence/progress";
 import { calculateAvaPerformanceScore } from "@/lib/intelligence/performanceScore";
 import { evaluateTrochanterStepLength } from "@/lib/intelligence/trochanterOptimizer";
 import MetricsPanel from "./MetricsPanel";
@@ -53,21 +62,53 @@ import AvaPerformanceScoreCard from "./AvaPerformanceScoreCard";
 import PerformancePotentialCard from "./PerformancePotentialCard";
 import UnlockSimulatorCard from "./UnlockSimulatorCard";
 import CalibrationControlsForm from "./CalibrationControlsForm";
+import TimingSetupForm from "./TimingSetupForm";
+import TimingSetupStatusCard from "./TimingSetupStatusCard";
+import AnalysisProgressCard from "./AnalysisProgressCard";
+import RerunAnalysisButton from "./RerunAnalysisButton";
 import CoachNotesForm from "./CoachNotesForm";
 import RecordingQualityCard from "./RecordingQualityCard";
 import PerformanceSummaryCard from "./PerformanceSummaryCard";
 import CoachingRecommendationsCard from "./CoachingRecommendationsCard";
+import ProgressCard from "./ProgressCard";
 import { AvaPanel } from "@/components/ava/AvaPanel";
+import { experimental30ResultSchema } from "@/lib/analysis/experimental30";
+import Experimental30TimingCard from "./Experimental30TimingCard";
 import { AvaStatusPill } from "@/components/ava/AvaStatusPill";
 import { AvaInfoStat } from "@/components/ava/AvaInfoStat";
 import { buildRecordingQuality, summarisePoseQuality } from "@/lib/recording/quality";
 import { accelerationProfileLabel, analysisTypeConfig, isAnalysisType } from "@/lib/analysisTypes";
 import AccelerationMetricsPanel from "./AccelerationMetricsPanel";
+import { FEATURES } from "@/lib/config/features";
+import { toCanonicalIso } from "@/lib/time/canonicalTimestamp";
+import {
+  buildCompletedAnalysisObservationInput,
+  generateObservationResult,
+} from "@/lib/observations";
+import ObservationDebugPanel from "./ObservationDebugPanel";
+import {
+  generateInterpretations,
+  type InterpretationContext,
+} from "@/lib/intelligence/interpretations";
+import InterpretationDebugPanel from "./InterpretationDebugPanel";
+import { generateRecommendations } from "@/lib/intelligence/recommendationEngine";
+import RecommendationDebugPanel from "./RecommendationDebugPanel";
+import { generatePriorities } from "@/lib/intelligence/priorityEngine";
+import PriorityDebugPanel from "./PriorityDebugPanel";
 
 /** Pull a calibrated measurement value by key from a calibration report. */
 function calibratedValue(report: CalibrationReport | null, key: string): number | null {
   return report?.measurements.find((m) => m.key === key)?.value ?? null;
 }
+
+const jsonRecord = (value: unknown): Record<string, unknown> =>
+  value != null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+const finiteNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
+const pointPair = (value: unknown): [number | null, number | null] =>
+  Array.isArray(value) ? [finiteNumber(value[0]), finiteNumber(value[1])] : [null, null];
 
 /**
  * Session detail page. Shows the session's metadata and lets the coach rename
@@ -79,10 +120,10 @@ export default async function SessionPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; saved?: string }>;
+  searchParams: Promise<{ error?: string; saved?: string; analysis?: string }>;
 }) {
   const { id } = await params;
-  const { error, saved } = await searchParams;
+  const { error, saved, analysis: selectedAnalysisId } = await searchParams;
 
   const supabase = await createClient();
   const {
@@ -93,7 +134,7 @@ export default async function SessionPage({
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, analysis_type, pose_engine, distance_m, duration_s, width, height, fps, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, current_working_analysis_id, analysis_type, pose_engine, distance_m, duration_s, width, height, fps, fps_classification, fps_metadata, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, timing_mode, timing_direction, timing_body_reference, timing_splits, timing_setup, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -126,16 +167,56 @@ export default async function SessionPage({
     ? await supabase.storage.from("sprint-videos").createSignedUrl(session.video_path, 60 * 60)
     : { data: null };
 
-  // Latest analysis for this session (read-only RLS access).
-  const { data: analysis } = await supabase
+  // One mutable working result plus explicitly saved immutable snapshots.
+  const { data: analysisVersionRows } = await supabase
     .from("analyses")
-    .select("id, status, error, metrics, keypoints_path, created_at, completed_at")
+    .select(
+      "id, status, created_at, completed_at, analysis_pipeline_version, experimental, experiment_version, validation_status, version_number, parent_analysis_id, analysis_kind, is_current_working, saved_version_number, saved_at, saved_notes",
+    )
     .eq("session_id", session.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .in("analysis_kind", ["working", "saved"])
+    .order("saved_version_number", { ascending: true });
+  const visibleAnalyses = analysisVersionRows ?? [];
+  const workingVersion = visibleAnalyses.find((item) =>
+    item.analysis_kind === "working"
+    && item.is_current_working
+    && item.id === session.current_working_analysis_id
+  ) ?? null;
+  const savedVersions = visibleAnalyses.filter((item) => item.analysis_kind === "saved");
+  const requestedSavedVersion = savedVersions.find((item) => item.id === selectedAnalysisId) ?? null;
+  const selectedVersion =
+    requestedSavedVersion ?? workingVersion;
+  const { data: analysis } = selectedVersion
+    ? await supabase
+        .from("analyses")
+        .select(
+          "id, status, error, metrics, keypoints_path, created_at, completed_at, provenance, input_snapshot, result_payload, analysis_fps, source_fps, metric_schema_version, analysis_pipeline_version, experimental, experiment_version, validation_status, compatibility_group, timing_compatibility_group, experimental_result, version_number, parent_analysis_id, workspace_config, performance_result_status, performance_result_invalid_reason, excluded_from_history_trends, excluded_from_benchmarks, excluded_from_predictions, excluded_from_recommendations, analysis_kind, is_current_working, saved_version_number, saved_at, saved_notes",
+        )
+        .eq("session_id", session.id)
+        .eq("id", selectedVersion.id)
+        .maybeSingle()
+    : { data: null };
+  const selectedWorkspace = jsonRecord(analysis?.workspace_config);
+  const selectedInput = jsonRecord(analysis?.input_snapshot);
+  const selectedInputSession = jsonRecord(selectedInput.session);
+  const selectedTimingSetup = Object.keys(jsonRecord(selectedInputSession.timingSetup)).length
+    ? selectedInputSession.timingSetup
+    : session.timing_setup;
+  const selectedTiming = jsonRecord(selectedWorkspace.timingZone);
+  const selectedCalibration = jsonRecord(selectedWorkspace.calibrationInputs);
+  const [selectedPointAx, selectedPointAy] = pointPair(selectedCalibration.pointA);
+  const [selectedPointBx, selectedPointBy] = pointPair(selectedCalibration.pointB);
+  const selectedKnownDistance = finiteNumber(selectedCalibration.knownDistanceM);
+  const selectedPointATime = finiteNumber(selectedCalibration.pointATimeS);
+  const selectedPointBTime = finiteNumber(selectedCalibration.pointBTimeS);
 
-  const analysisInFlight = analysis?.status === "queued" || analysis?.status === "running";
+  const { data: jobStatuses } = analysis
+    ? await supabase.rpc("get_analysis_job_status", { p_analysis_id: analysis.id })
+    : { data: null };
+  const jobStatus = jobStatuses?.[0] ?? null;
+  const analysisInFlight = jobStatus
+    ? !["completed", "failed", "dead_lettered", "cancelled"].includes(jobStatus.status)
+    : analysis?.status === "queued" || analysis?.status === "running";
 
   // `metrics` is opaque JSONB — validate at the read boundary so the panel
   // only ever receives a fully-typed object. A parse failure falls through to
@@ -148,6 +229,16 @@ export default async function SessionPage({
     analysis?.status === "complete" && session.analysis_type === "acceleration"
       ? accelerationMetricsSchema.safeParse(analysis.metrics)
       : null;
+  const parsedExperimentalResult = analysis?.experimental
+    ? experimental30ResultSchema.safeParse(analysis.experimental_result)
+    : null;
+  const experimentalTiming = parsedExperimentalResult?.success
+    ? parsedExperimentalResult.data.real30Timing
+    : null;
+  const parsedProvenance = provenanceSchema.safeParse(analysis?.provenance);
+  const parsedResultPayload = explainableAnalysisResultSchema.safeParse(analysis?.result_payload);
+  const analysisProvenance = parsedProvenance.success ? parsedProvenance.data : null;
+  const explainableResult = parsedResultPayload.success ? parsedResultPayload.data : null;
 
   // Step/contact markers for the video timeline. Empty until metrics carry
   // per-event timestamps; built here so the prop path is ready.
@@ -158,8 +249,8 @@ export default async function SessionPage({
   // Interactive-overlay frames come from the analysis's stored pose artifact
   // (analyses.keypoints_path). The loader is fully defensive: a missing path,
   // bucket, object, or malformed artifact resolves to [] (placeholder shown).
-  const hasReadableResult = parsedMetrics?.success || parsedAccelerationMetrics?.success;
-  const { frames: rawOverlayFrames, meta: overlayMeta } = hasReadableResult
+  const { frames: rawOverlayFrames, meta: overlayMeta } =
+    analysis?.status === "complete" && analysis.keypoints_path
     ? await loadOverlayFrames(supabase, analysis?.keypoints_path)
     : { frames: [] as OverlayFrame[], meta: null };
 
@@ -176,27 +267,26 @@ export default async function SessionPage({
   // metric. A manual override always wins over both.
   const normalizedFps = normalizeFps(detectedFps);
   const overrideFps = isValidFps(session.fps_override) ? session.fps_override : null;
-  const fpsSnapped = normalizedFps != null && detectedFps != null && normalizedFps !== detectedFps;
   // The clock every timing-derived number uses: manual override, else the normalized
   // detected rate.
   const effectiveFps = overrideFps ?? normalizedFps;
 
-  // Re-time every frame from the effective clock when the coach overrode OR we snapped
-  // a drifted rate to canonical — so steps, phases, zone time, and velocity all use it.
+  // Worker artifacts already carry real source timestamps for nominal-60 footage.
+  // Only an explicit coach override may replace those timestamps.
   const overlayFrames =
-    (overrideFps != null || fpsSnapped) && isValidFps(effectiveFps)
+    overrideFps != null && isValidFps(effectiveFps)
       ? applyFpsOverride(rawOverlayFrames, effectiveFps)
       : rawOverlayFrames;
 
   // Known-distance calibration zone (Day 61), if the coach set all three parts.
   const calibrationZone: CalibrationZone | null =
-    session.calibration_zone_start_s != null &&
-    session.calibration_zone_end_s != null &&
-    session.calibration_zone_distance_m != null
+    finiteNumber(selectedTiming.startS) != null &&
+    finiteNumber(selectedTiming.endS) != null &&
+    finiteNumber(selectedTiming.distanceM) != null
       ? {
-          startTime: session.calibration_zone_start_s,
-          endTime: session.calibration_zone_end_s,
-          distanceM: session.calibration_zone_distance_m,
+          startTime: finiteNumber(selectedTiming.startS)!,
+          endTime: finiteNumber(selectedTiming.endS)!,
+          distanceM: finiteNumber(selectedTiming.distanceM)!,
         }
       : null;
 
@@ -204,29 +294,47 @@ export default async function SessionPage({
   // distance apart. Same shape drives both the calibration scale and the fixed
   // calibration line drawn on the overlay.
   const manualPoints: ManualCalibrationPoints | null =
-    session.calibration_point_ax != null &&
-    session.calibration_point_ay != null &&
-    session.calibration_point_bx != null &&
-    session.calibration_point_by != null &&
-    session.calibration_known_distance_m != null
+    selectedPointAx != null &&
+    selectedPointAy != null &&
+    selectedPointBx != null &&
+    selectedPointBy != null &&
+    selectedKnownDistance != null
       ? {
-          ax: session.calibration_point_ax,
-          ay: session.calibration_point_ay,
-          bx: session.calibration_point_bx,
-          by: session.calibration_point_by,
-          distanceM: session.calibration_known_distance_m,
-          aTimeS: session.calibration_point_a_time_s ?? null,
-          bTimeS: session.calibration_point_b_time_s ?? null,
+          ax: selectedPointAx,
+          ay: selectedPointAy,
+          bx: selectedPointBx,
+          by: selectedPointBy,
+          distanceM: selectedKnownDistance,
+          aTimeS: selectedPointATime,
+          bTimeS: selectedPointBTime,
         }
       : null;
 
   // Timing-gate BAR calibration (Day 66): the full cone-to-cone geometry, used to
   // draw the gates as real bars on the overlay. Its reduction to the two midpoint
   // points above is what every measurement engine consumes; this is render-only.
+  // Single source of truth (Part 1): the durable session-level calibration is the
+  // authority; the analysis-snapshot copy (workspace_config.calibrationInputs.gates)
+  // may lag behind a just-saved manual zone. Merge so a manual_confirmed / higher-
+  // revision session zone always wins, and a stale snapshot can never override it.
+  // Legacy records are normalized (source inferred, coordinates untouched) first.
   const calibrationGates: CalibrationGates | null = (() => {
-    if (session.calibration_gates == null) return null;
-    const parsed = calibrationGatesSchema.safeParse(session.calibration_gates);
-    return parsed.success ? parsed.data : null;
+    const snapshot = calibrationGatesSchema.safeParse(selectedCalibration.gates);
+    const durable = calibrationGatesSchema.safeParse(session.calibration_gates);
+    const snapshotGates = snapshot.success ? normalizeCalibrationAuthority(snapshot.data) : null;
+    const durableGates = durable.success ? normalizeCalibrationAuthority(durable.data) : null;
+    return mergeCalibrationAuthority(durableGates, snapshotGates);
+  })();
+
+  // Calibration authority + result-freshness (Part 1). `currentCalibrationRevision`
+  // is the durable session zone; `resultCalibrationRevision` is the revision the
+  // SELECTED analysis actually ran with (from its snapshot) — so an older-revision
+  // result can be shown as superseded, never as current.
+  const calibrationSource = calibrationGates ? calibrationAuthority(calibrationGates).source : null;
+  const currentCalibrationRevision = calibrationRevisionOf(calibrationGates);
+  const resultCalibrationRevision = (() => {
+    const snap = calibrationGatesSchema.safeParse(selectedCalibration.gates);
+    return snap.success ? calibrationRevisionOf(snap.data) : null;
   })();
 
   // Calibration: real-world estimates (with confidence) derived from the pose
@@ -256,7 +364,10 @@ export default async function SessionPage({
   // and the zone bounds; frames are already FPS-retimed above.
   const measurements =
     session.analysis_type === "fly" && overlayFrames.length
-      ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight)
+      ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight, {
+          gates: calibrationGates,
+          cameraEvidence: overlayMeta?.cameraEvidence,
+        })
       : null;
   const accelerationMetrics = parsedAccelerationMetrics?.success
     ? parsedAccelerationMetrics.data
@@ -289,7 +400,7 @@ export default async function SessionPage({
 
   // The clock every timing-derived number (contact, flight, frequency, zone,
   // velocity, phases) uses: manual override, else the normalized detected rate.
-  const activeFps = effectiveFps;
+  const activeFps = analysis?.analysis_fps ?? effectiveFps;
 
   // Precision mode (Day 69): below ~120 fps, temporal metrics (contact/flight) are
   // frame-quantized too coarsely to be trusted as high-confidence — so we neither
@@ -302,23 +413,34 @@ export default async function SessionPage({
   // the page. Pure/derived from data already computed above; no new I/O.
   const poseQuality = overlayFrames.length ? summarisePoseQuality(overlayFrames) : null;
   const camMethod = measurements?.cameraCompensation.method ?? "";
+  const cameraAssessment = overlayMeta?.recordingAssessment;
   const recordingQuality =
     overlayFrames.length && measurements
       ? buildRecordingQuality({
+          recordingMode: cameraAssessment?.recordingMode,
           fps: activeFps,
           width: effectiveWidth,
           height: effectiveHeight,
           codec: session.codec ?? null,
-          cameraStatic: camMethod.includes("static")
+          cameraStatic: cameraAssessment
+            ? cameraAssessment.recordingMode === "static_precision" || cameraAssessment.recordingMode === "static_usable"
+            : camMethod.includes("static")
             ? true
             : measurements.cameraCompensation.available
               ? false
               : null,
-          cameraConfidence:
-            measurements.cameraCompensation.confidence === "none"
+          cameraConfidence: cameraAssessment
+            ? cameraAssessment.cameraMotionConfidence >= 0.75
+              ? "high"
+              : cameraAssessment.cameraMotionConfidence >= 0.45
+                ? "medium"
+                : "low"
+            : measurements.cameraCompensation.confidence === "none"
               ? "unavailable"
               : measurements.cameraCompensation.confidence,
-          cameraAvailable: measurements.cameraCompensation.available,
+          cameraAvailable: cameraAssessment
+            ? cameraAssessment.recordingMode !== "unsupported_recording"
+            : measurements.cameraCompensation.available,
           calibrationPresent: !!(calibrationGates || manualPoints),
           athleteFillFraction: poseQuality?.athleteFillFraction ?? null,
           trackingCoverage: measurements.diagnostics.trackingCoverage,
@@ -411,7 +533,7 @@ export default async function SessionPage({
 
   // Trusted Sprint Metrics (Day 79): THE single source of truth for every customer-
   // facing surface. Derived only from the calibrated measurement engine.
-  const trusted = buildTrustedMetrics(measurements);
+  const trusted = buildTrustedMetrics(measurements, cameraAssessment);
 
   // Trochanter ratio uses only the dedicated metre-valued measurement.
   const trochanterHeightM = session.athletes?.trochanter_height_m ?? null;
@@ -444,6 +566,140 @@ export default async function SessionPage({
       : null,
   });
 
+  // Observation Engine v1: deterministic facts only. The adapter reads the
+  // completed result contract and existing asymmetry classifications; it does
+  // not consume recommendation or limiting-factor output.
+  const observationResult =
+    explainableResult && analysis?.status === "complete"
+      ? generateObservationResult(
+          buildCompletedAnalysisObservationInput({
+            result: explainableResult,
+            recordingQuality,
+            calibrationAvailable: !!(calibrationGates || manualPoints),
+            asymmetryInsights: measurements
+              ? analyzeAsymmetry(measurements, { timingReliable: !precisionLimited })
+              : [],
+          }),
+        )
+      : null;
+  // `analysis.completed_at`/`created_at` are PostgreSQL timestamptz values, which
+  // PostgREST returns as ISO-8601 WITH a timezone offset (e.g. `...+00:00`). The
+  // engine contracts validate `generatedAt` with `z.string().datetime()`, which
+  // accepts only canonical UTC `Z`. Normalize at this trust boundary so a valid
+  // stored timestamp parses; if it is absent or unparseable, `generatedAtIso` is
+  // null and we skip building the context (no intelligence panels) rather than
+  // throwing a ZodError that crashes the whole route.
+  const generatedAtIso = analysis
+    ? toCanonicalIso(analysis.completed_at ?? analysis.created_at)
+    : null;
+  const interpretationContext: InterpretationContext | null =
+    observationResult && analysis && generatedAtIso
+      ? {
+          analysisId: analysis.id,
+          generatedAt: generatedAtIso,
+          // Current observations do not yet preserve the canonical phase enum.
+          // Unknown safely prevents phase-specific interpretation rules from asserting.
+          phase: "unknown",
+          cameraMode: analysisProvenance?.cameraMode ?? null,
+          fpsTier:
+            analysisProvenance?.sourceFpsClassification === "experimental_30_fps_class"
+              ? "experimental_30"
+              : analysisProvenance?.sourceFpsClassification ===
+                  "high_speed_source_normalized_to_60"
+                ? "high_speed_normalized"
+                : analysisProvenance?.sourceFpsClassification === "validated_60_fps_class"
+                  ? "validated_60"
+                  : "unknown",
+          calibrationAvailable: !!(calibrationGates || manualPoints),
+          event: null,
+          sessionPurpose: session.analysis_type,
+          athleteId: session.athlete_id,
+          contextVersion: "ava-interpretation-context-v1",
+          savedVersion: analysis.analysis_kind === "saved",
+        }
+      : null;
+  // Working results regenerate deterministically from their current observations.
+  // Saved versions are intentionally withheld until immutable interpretation
+  // snapshots are stored; silently applying newer rules would mutate history.
+  const interpretationResult =
+    FEATURES.interpretationEngine &&
+    observationResult &&
+    interpretationContext &&
+    !interpretationContext.savedVersion
+      ? generateInterpretations({
+          observations: observationResult.observations,
+          context: interpretationContext,
+        }, undefined, {
+          allowExperimental: FEATURES.experimentalInterpretations,
+        })
+      : null;
+  const recommendationResult =
+    FEATURES.recommendationEngine &&
+    interpretationResult &&
+    interpretationContext &&
+    !interpretationContext.savedVersion
+      ? generateRecommendations(
+          {
+            interpretations: interpretationResult,
+            context: {
+              analysisId: interpretationContext.analysisId,
+              generatedAt: interpretationContext.generatedAt,
+              phase: interpretationContext.phase,
+              event: interpretationContext.event,
+              sessionPurpose: interpretationContext.sessionPurpose,
+              cameraMode: interpretationContext.cameraMode,
+              fpsTier: interpretationContext.fpsTier,
+              calibrationAvailable: interpretationContext.calibrationAvailable,
+              savedVersion: false,
+              athlete: {
+                athleteId: session.athlete_id,
+                // These fields do not exist in the current athlete schema. Unknown
+                // fails closed on advanced complexity and medical escalation.
+                trainingAge: "unknown",
+                competitionLevel: "unknown",
+                primaryEvent: null,
+                goals: [],
+                reportedPain: null,
+                activeLimitation: null,
+                contextVersion: "ava-athlete-recommendation-context-v1",
+              },
+            },
+          },
+          undefined,
+          {
+            allowExperimental: FEATURES.experimentalRecommendations,
+            allowAdvancedDrills: FEATURES.advancedDrillRecommendations,
+            allowProfessionalReview: FEATURES.professionalReviewRecommendations,
+          },
+        )
+      : null;
+  const priorityResult =
+    FEATURES.priorityEngine &&
+    recommendationResult &&
+    interpretationResult &&
+    observationResult &&
+    interpretationContext &&
+    !interpretationContext.savedVersion
+      ? generatePriorities({
+          observations: observationResult.observations,
+          interpretations: interpretationResult,
+          recommendations: recommendationResult,
+          context: {
+            analysisId: interpretationContext.analysisId,
+            generatedAt: interpretationContext.generatedAt,
+            athleteGoals: [],
+            primaryEvent: null,
+            phase: interpretationContext.phase,
+            coachRelevantAreas: [],
+            // No compatible baseline/persistence contract is live yet. Empty
+            // signals deliberately contribute no ranking benefit.
+            persistenceSignals: [],
+            baselineSignals: [],
+            contextVersion: "ava-priority-context-v1",
+          },
+        })
+      : null;
+
   // AVA Performance Score (Day 84): a single trusted-only 0–100 score. Uses ONLY
   // trusted metrics + recording quality — never ground contact / flight time / raw
   // frequency. Unavailable (not a fake 0) until a calibrated run exists.
@@ -460,6 +716,23 @@ export default async function SessionPage({
       })
     : null;
 
+  // Progress Tracking V1: compare this athlete's latest fly session to the previous
+  // one. Snapshots come from each analysis's STORED fly metrics (the only per-session
+  // history persisted), so the comparison is consistent across sessions; frame-rate-
+  // limited timing is excluded. Non-fly analyses fail the fly-metrics parse and drop
+  // out. Read-only — no metric math touched.
+  const progressSnapshots = (athleteAnalyses ?? [])
+    .map((row) => {
+      const parsed = analysisMetricsSchema.safeParse(row.metrics);
+      return parsed.success
+        ? snapshotFromAnalysisMetrics(row.id, row.created_at, parsed.data)
+        : null;
+    })
+    .filter((s): s is NonNullable<typeof s> => s != null);
+  const progress = buildProgress(progressSnapshots, {
+    latestLimiterCategory: recommendations.recommendations[0]?.category ?? null,
+  });
+
   const analysisComplete = analysis?.status === "complete";
   const metricsReady =
     analysisComplete && (parsedMetrics?.success || parsedAccelerationMetrics?.success);
@@ -474,9 +747,40 @@ export default async function SessionPage({
   const flyDistanceLabel =
     session.analysis_type === "fly" && profileDistance != null ? `${profileDistance}m Fly` : null;
 
+  // Result freshness vs the current calibration revision (Part 1 §4). When the
+  // shown analysis was produced against an older calibration, or a recompute is in
+  // flight, the metrics must not read as current — a banner makes that explicit.
+  const calibrationResultStatus = classifyResultStatus({
+    hasResult: analysisComplete,
+    resultCalibrationRevision,
+    currentCalibrationRevision,
+    recomputePending: analysisInFlight,
+  });
+
   return (
     <main className="ava-carbon min-h-screen">
       <div className="mx-auto max-w-7xl space-y-6 px-6 py-8">
+        {/* Live analysis progress + terminal refresh are owned by AnalysisProgressCard,
+            rendered in the in-flight branch below (no passive poller here). */}
+        {/* Non-visible acceptance hooks (Part 1 §4): canonical calibration values +
+            authority/result status for deterministic browser assertions. Full numeric
+            precision preserved; no secrets/URLs. Not shown to users (hidden). */}
+        <div
+          hidden
+          data-testid="calibration-hooks"
+          data-calibration-source={calibrationSource ?? ""}
+          data-calibration-revision={String(currentCalibrationRevision)}
+          data-result-status={calibrationResultStatus}
+          data-result-revision={String(resultCalibrationRevision ?? "")}
+          data-start-c1-x={calibrationGates ? String(calibrationGates.startGate.c1.x) : ""}
+          data-start-c1-y={calibrationGates ? String(calibrationGates.startGate.c1.y) : ""}
+          data-start-c2-x={calibrationGates ? String(calibrationGates.startGate.c2.x) : ""}
+          data-start-c2-y={calibrationGates ? String(calibrationGates.startGate.c2.y) : ""}
+          data-finish-c1-x={calibrationGates ? String(calibrationGates.finishGate.c1.x) : ""}
+          data-finish-c1-y={calibrationGates ? String(calibrationGates.finishGate.c1.y) : ""}
+          data-finish-c2-x={calibrationGates ? String(calibrationGates.finishGate.c2.x) : ""}
+          data-finish-c2-y={calibrationGates ? String(calibrationGates.finishGate.c2.y) : ""}
+        />
         {/* B. Top command bar */}
         <div className="flex items-center justify-between gap-4">
           <Link
@@ -492,7 +796,11 @@ export default async function SessionPage({
 
           {analysisInFlight && (
             <AvaStatusPill
-              label={ANALYSIS_STATUS_LABELS[analysis!.status] ?? analysis!.status}
+              label={
+                jobStatus
+                  ? USER_JOB_LABELS[jobStatus.status]
+                  : (ANALYSIS_STATUS_LABELS[analysis!.status] ?? analysis!.status)
+              }
               tone="gray"
             />
           )}
@@ -510,6 +818,29 @@ export default async function SessionPage({
           <p className="rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-3 text-sm text-[#D4AF37]">
             Calibration saved.
           </p>
+        )}
+
+        {/* Prominent, refresh-surviving live progress the moment a run/rerun is in flight —
+            placed at the top so clicking Rerun visibly enters a processing state without
+            scrolling. Single instance (owns polling + terminal refresh). */}
+        {analysisInFlight && analysis && (
+          <AnalysisProgressCard
+            analysisId={analysis.id}
+            sessionId={session.id}
+            initialStatus={jobStatus?.status ?? (analysis.status === "running" ? "processing" : "queued")}
+            initialMessage={jobStatus?.user_message ?? null}
+          />
+        )}
+
+        {analysis?.experimental && (
+          <div className="rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-3">
+            <p className="text-sm font-semibold text-[#E4C25A]">Experimental analysis</p>
+            <p className="mt-1 text-sm text-[#C8CAD0]">
+              AVA used the experimental 30 FPS analysis model for this recording. These
+              results are kept separate from validated 60 FPS analyses while the model
+              continues to be tested and refined.
+            </p>
+          </div>
         )}
 
         {/* C. Session hero panel */}
@@ -535,6 +866,7 @@ export default async function SessionPage({
 
             <div className="flex flex-wrap items-center gap-2">
               {flyDistanceLabel && <AvaStatusPill label={flyDistanceLabel} tone="gold" />}
+              {analysis?.experimental && <AvaStatusPill label="Experimental" tone="gold" />}
               {analysisComplete ? (
                 <AvaStatusPill label="Diagnosis Ready" tone="gold" />
               ) : (
@@ -559,11 +891,99 @@ export default async function SessionPage({
           </div>
         </AvaPanel>
 
-        {/* D. Main review panel — overlay is the primary surface once analysis is done;
-            the raw source video is only its own section BEFORE analysis. */}
+        <AvaPanel eyebrow="Workspace" title="Working Analysis">
+          {workingVersion ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <AvaStatusPill label={workingVersion.status} tone={workingVersion.status === "failed" ? "red" : "gray"} />
+                <AvaStatusPill label={session.pose_engine ?? "mediapipe"} tone="gray" />
+                {activeFpsLabel && <AvaStatusPill label={activeFpsLabel} tone="gray" />}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`/sessions/${session.id}/timing`}
+                  className="rounded-lg border border-[#D72638]/50 bg-[#D72638]/10 px-4 py-2 text-sm font-semibold text-[#F16B78] transition hover:bg-[#D72638]/20"
+                >
+                  Open Timing Workspace
+                </Link>
+                {workingVersion.status === "complete" && FEATURES.coachReportEngine ? (
+                  <Link
+                    href={`/sessions/${session.id}/report`}
+                    className="rounded-lg border border-white/[0.12] px-4 py-2 text-sm font-semibold text-[#F5F5F7] transition hover:border-[#D72638]/60"
+                  >
+                    Open Coach Report
+                  </Link>
+                ) : null}
+                <RerunAnalysisButton sessionId={session.id} />
+                <form action={saveAnalysisVersion} className="flex gap-2">
+                  <input type="hidden" name="id" value={session.id} />
+                  <input name="version_notes" placeholder="Snapshot notes (optional)" className="rounded-lg border border-white/[0.08] bg-[#0d0d0f] px-3 py-2 text-sm text-[#F5F5F7]" />
+                  <button disabled={workingVersion.status !== "complete"} className="rounded-lg border border-[#D4AF37]/40 px-4 py-2 text-sm font-semibold text-[#E4C25A] disabled:cursor-not-allowed disabled:opacity-40" type="submit">
+                    Save Version
+                  </button>
+                </form>
+                <form action={resetWorkingAnalysis}>
+                  <input type="hidden" name="id" value={session.id} />
+                  <button className="rounded-lg border border-white/[0.1] px-4 py-2 text-sm font-semibold text-[#A0A2A8]" type="submit">
+                    Reset Working Analysis
+                  </button>
+                </form>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-[#A0A2A8]">No working analysis yet. Run analysis to create one from the preserved source video.</p>
+          )}
+          <p className="mt-3 text-xs text-[#6B7280]">
+            Reruns replace this working result. They do not create visible version numbers.
+          </p>
+        </AvaPanel>
+
+        {savedVersions.length > 0 && (
+          <AvaPanel eyebrow="Workspace" title="Saved Versions">
+            <div className="flex flex-wrap items-center gap-2">
+              {savedVersions.map((version) => (
+                <Link
+                  key={version.id}
+                  href={`/sessions/${session.id}?analysis=${version.id}`}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                    version.id === analysis?.id
+                      ? "border-[#D4AF37]/60 bg-[#D4AF37]/10 text-[#E4C25A]"
+                      : "border-white/[0.08] bg-white/[0.03] text-[#A0A2A8] hover:bg-white/[0.07]"
+                  }`}
+                >
+                  Version {version.saved_version_number}
+                  <span className="ml-2 text-[10px] uppercase tracking-wide opacity-70">
+                    {version.experimental ? "Experimental" : version.status}
+                  </span>
+                </Link>
+              ))}
+              {requestedSavedVersion && (
+                <Link href={`/sessions/${session.id}`} className="rounded-lg border border-white/[0.08] px-3 py-2 text-sm text-[#A0A2A8]">
+                  Return to Working
+                </Link>
+              )}
+            </div>
+            <p className="mt-3 text-xs text-[#6B7280]">Only explicit snapshots appear here. Saved artifacts and inputs remain immutable.</p>
+          </AvaPanel>
+        )}
+
+        <AvaPanel eyebrow="Permanent Source" title="Original Uploaded Video">
+          {signedVideo?.signedUrl ? (
+            <VideoPlayer videoUrl={signedVideo.signedUrl} markers={timelineMarkers} />
+          ) : (
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
+              <p className="text-sm text-[#A0A2A8]">The protected source video could not be loaded.</p>
+            </div>
+          )}
+          <p className="mt-3 text-xs text-[#6B7280]">
+            Original media · {resolutionLabel ?? "resolution pending"} · source {detectedFps ?? "—"} FPS
+          </p>
+        </AvaPanel>
+
+        {/* D. The selected immutable analysis overlay; source video remains above. */}
         <AvaPanel
           eyebrow="Primary Review"
-          title={analysisComplete ? "Interactive Overlay" : "Source Video"}
+          title="Interactive Overlay"
         >
           {session.analysis_type === "acceleration" && (
             <div className="mb-4 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
@@ -607,7 +1027,7 @@ export default async function SessionPage({
                   </div>
                 </>
               )}
-              {session.analysis_type === "fly" && (
+              {session.analysis_type === "fly" && FEATURES.rtmpose && (
                 <div className="mt-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
                     Pose engine
@@ -625,7 +1045,9 @@ export default async function SessionPage({
                               : "text-[#A0A2A8] hover:bg-white/[0.06]"
                           }`}
                         >
-                          {engine === "mediapipe" ? "MediaPipe (default)" : "RTMPose (experimental)"}
+                          {engine === "mediapipe"
+                            ? "MediaPipe (default)"
+                            : "RTMPose (experimental)"}
                         </button>
                       </form>
                     ))}
@@ -633,20 +1055,18 @@ export default async function SessionPage({
                 </div>
               )}
               <div className="mt-4">
-                {hasSelectedMode &&
+                {!workingVersion && hasSelectedMode &&
                 (session.analysis_type !== "acceleration" || hasAccelerationFinishDistance) ? (
-                  <form action={queueAnalysis}>
-                    <input type="hidden" name="id" value={session.id} />
-                    <button
-                      type="submit"
-                      className="ava-red-glow rounded-lg bg-[#D72638] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e63a4b]"
-                    >
-                      {analysis ? "Rerun Analysis" : "Run Analysis"}
-                    </button>
-                  </form>
+                  <RerunAnalysisButton
+                    sessionId={session.id}
+                    label="Run Analysis"
+                    className="ava-red-glow rounded-lg bg-[#D72638] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e63a4b] disabled:cursor-not-allowed disabled:opacity-50"
+                  />
                 ) : (
                   <p className="text-xs text-[#E4C25A]">
-                    {session.analysis_type === "acceleration"
+                    {workingVersion
+                      ? "Use Working Analysis controls above to rerun."
+                      : session.analysis_type === "acceleration"
                       ? "Set finish distance before running acceleration analysis."
                       : "Select one mode to enable analysis."}
                   </p>
@@ -654,15 +1074,19 @@ export default async function SessionPage({
               </div>
             </div>
           )}
-          {analysisComplete ? (
+          {analysisComplete && signedVideo?.signedUrl && overlayFrames.length > 0 ? (
             /* Sync (Day 75): the overlay renders against the video's OWN timeline (raw
                frame timestamps), not the FPS-normalized clock used for metrics — so the
                skeleton stays glued to the runner at 1× and 2.5×. Analysis below still uses
                the normalized frames, so benchmark numbers are unchanged. */
-            signedVideo?.signedUrl && overlayFrames.length > 0 ? (
               <OverlayVideoPlayer
                 videoUrl={signedVideo.signedUrl}
                 frames={rawOverlayFrames}
+                sourceFps={detectedFps}
+                analysisFps={analysis?.analysis_fps ?? null}
+                cameraEvidence={overlayMeta?.cameraEvidence}
+                sourceWidth={effectiveWidth}
+                sourceHeight={effectiveHeight}
                 stepScale={stepScale}
                 stepCadenceHz={stepCadenceHz}
                 stepContactCount={overlayStepMarks.length}
@@ -684,34 +1108,50 @@ export default async function SessionPage({
                     : null
                 }
               />
-            ) : (
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
-                <p className="text-sm text-[#A0A2A8]">
-                  The pose overlay (skeleton, joint angles, COM trail, and foot-contact labels) will
-                  appear here once per-frame pose data is ready for this analysis.
-                </p>
-              </div>
-            )
-          ) : signedVideo?.signedUrl ? (
-            <VideoPlayer videoUrl={signedVideo.signedUrl} markers={timelineMarkers} />
           ) : (
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
               <p className="text-sm text-[#A0A2A8]">
-                No uploaded video available for this session.
+                {analysisComplete
+                  ? "This analysis has no readable pose artifact. The original video remains available above."
+                  : "Run an analysis to add a synchronized pose overlay. The original video remains available above."}
               </p>
             </div>
           )}
         </AvaPanel>
 
+        <TimingSetupStatusCard
+          setup={selectedTimingSetup}
+          analysisFps={analysis?.analysis_fps === 30 ? 30 : 60}
+        />
+        {experimentalTiming && <Experimental30TimingCard timing={experimentalTiming} invalidReason={analysis?.performance_result_status === "invalid_gate_propagation" ? analysis.performance_result_invalid_reason : null} />}
+
         {/* E. Analysis content — diagnosis-first: lead with the limiting factors. */}
         {metricsReady ? (
           <div className="space-y-6">
+            {/* Part 1 §4: never let outputs read as current when the calibration has
+                moved on. A recompute-in-flight or an older-revision run is called out
+                explicitly above the metric cards. */}
+            {calibrationResultStatus !== "current" && (
+              <div className="rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/[0.06] px-4 py-3 text-sm text-[#E4C25A]">
+                {calibrationResultStatus === "pending"
+                  ? "Recalculation pending — these metrics are being recomputed against the current timing zone."
+                  : "Previous result — this analysis was produced against an earlier timing zone (superseded). Rerun to refresh."}
+              </div>
+            )}
+            <AnalysisMethodPanel
+              provenance={analysisProvenance}
+              result={explainableResult}
+              legacy={!analysisProvenance || !explainableResult}
+            />
             {accelerationMetrics && <AccelerationMetricsPanel metrics={accelerationMetrics} />}
 
             {/* Trusted-only headline score. */}
             {session.analysis_type === "fly" && performanceScore && (
               <AvaPerformanceScoreCard result={performanceScore} />
             )}
+
+            {/* Progress since last session — how the trusted metrics moved. */}
+            {session.analysis_type === "fly" && <ProgressCard report={progress} />}
 
             {/* PRIMARY FEATURE: the ranked limiting-factor diagnosis. */}
             {session.analysis_type === "fly" && intelligence && diagnosis && (
@@ -724,9 +1164,26 @@ export default async function SessionPage({
             )}
 
             {/* Coaching Recommendations V2: the actionable "what to do next" layer,
-                grounded in the trusted metrics; FPS-gated timing stays experimental. */}
+                grounded in the trusted metrics; FPS-gated timing stays experimental.
+                The exercise selector reads this session context to gate + side-target. */}
             {session.analysis_type === "fly" && recommendations.available && (
-              <CoachingRecommendationsCard report={recommendations} />
+              <CoachingRecommendationsCard
+                report={recommendations}
+                context={{
+                  activeFps,
+                  poseConfidence: poseQuality?.poseConfidence ?? null,
+                  calibrationTrusted: !!(calibrationGates || manualPoints),
+                  trackingTrusted:
+                    (measurements?.diagnostics.trackingCoverage ?? 0) >= 0.6 &&
+                    (poseQuality?.poseConfidence ?? 1) >= 0.5,
+                  sideBias: null,
+                  // Frequency is also low when the engine surfaced a frequency limiter —
+                  // lets the stride-length picks include one rhythm drill (projection first).
+                  frequencyLow: recommendations.recommendations.some(
+                    (r) => r.category === "frequency",
+                  ),
+                }}
+              />
             )}
 
             {/* Trochanter stride-length optimizer + unlock simulator (needs leg length). */}
@@ -749,6 +1206,30 @@ export default async function SessionPage({
 
             {/* Recording-quality trust indicator (collapsed). */}
             {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
+            {FEATURES.developerDiagnostics && observationResult && (
+              <ObservationDebugPanel
+                observations={observationResult.observations}
+                trace={observationResult.trace}
+              />
+            )}
+            {FEATURES.developerDiagnostics && interpretationResult && (
+              <InterpretationDebugPanel
+                result={interpretationResult}
+                showTrace={FEATURES.interpretationDebugTrace}
+              />
+            )}
+            {FEATURES.developerDiagnostics && recommendationResult && (
+              <RecommendationDebugPanel
+                result={recommendationResult}
+                showTrace={FEATURES.recommendationDebugTrace}
+              />
+            )}
+            {FEATURES.developerDiagnostics && priorityResult && (
+              <PriorityDebugPanel
+                result={priorityResult}
+                showTrace={FEATURES.priorityDebugTrace}
+              />
+            )}
 
             {/* Everything else is experimental / not-yet-trusted. Pass the recording's
                 pose-tracking confidence so confidence-limited metrics (and ≥120 fps
@@ -774,6 +1255,13 @@ export default async function SessionPage({
               </summary>
               <div className="mt-5 space-y-4">
                 {calibrationReport && <CalibrationPanel report={calibrationReport} />}
+                <CalibrationAuthorityControls
+                  sessionId={session.id}
+                  source={calibrationSource}
+                  revision={currentCalibrationRevision}
+                  resultStatus={calibrationResultStatus}
+                />
+                <TimingSetupForm sessionId={session.id} setup={session.timing_setup} />
                 <CalibrationControlsForm
                   sessionId={session.id}
                   detectedFps={detectedFps}
@@ -781,6 +1269,10 @@ export default async function SessionPage({
                   zoneStartS={session.calibration_zone_start_s ?? null}
                   zoneEndS={session.calibration_zone_end_s ?? null}
                   zoneDistanceM={session.calibration_zone_distance_m ?? null}
+                  timingMode={session.timing_mode}
+                  timingDirection={session.timing_direction}
+                  timingBodyReference={session.timing_body_reference}
+                  timingSplits={Array.isArray(session.timing_splits) ? session.timing_splits.filter((value): value is number => typeof value === "number") : []}
                 />
                 {session.analysis_type === "fly" && phaseReport && (
                   <PhaseTimelinePanel report={phaseReport} />
@@ -804,18 +1296,21 @@ export default async function SessionPage({
             </p>
           </AvaPanel>
         ) : analysisInFlight ? (
-          <AvaPanel eyebrow="Analysis" title="Analysis running">
+          <AvaPanel eyebrow="Analysis" title="Analysis in progress">
             <p className="text-sm text-[#A0A2A8]">
-              Analysis {ANALYSIS_STATUS_LABELS[analysis!.status].toLowerCase()} — the
-              limiting-factor diagnosis will appear here when the worker finishes.
+              Live progress is shown at the top of this page. Results will appear here
+              automatically when processing finishes.
             </p>
           </AvaPanel>
         ) : analysis?.status === "failed" ? (
           <AvaPanel eyebrow="Analysis" title="Analysis failed">
             <p className="text-sm text-[#ff8079]">
-              Analysis failed{analysis.error ? `: ${analysis.error}` : ""}. Rerun analysis to try
-              again.
+              {jobStatus?.user_message ?? analysis.error ?? "The recording could not be analyzed."}{" "}
+              You can safely rerun after correcting the recording issue.
             </p>
+            <div className="mt-4">
+              <RerunAnalysisButton sessionId={session.id} label="Retry analysis" />
+            </div>
           </AvaPanel>
         ) : (
           <AvaPanel eyebrow="Analysis" title="Not analyzed yet">
