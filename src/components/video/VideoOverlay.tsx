@@ -7,7 +7,19 @@ import {
   applyRealWorldStepDistances,
   type StepDistanceScale,
 } from "@/lib/video/steps";
-import { estimateCameraMotion, cameraOffsetAtTime, gateFrameXAt } from "@/lib/video/camera";
+import {
+  propagateAnchorFromSetupToFrame,
+  propagateSourcePoint,
+  sourceLineIntersectsViewport,
+} from "@/lib/calibration/zoneAnchors";
+import {
+  canonicalWorldToSourceFrame,
+  projectCanonicalWorldLine,
+  sourceLineToCanonicalWorld,
+  sourcePointToCanonicalWorld,
+  WORLD_COORDINATE_SCHEMA_VERSION,
+} from "@/lib/video/worldProjection";
+import type { RawCameraEvidence } from "@/lib/video/recordingMode";
 import {
   getDisplayedVideoRect,
   projectLandmark,
@@ -15,15 +27,17 @@ import {
   type Point2D,
 } from "@/lib/video/coordinates";
 import type { CalibrationGates } from "@/lib/calibration/gates";
+import { selectRenderableGateGeometry } from "@/lib/calibration/authority";
 import {
   athleteScalePxPerCm,
   trochanterDisplayCorrection,
   type TrochanterMarker,
 } from "@/lib/video/overlayAlignment";
 import type { FollowBox } from "@/lib/video/follow";
+import { analyzeZoneSteps } from "@/lib/video/zoneStepAnalysis";
 
 /** A cone placed while marking a timing-gate bar (carries its clip time). */
-export type PendingCone = Point2D & { t: number };
+export type PendingCone = Point2D & { t: number; sourceFrameIndex: number };
 
 /** Which overlay layers are drawn. Owned by {@link OverlayVideoPlayer}. */
 export type OverlayToggles = {
@@ -83,6 +97,9 @@ type Props = {
   athleteHeightCm?: number | null;
   autoFollow?: boolean;
   followStateRef?: React.RefObject<{ current: FollowBox; target: FollowBox } | null>;
+  cameraEvidence?: RawCameraEvidence;
+  sourceWidth?: number | null;
+  sourceHeight?: number | null;
 };
 
 const bones = [
@@ -102,31 +119,33 @@ const bones = [
   ["rightAnkle", "rightFootIndex"],
 ];
 
-// A readable, high-contrast palette that reads well over real sprint footage.
+// Overlay palette (premium sports identity): the video is the hero — overlays stay
+// minimal and readable, using blue / white / muted-gray, with green reserved for
+// success indicators. Start & finish gates are blue; left contact blue, right contact
+// white; ground-contact success is green.
 const COLORS = {
-  bone: "#F5F5F7", // AVA white — neutral, high-contrast skeleton (no blue)
-  jointFill: "#f8fafc", // slate-50
-  jointStroke: "#0f172a", // slate-900
-  jointFillSoft: "rgba(248, 250, 252, 0.7)", // slate-50, semi-transparent tiny dots
-  jointStrokeSoft: "rgba(15, 23, 42, 0.45)", // slate-900, thin soft outline
-  angle: "#fde047", // yellow-300
-  com: "#fb923c", // orange-400
-  trail: "rgba(251, 146, 60, 0.65)",
-  velocity: "#f43f5e", // rose-500
-  contact: "#4ade80", // green-400
-  flight: "#cbd5e1", // slate-300
-  hover: "#fbbf24", // amber-400
-  selected: "#D72638", // AVA red — selection highlight (no cyan)
-  arm: "#D4AF37", // gold — upper-arm/forearm segments (distinct from white legs)
-  armAngle: "#E4C25A", // light gold — arm angle labels
-  stepLeft: "#ef4444", // red-500 — left-foot ground contacts
-  stepRight: "#22c55e", // green-500 — right-foot ground contacts
-  stepPath: "rgba(226, 232, 240, 0.75)", // slate-200 — connecting step path (debug only)
-  stepDist: "#e2e8f0", // slate-200 — uncalibrated distance labels
-  calibration: "#facc15", // yellow-400 — manual calibration line + points
-  calibrationPending: "#fef08a", // yellow-200 — points being placed
-  zoneShade: "rgba(250, 204, 21, 0.16)", // translucent yellow — the detection zone fill
-  labelBg: "rgba(15, 23, 42, 0.72)",
+  bone: "#f5f7fb", // AVA white — neutral, high-contrast skeleton
+  jointFill: "#f8fafc",
+  jointStroke: "#0f172a",
+  jointFillSoft: "rgba(248, 250, 252, 0.7)",
+  jointStrokeSoft: "rgba(15, 23, 42, 0.45)",
+  angle: "#b3bccb", // muted gray — analytical angle labels (no yellow)
+  com: "#3b8eff", // blue — centre-of-mass marker
+  trail: "rgba(47, 128, 237, 0.55)", // soft blue COM trail
+  velocity: "#f5f7fb", // white — velocity vector
+  contact: "#89d46a", // green — success indicator (ground contact)
+  flight: "#b3bccb", // muted gray
+  hover: "#3b8eff", // blue — hover highlight
+  selected: "#2f80ed", // AVA blue — selection highlight
+  arm: "#b3bccb", // muted gray — upper-arm/forearm segments
+  armAngle: "#7e8797", // muted — arm angle labels
+  stepLeft: "#2f80ed", // blue — left-foot ground contacts
+  stepRight: "#f5f7fb", // white — right-foot ground contacts
+  stepPath: "rgba(179, 188, 203, 0.6)", // muted gray — connecting step path (debug only)
+  stepDist: "#b3bccb", // muted gray — uncalibrated distance labels
+  calibration: "#2f80ed", // blue — timing-gate bars (start & finish)
+  calibrationPending: "#3b8eff", // light blue — points being placed
+  labelBg: "rgba(8, 16, 25, 0.78)",
 } as const;
 
 /** Default overlay label font, and a smaller one for the decluttered step labels. */
@@ -216,6 +235,9 @@ export default function VideoOverlay({
   athleteHeightCm = null,
   autoFollow = false,
   followStateRef,
+  cameraEvidence,
+  sourceWidth,
+  sourceHeight,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -252,11 +274,66 @@ export default function VideoOverlay({
     // reveals the ones reached by the current playback time. When a calibration
     // scale is present, each gap also carries a real-world metre distance.
     const stepMarks = applyRealWorldStepDistances(detectStepMarks(frames), stepScale);
-
-    // Camera-motion track (Day 64): lets a contact/gate captured at one time be
-    // reprojected to where that ground point appears at the current time, so marks
-    // stay planted on the track under a panning camera (identity when static).
-    const cameraTrack = estimateCameraMotion(frames);
+    const worldSteps = stepMarks.map((mark) => ({
+      ...mark,
+      world: cameraEvidence && sourceWidth && sourceHeight
+        ? sourcePointToCanonicalWorld(
+            mark,
+            mark.sourceFrameIndex,
+            cameraEvidence,
+            sourceWidth,
+            sourceHeight,
+          )
+        : null,
+    }));
+    // Display-only step labels use the same immutable world points as the dots.
+    // This does not alter worker metrics or timing values.
+    const canonicalSteps = worldSteps.map((mark, index) => {
+      const previous = worldSteps[index - 1];
+      if (!stepScale || !mark.world?.projectable || !previous?.world?.projectable) return mark;
+      const dx = (mark.world.x - previous.world.x) * stepScale.frameWidth;
+      const dy = (mark.world.y - previous.world.y) * stepScale.frameHeight;
+      return { ...mark, distanceMetersFromPrev: Math.hypot(dx, dy) * stepScale.metersPerPixel };
+    });
+    const zoneMetrics = (() => {
+      const gates = calibrationGatesRef.current;
+      if (
+        !gates?.startBoundary ||
+        !gates.finishBoundary ||
+        !cameraEvidence ||
+        !sourceWidth ||
+        !sourceHeight ||
+        !canonicalSteps.every((mark) => mark.world)
+      ) return null;
+      const canonicalMidpoint = (boundary: NonNullable<typeof gates.startBoundary>, identity: "start" | "finish") => {
+        const line = sourceLineToCanonicalWorld(
+          boundary.sourceFrameLine.c1,
+          boundary.sourceFrameLine.c2,
+          boundary.setupFrameIndex,
+          identity,
+          cameraEvidence,
+          sourceWidth,
+          sourceHeight,
+        );
+        return { x: (line.c1.x + line.c2.x) / 2, y: (line.c1.y + line.c2.y) / 2 };
+      };
+      return analyzeZoneSteps({
+        start: canonicalMidpoint(gates.startBoundary, "start"),
+        finish: canonicalMidpoint(gates.finishBoundary, "finish"),
+        distanceM: gates.distanceM,
+        contacts: canonicalSteps.map((mark) => ({
+          id: `contact-${mark.sourceFrameIndex}-${mark.side}-${mark.index}`,
+          side: mark.side,
+          timeS: mark.time,
+          sourceFrameIndex: mark.sourceFrameIndex,
+          x: mark.world!.x,
+          y: mark.world!.y,
+          confidence: mark.world!.projectionConfidence,
+        })),
+      });
+    })();
+    const classifiedById = new Map(zoneMetrics?.contacts.map((contact) => [contact.id, contact]) ?? []);
+    const intervalByEndpoint = new Map(zoneMetrics?.intervals.map((interval) => [interval.toContactId, interval]) ?? []);
 
     const draw = () => {
       const ctx = canvas.getContext("2d");
@@ -306,13 +383,28 @@ export default function VideoOverlay({
           break;
         }
       }
+      const currentSourceFrame = frame.sourceFrameIndex ?? frame.frame;
 
-      // Camera offset at the current time; ground points captured at `atTime` are
-      // shifted by (offset_then − offset_now) so they track the ground under pan.
-      const camNow = cameraOffsetAtTime(cameraTrack, currentTime);
-      const groundToFrame = (nx: number, ny: number, atTime: number): Point2D => {
-        const camThen = cameraOffsetAtTime(cameraTrack, atTime);
-        return { x: nx + (camThen.x - camNow.x), y: ny + (camThen.y - camNow.y) };
+      const projectWorldStep = (mark: (typeof canonicalSteps)[number]): Point2D | null => {
+        // A detected ground contact is a permanent chalk mark on the track: once
+        // playback has reached it, it must stay visible for the rest of the clip.
+        // Camera motion (pan/zoom) only changes WHERE the world point projects into
+        // the current view, never WHETHER it exists — so we always render the
+        // best-effort reprojected position and NEVER cull on projection confidence /
+        // safety. (Low confidence can affect trust styling elsewhere, not existence.)
+        if (!mark.world || !cameraEvidence || !sourceWidth || !sourceHeight) {
+          // No camera evidence (static clip): the raw source position is already
+          // world-locked — there is no pan to compensate.
+          return project(mark);
+        }
+        const result = canonicalWorldToSourceFrame(
+          mark.world,
+          currentSourceFrame,
+          cameraEvidence,
+          sourceWidth,
+          sourceHeight,
+        );
+        return project(result.point);
       };
 
       ctx.lineWidth = 3;
@@ -589,23 +681,8 @@ export default function VideoOverlay({
       // ONLY to decide whether a stride-length LABEL is drawn: the foot-contact marker,
       // its position/appearance, and every calculation are untouched. Null when there is
       // no calibrated zone, in which case labels render exactly as before.
-      const zonePts = calibrationRef.current;
-      const zoneWorldX = (frameX: number, timeS: number | null | undefined): number =>
-        cameraTrack.available && timeS != null ? frameX + cameraOffsetAtTime(cameraTrack, timeS).x : frameX;
-      const zoneMinX = zonePts
-        ? Math.min(zoneWorldX(zonePts.ax, zonePts.aTimeS), zoneWorldX(zonePts.bx, zonePts.bTimeS))
-        : null;
-      const zoneMaxX = zonePts
-        ? Math.max(zoneWorldX(zonePts.ax, zonePts.aTimeS), zoneWorldX(zonePts.bx, zonePts.bTimeS))
-        : null;
-      const labelInZone = (m: { x: number; time: number }): boolean => {
-        if (zoneMinX == null || zoneMaxX == null) return true; // no calibrated zone → unchanged
-        const wx = m.x + cameraOffsetAtTime(cameraTrack, m.time).x;
-        return wx >= zoneMinX - 1e-9 && wx <= zoneMaxX + 1e-9;
-      };
-
-      if (show.stepMarks && stepMarks.length) {
-        const reached = stepMarks.filter((m) => m.time <= currentTime + 1e-3);
+      if (show.stepMarks && canonicalSteps.length) {
+        const reached = canonicalSteps.filter((m) => m.time <= currentTime + 1e-3);
 
         // Debug only: dashed step-to-step path linking consecutive contacts.
         if (show.debug && reached.length > 1) {
@@ -614,7 +691,8 @@ export default function VideoOverlay({
           ctx.setLineDash([5, 4]);
           ctx.beginPath();
           reached.forEach((m, i) => {
-            const p = project(groundToFrame(m.x, m.y, m.time));
+            const p = projectWorldStep(m);
+            if (!p) return;
             if (i === 0) ctx.moveTo(p.x, p.y);
             else ctx.lineTo(p.x, p.y);
           });
@@ -623,15 +701,33 @@ export default function VideoOverlay({
         }
 
         for (const mark of reached) {
+          const markId = `contact-${mark.sourceFrameIndex}-${mark.side}-${mark.index}`;
+          const classification = classifiedById.get(markId);
+          const isFinalEndpoint = zoneMetrics?.stepWindow.firstPostZoneContactId === markId;
           // Reproject the contact from its capture time into the current view so
           // it stays planted on the track as the camera pans (identity if static).
-          const p = project(groundToFrame(mark.x, mark.y, mark.time));
-          const color = mark.side === "left" ? COLORS.stepLeft : COLORS.stepRight;
+          const p = projectWorldStep(mark);
+          if (!p) continue;
+          const color = classification?.classification === "boundary_ambiguous"
+            ? "#f5c451"
+            : isFinalEndpoint
+              ? "#5AA9FF"
+              : classification?.countedInZone
+                ? mark.side === "left" ? COLORS.stepLeft : COLORS.stepRight
+                : "#777A80";
 
           // One SMALL dot at the fixed ground contact position (Day 68: −50% size
           // + thinner outline to cut overlay clutter).
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          if (isFinalEndpoint) {
+            ctx.moveTo(p.x, p.y - 4);
+            ctx.lineTo(p.x + 4, p.y);
+            ctx.lineTo(p.x, p.y + 4);
+            ctx.lineTo(p.x - 4, p.y);
+            ctx.closePath();
+          } else {
+            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          }
           ctx.fillStyle = color;
           ctx.fill();
           ctx.lineWidth = 1;
@@ -646,12 +742,10 @@ export default function VideoOverlay({
           // Show the numeric stride label ONLY for contacts INSIDE the calibrated zone
           // (the ones trusted metrics actually use). Out-of-zone contacts keep their
           // marker but drop the label — label-only, no effect on position or math.
-          const meters = mark.distanceMetersFromPrev;
+          const meters = intervalByEndpoint.get(markId)?.longitudinalLengthM ?? null;
           ctx.font = STEP_LABEL_FONT;
           if (meters != null) {
-            if (labelInZone(mark)) {
-              placeLabel(ctx, `${meters.toFixed(2)} m`, p.x + 6, p.y + 10, color, placedLabels);
-            }
+            placeLabel(ctx, `${meters.toFixed(2)} m`, p.x + 6, p.y + 10, color, placedLabels);
           } else if (show.debug && mark.distanceFromPrev != null) {
             placeLabel(ctx, `≈${mark.distanceFromPrev.toFixed(2)} rel`, p.x + 6, p.y + 10, color, placedLabels);
           }
@@ -684,103 +778,138 @@ export default function VideoOverlay({
 
       // Geometry of one gate bar: its two cone endpoints (frame px) + midpoint, or
       // null when either cone has panned outside the frame view.
-      type BarGeom = { p1: Point2D; p2: Point2D; mid: Point2D };
-      const barGeom = (c1: Point2D, c2: Point2D, timeS: number | null | undefined): BarGeom | null => {
-        const rx1 = gateFrameXAt(c1.x, timeS, cameraTrack, currentTime);
-        const rx2 = gateFrameXAt(c2.x, timeS, cameraTrack, currentTime);
-        if (rx1 == null || rx2 == null) return null; // a cone is outside the frame
-        const p1 = project({ x: rx1, y: c1.y });
-        const p2 = project({ x: rx2, y: c2.y });
-        return { p1, p2, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } };
-      };
-
+      type BarGeom = { p1: Point2D; p2: Point2D; mid: Point2D; confidence?: number; safe?: boolean };
+      let diagnosticStartGate: BarGeom | null = null;
+      let diagnosticFinishGate: BarGeom | null = null;
       // Stroke a gate bar (cone-to-cone) with cone markers and an optional tag.
       // Day 74: thin (2 px) so the laser line is precise and unobtrusive.
       const strokeBar = (g: BarGeom, color: string, tag?: string) => {
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = g.safe === false ? "#e46464" : color;
         ctx.lineWidth = 2;
+        ctx.setLineDash(g.safe === false ? [5, 4] : []);
         ctx.beginPath();
         ctx.moveTo(g.p1.x, g.p1.y);
         ctx.lineTo(g.p2.x, g.p2.y);
         ctx.stroke();
+        ctx.setLineDash([]);
         drawCone(g.p1, color);
         drawCone(g.p2, color);
-        if (tag) placeLabel(ctx, tag, g.mid.x + 8, g.mid.y - 12, color, placedLabels);
-      };
-
-      // Compute + stroke a gate bar in one step. Returns the midpoint, or null.
-      const drawBar = (
-        c1: Point2D,
-        c2: Point2D,
-        timeS: number | null | undefined,
-        color: string,
-        tag?: string,
-      ): Point2D | null => {
-        const g = barGeom(c1, c2, timeS);
-        if (!g) return null;
-        strokeBar(g, color, tag);
-        return g.mid;
-      };
-
-      // Legacy vertical timing line (pre-Day-66 sessions store only two midpoints).
-      const drawLegacyGate = (
-        normX: number,
-        atTime: number | null | undefined,
-        color: string,
-        tag?: string,
-      ): number | null => {
-        const renderedX = gateFrameXAt(normX, atTime, cameraTrack, currentTime);
-        if (renderedX == null) return null;
-        const x = project({ x: renderedX, y: 0 }).x;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, picture.height);
-        ctx.stroke();
-        if (tag) placeLabel(ctx, tag, x + 6, 14, color, placedLabels);
-        return renderedX;
+        if (tag) placeLabel(ctx, tag, g.mid.x + 8, g.mid.y - 12,
+          g.safe === false ? "#e46464" : color, placedLabels);
       };
 
       const savedGates = calibrationGatesRef.current;
       const savedCalibration = calibrationRef.current;
       if (savedGates) {
-        const startG = barGeom(savedGates.startGate.c1, savedGates.startGate.c2, savedGates.startGate.timeS);
-        const finishG = barGeom(savedGates.finishGate.c1, savedGates.finishGate.c2, savedGates.finishGate.timeS);
-        // Yellow shaded DETECTION ZONE (Day 67): a translucent band between the two
-        // gate bars, extending ~9 m up the lane so the active timing zone is obvious.
-        // Its height uses the known gate distance for scale (px-per-metre = the gate
-        // midpoint separation ÷ distanceM). Drawn first so the bars sit on top.
-        if (startG && finishG && savedGates.distanceM > 0) {
-          const sepPx = Math.hypot(finishG.mid.x - startG.mid.x, finishG.mid.y - startG.mid.y);
-          const zoneH = (9 / savedGates.distanceM) * sepPx; // ~9 m upward, in px
-          ctx.fillStyle = COLORS.zoneShade;
-          ctx.beginPath();
-          ctx.moveTo(startG.mid.x, startG.mid.y);
-          ctx.lineTo(finishG.mid.x, finishG.mid.y);
-          ctx.lineTo(finishG.mid.x, finishG.mid.y - zoneH);
-          ctx.lineTo(startG.mid.x, startG.mid.y - zoneH);
-          ctx.closePath();
-          ctx.fill();
+        const authoritativeGeom = (boundary: typeof savedGates.startBoundary): BarGeom | null => {
+          if (!boundary || !cameraEvidence || !sourceWidth || !sourceHeight) return null;
+          const propagated = propagateAnchorFromSetupToFrame(
+            boundary, currentSourceFrame, cameraEvidence, sourceWidth, sourceHeight,
+          );
+          if (!sourceLineIntersectsViewport(propagated.c1, propagated.c2)) return null;
+          return {
+            p1: project(propagated.c1), p2: project(propagated.c2),
+            mid: project(propagated.midpoint), confidence: propagated.confidence, safe: propagated.safe,
+          };
+        };
+        const migratedGeom = (bar: typeof savedGates.startGate): BarGeom | null => {
+          if (!cameraEvidence || !sourceWidth || !sourceHeight) return null;
+          const setupOverlayFrame = frames.reduce((best, candidate) =>
+            Math.abs(candidate.time - bar.timeS) < Math.abs(best.time - bar.timeS) ? candidate : best,
+          );
+          const setupFrame = bar.setupFrameIndex ?? setupOverlayFrame?.sourceFrameIndex ?? setupOverlayFrame?.frame;
+          if (setupFrame == null) return null;
+          const a = propagateSourcePoint(bar.c1, setupFrame, currentSourceFrame, cameraEvidence, sourceWidth, sourceHeight);
+          const b = propagateSourcePoint(bar.c2, setupFrame, currentSourceFrame, cameraEvidence, sourceWidth, sourceHeight);
+          if (!sourceLineIntersectsViewport(a.point, b.point)) return null;
+          const p1 = project(a.point); const p2 = project(b.point);
+          return { p1, p2, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
+            confidence: Math.min(a.confidence, b.confidence), safe: a.safe && b.safe };
+        };
+        // Authority-first rendering (Part 1): a MANUAL-CONFIRMED zone is drawn from
+        // its exact persisted c1/c2, reprojected to the CURRENT source frame through
+        // the AUTHORITATIVE background camera model only — never through the
+        // athlete-derived camera estimate (`cameraTrack`/`gateFrameXAt`), which slides
+        // a confirmed zone off its painted line as the runner moves (the drift bug).
+        //
+        // The canonical source anchor is immutable; each frame we derive its display
+        // position fresh:  canonical anchor → source-camera transform (identity when
+        // the camera is static or evidence is absent) → project() into the picture
+        // rect → the shared follow-wrapper transform (same as the video). It is exact
+        // at the setup frame (no post-save pixel shift) and stays glued to the world
+        // location on every other frame. Auto / draft zones keep the derived chain.
+        const setupFrameFor = (timeS: number, explicit?: number): number | undefined => {
+          if (explicit != null) return explicit;
+          if (!frames.length) return undefined;
+          const nearest = frames.reduce((best, candidate) =>
+            Math.abs(candidate.time - timeS) < Math.abs(best.time - timeS) ? candidate : best,
+          );
+          return nearest.sourceFrameIndex ?? nearest.frame;
+        };
+        const canonicalGeom = (
+          canonical: { c1: Point2D; c2: Point2D; timeS: number; setupFrameIndex?: number },
+          identity: "start" | "finish",
+        ): BarGeom | null => {
+          // Authoritative reprojection when production camera evidence is available.
+          if (cameraEvidence && sourceWidth && sourceHeight) {
+            const setupFrame = setupFrameFor(canonical.timeS, canonical.setupFrameIndex);
+            if (setupFrame != null) {
+              const worldLine = sourceLineToCanonicalWorld(
+                canonical.c1,
+                canonical.c2,
+                setupFrame,
+                identity,
+                cameraEvidence,
+                sourceWidth,
+                sourceHeight,
+              );
+              const line = projectCanonicalWorldLine(
+                worldLine, currentSourceFrame, cameraEvidence, sourceWidth, sourceHeight,
+              );
+              if (!sourceLineIntersectsViewport(line.c1, line.c2)) return null;
+              return {
+                p1: project(line.c1), p2: project(line.c2), mid: project(line.midpoint),
+                confidence: line.confidence, safe: line.projectable,
+              };
+            }
+          }
+          // Identity fallback (no evidence / static camera): draw the canonical anchor
+          // at its raw stored source coordinates. NEVER reproject a confirmed zone via
+          // athlete-motion-derived camera estimates.
+          if (!sourceLineIntersectsViewport(canonical.c1, canonical.c2)) return null;
+          const p1 = project(canonical.c1);
+          const p2 = project(canonical.c2);
+          return { p1, p2, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } };
+        };
+        const gateDirective = selectRenderableGateGeometry(savedGates);
+        const startG =
+          gateDirective.mode === "canonical_raw"
+            ? canonicalGeom(gateDirective.start, "start")
+            : authoritativeGeom(savedGates.startBoundary)
+              ?? migratedGeom(savedGates.startGate);
+        const finishG =
+          gateDirective.mode === "canonical_raw"
+            ? canonicalGeom(gateDirective.finish, "finish")
+            : authoritativeGeom(savedGates.finishBoundary)
+              ?? migratedGeom(savedGates.finishGate);
+        diagnosticStartGate = startG;
+        diagnosticFinishGate = finishG;
+
+        // Dev-only drift diagnostic: proves the canonical source anchor is unchanged
+        // while only its projection moves. Gated behind the debug toggle + non-prod.
+        if (show.debug && process.env.NODE_ENV !== "production" && gateDirective.mode === "canonical_raw") {
+          console.debug("[timing-zone] canonical anchor immutable; projection derived fresh", {
+            sourceFrame: currentSourceFrame,
+            canonicalStart: gateDirective.start.c1,
+            projectedStart: startG?.p1 ?? null,
+            hasCameraEvidence: !!(cameraEvidence && sourceWidth && sourceHeight),
+          });
         }
         if (startG) strokeBar(startG, COLORS.calibration, "Start");
         if (finishG) strokeBar(finishG, COLORS.calibration, "Finish");
-        // Label the known distance between the bars only when both are in view.
-        if (startG && finishG) {
-          const label = `${savedGates.distanceM}m`;
-          ctx.font = "700 11px system-ui, sans-serif";
-          placeLabel(ctx, label, Math.max(8, (picture.width - ctx.measureText(label).width) / 2), 14,
-            COLORS.calibration, placedLabels);
-          ctx.font = DEFAULT_LABEL_FONT;
-        }
       } else if (savedCalibration) {
-        // Backward-compat: old two-point calibrations render as vertical lines.
-        const aX = drawLegacyGate(savedCalibration.ax, savedCalibration.aTimeS, COLORS.calibration, "A");
-        const bX = drawLegacyGate(savedCalibration.bx, savedCalibration.bTimeS, COLORS.calibration, "B");
-        if (aX != null && bX != null) {
-          const mid = project({ x: (aX + bX) / 2, y: 0 }).x;
-          placeLabel(ctx, `${savedCalibration.distanceM} m gate`, mid, 30, COLORS.calibration, placedLabels);
-        }
+        // Legacy midpoint-only records lack source-frame and background-transform
+        // provenance. They require a rerun instead of being misdrawn as world data.
       }
 
       // In-progress placement: [startC1, startC2, finishC1, finishC2]. Complete
@@ -790,12 +919,27 @@ export default function VideoOverlay({
       if (pending && pending.length) {
         const pc = COLORS.calibrationPending;
         const drawPendingCone = (c: PendingCone) => {
-          const rx = gateFrameXAt(c.x, c.t, cameraTrack, currentTime);
-          if (rx != null) drawCone(project({ x: rx, y: c.y }), pc);
+          if (cameraEvidence && sourceWidth && sourceHeight) {
+            const result = propagateSourcePoint(c, c.sourceFrameIndex, frame.sourceFrameIndex ?? frame.frame,
+              cameraEvidence, sourceWidth, sourceHeight);
+            drawCone(project(result.point), result.safe ? pc : "#e46464");
+          } else {
+            // No background-camera evidence: no fabricated world-lock preview.
+          }
         };
-        if (pending.length >= 2) drawBar(pending[0], pending[1], pending[0].t, pc, "Start");
+        const pendingGeom = (c1: PendingCone, c2: PendingCone): BarGeom | null => {
+          if (!cameraEvidence || !sourceWidth || !sourceHeight) return null;
+          const target = frame.sourceFrameIndex ?? frame.frame;
+          const a = propagateSourcePoint(c1, c1.sourceFrameIndex, target, cameraEvidence, sourceWidth, sourceHeight);
+          const b = propagateSourcePoint(c2, c2.sourceFrameIndex, target, cameraEvidence, sourceWidth, sourceHeight);
+          if (!sourceLineIntersectsViewport(a.point, b.point)) return null;
+          const p1 = project(a.point); const p2 = project(b.point);
+          return { p1, p2, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
+            confidence: Math.min(a.confidence, b.confidence), safe: a.safe && b.safe };
+        };
+        if (pending.length >= 2) { const g = pendingGeom(pending[0], pending[1]); if (g) strokeBar(g, pc, "Start"); }
         else if (pending.length === 1) drawPendingCone(pending[0]);
-        if (pending.length >= 4) drawBar(pending[2], pending[3], pending[2].t, pc, "Finish");
+        if (pending.length >= 4) { const g = pendingGeom(pending[2], pending[3]); if (g) strokeBar(g, pc, "Finish"); }
         else if (pending.length === 3) drawPendingCone(pending[2]);
       }
 
@@ -858,9 +1002,23 @@ export default function VideoOverlay({
           if (rawHip) { ctx.beginPath(); ctx.moveTo(rawHip.x, rawHip.y); ctx.lineTo(marker.x, marker.y); ctx.stroke(); }
         }
         const follow = followStateRef?.current;
+        const sourceFrame = frame.sourceFrameIndex ?? frame.frame;
+        const cameraFrame = cameraEvidence?.transforms.find((item) => item.frame === sourceFrame);
+        const athleteTrack = cameraEvidence?.athleteTrack.find((item) => item.frame === sourceFrame);
+        if (athleteTrack?.cropBox) {
+          const topLeft = project({ x: athleteTrack.cropBox.x, y: athleteTrack.cropBox.y });
+          const bottomRight = project({
+            x: athleteTrack.cropBox.x + athleteTrack.cropBox.width,
+            y: athleteTrack.cropBox.y + athleteTrack.cropBox.height,
+          });
+          ctx.strokeStyle = "#22d3ee"; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+          ctx.strokeRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+          ctx.setLineDash([]);
+        }
         const pxError = Math.hypot(correction.dx * picture.width, correction.dy * picture.height);
         const scale = athleteScalePxPerCm(frame, picture.height, athleteHeightCm);
         const lines = [
+          `world ${WORLD_COORDINATE_SCHEMA_VERSION} · reference frame 0 · source frame ${sourceFrame}`,
           `primary ${frame.backend ?? "pose"} · comparison ${frame.comparisonBackend ?? "off"} · frame ${frame.frame}`,
           `video ${currentTime.toFixed(3)}s · pose ${frame.time.toFixed(3)}s`,
           `tracking confidence ${frame.trackingConfidence?.toFixed(3) ?? "unavailable"}`,
@@ -869,6 +1027,13 @@ export default function VideoOverlay({
           `height ${athleteHeightCm ?? "—"}cm · scale ${scale?.toFixed(3) ?? "—"} px/cm · error ${pxError.toFixed(1)}px`,
           `follow ${autoFollow ? "on" : "off"} · transform ${follow ? `${follow.current.scale.toFixed(3)} @ ${follow.current.cx.toFixed(3)},${follow.current.cy.toFixed(3)}` : "identity"}`,
           `target ${follow ? `${follow.target.cx.toFixed(3)},${follow.target.cy.toFixed(3)}` : "—"} · offset ${follow ? `${(follow.current.cx - .5).toFixed(3)},${(follow.current.cy - .5).toFixed(3)}` : "0,0"}`,
+          `camera prev→current ${cameraFrame ? `${cameraFrame.translationX.toFixed(4)},${cameraFrame.translationY.toFixed(4)} · rot ${cameraFrame.rotationDeg.toFixed(2)}° · scale ${cameraFrame.scale.toFixed(4)}` : "unavailable"}`,
+          `transform confidence ${cameraFrame?.confidence.toFixed(3) ?? "—"} · features ${cameraFrame?.supportingFeatureCount ?? "—"} · residual ${cameraFrame?.residualPx?.toFixed(2) ?? "—"}px`,
+          `canonical steps ${canonicalSteps.length} · projectable ${canonicalSteps.filter((step) => projectWorldStep(step)).length}`,
+          `canonical start ${calibrationGatesRef.current ? `${calibrationGatesRef.current.startGate.c1.x.toFixed(4)},${calibrationGatesRef.current.startGate.c1.y.toFixed(4)}` : "—"} · finish ${calibrationGatesRef.current ? `${calibrationGatesRef.current.finishGate.c1.x.toFixed(4)},${calibrationGatesRef.current.finishGate.c1.y.toFixed(4)}` : "—"}`,
+          `viewport start ${diagnosticStartGate ? `${diagnosticStartGate.mid.x.toFixed(1)},${diagnosticStartGate.mid.y.toFixed(1)}` : "not projectable"} · finish ${diagnosticFinishGate ? `${diagnosticFinishGate.mid.x.toFixed(1)},${diagnosticFinishGate.mid.y.toFixed(1)}` : "not projectable"}`,
+          `projection ${cameraEvidence ? "background RANSAC affine" : "legacy/rerun required"} · fallback ${cameraEvidence ? "none" : "withheld"} · reprojection ${cameraFrame?.residualPx?.toFixed(2) ?? "—"}px`,
+          `crop ${athleteTrack ? `${athleteTrack.cropSource} · confidence ${athleteTrack.cropConfidence.toFixed(3)}` : "unavailable"} · analytical anchors ignore crop/follow`,
         ];
         ctx.font = "600 10px ui-monospace, monospace";
         const panelW = Math.min(picture.width - 16, 520);
@@ -885,7 +1050,17 @@ export default function VideoOverlay({
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [videoRef, frames, stepScale]);
+  }, [
+    videoRef,
+    frames,
+    stepScale,
+    cameraEvidence,
+    sourceWidth,
+    sourceHeight,
+    athleteHeightCm,
+    autoFollow,
+    followStateRef,
+  ]);
 
   // Position/size are driven imperatively in the draw loop so the canvas covers
   // exactly the displayed picture (letterbox-aware); left/top default to 0.
