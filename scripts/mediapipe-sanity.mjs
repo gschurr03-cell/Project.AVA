@@ -38,6 +38,8 @@ try {
       "src/lib/biomechanics/mediapipe/index.ts",
       "--outDir",
       out,
+      "--rootDir",
+      "src/lib",
       "--module",
       "commonjs",
       "--target",
@@ -48,10 +50,10 @@ try {
     { cwd: root, stdio: ["ignore", "ignore", "inherit"] },
   );
 
-  const { createPoseBackend } = require(path.join(out, "pose-backend.js"));
-  const { poseSequenceSchema } = require(path.join(out, "pose.js"));
+  const { createPoseBackend } = require(path.join(out, "biomechanics/pose-backend.js"));
+  const { poseSequenceSchema } = require(path.join(out, "biomechanics/pose.js"));
   const { PythonMediaPipePoseService, buildPoseSequence, mediaPipeResultSchema } = require(
-    path.join(out, "mediapipe/index.js"),
+    path.join(out, "biomechanics/mediapipe/index.js"),
   );
 
   // (2) TS service constructs.

@@ -44,12 +44,16 @@ try {
         skipLibCheck: true, esModuleInterop: true, strict: true, moduleResolution: "node",
         baseUrl: root, paths: { "@/*": ["src/*"] },
       },
-      files: [path.join(root, "src/lib/intelligence/recommendations.ts")],
+      files: [
+        path.join(root, "src/lib/intelligence/recommendations.ts"),
+        path.join(root, "src/lib/intelligence/progress.ts"),
+      ],
     }),
   );
   execFileSync("npx", ["tsc", "-p", path.join(out, "tsconfig.json")], { cwd: root, stdio: ["ignore", "inherit", "inherit"] });
 
   const { buildRecommendations } = require(path.join(out, "lib/intelligence/recommendations.js"));
+  const { buildProgress, snapshotFromAnalysisMetrics, NEEDS_MORE_SESSIONS_MESSAGE } = require(path.join(out, "lib/intelligence/progress.js"));
 
   // Baselines: elite trusted metrics + a clean recording → no training limiter fires.
   const elite = {
@@ -139,6 +143,96 @@ try {
   check("multiple limiters present to sort", rSort.recommendations.length >= 2);
   check("recommendations have strictly increasing displayPriority", monotonicPriority);
   check("recommendations ordered most-severe first", nonIncreasingSeverity);
+
+  // ---- Evidence Frames V1: timed video moments backing each recommendation ----
+  const zoneSteps = [
+    { index: 1, side: "left", timeS: 0.10, worldX: 0.10, stepLengthM: 2.33, fromSide: "right" },
+    { index: 2, side: "right", timeS: 0.30, worldX: 0.22, stepLengthM: 2.04, fromSide: "left" },
+    { index: 3, side: "left", timeS: 0.48, worldX: 0.36, stepLengthM: 2.34, fromSide: "right" },
+    { index: 4, side: "right", timeS: 0.74, worldX: 0.52, stepLengthM: 2.02, fromSide: "left" },
+    { index: 5, side: "left", timeS: 0.92, worldX: 0.66, stepLengthM: 2.35, fromSide: "right" },
+  ];
+  // Right side runs shorter (~13%) → asymmetry(right); low stride + low velocity too.
+  const evMeas = {
+    velocitySpreadPct: 6, leftStepLengthM: 2.34, rightStepLengthM: 2.03,
+    leftStepFrequencyHz: 2.5, rightStepFrequencyHz: 2.5,
+    diagnostics: { trackingCoverage: 0.95 }, zoneSteps,
+  };
+  const evTrusted = { ...elite, strideLengthM: 2.12, avgStrideLengthM: 2.1, peakStrideLengthM: 2.12, topSpeedMps: 10.5, avgVelocityMps: 10.0, frequencyHz: 4.9 };
+  const rEv = build({ trusted: evTrusted, measurements: evMeas, activeFps: 60 });
+  const allMoments = rEv.recommendations.flatMap((r) => r.evidenceMoments);
+
+  // 1. Legacy per-side aggregates are not silently treated as authoritative.
+  const asym = cat(rEv, "asymmetry");
+  check("legacy asymmetry aggregates do not produce a recommendation", !asym);
+
+  // 2. Stride recommendation gets stride evidence (shortest stride, with a timestamp).
+  const evStride = cat(rEv, "stride_length");
+  check("stride rec gets stride evidence", !!evStride && evStride.evidenceMoments.some((m) => m.relatedMetric === "strideLength"));
+  check("stride evidence includes the shortest-stride moment with a real timeS", !!evStride && evStride.evidenceMoments.some((m) => /shortest/i.test(m.label) && Number.isFinite(m.timeS)));
+
+  // 3. Speed recommendation gets velocity evidence (peak velocity moment).
+  const evSpeed = cat(rEv, "speed");
+  check("speed rec gets velocity evidence (peak velocity moment)", !!evSpeed && evSpeed.evidenceMoments.some((m) => m.relatedMetric === "velocity" && /peak/i.test(m.label)));
+
+  // 4. Missing evidence → empty moments (no broken buttons), not fabricated.
+  const rNoSteps = build({ trusted: evTrusted, measurements: { ...evMeas, zoneSteps: [] }, activeFps: 60 });
+  check("no zone steps → stride rec has zero evidence moments (UI shows 'unavailable')", cat(rNoSteps, "stride_length")?.evidenceMoments.length === 0);
+  const rNoMeas = build({ trusted: evTrusted, measurements: null, activeFps: 60 });
+  check("no measurements → speed rec has zero evidence moments", cat(rNoMeas, "speed")?.evidenceMoments.length === 0);
+
+  // 5. 60fps evidence never uses contact time / flight / stiffness.
+  check("60fps evidence never references contact/flight/stiffness", allMoments.every((m) => !/contact|flight|stiff|toe.?off|foot.?strike/i.test(m.relatedMetric)));
+  check("60fps evidence relatedMetric is a trusted spatial/cadence metric", allMoments.every((m) => ["strideLength", "stepLength", "stepFrequency", "velocity", "velocityConsistency"].includes(m.relatedMetric)));
+  check("every evidence moment carries a real timestamp + reason", allMoments.every((m) => Number.isFinite(m.timeS) && typeof m.reason === "string" && m.reason.length > 0));
+
+  // 6. Recommendations still sort correctly with evidence attached.
+  check("recommendations still sort by ascending displayPriority (evidence added)", rEv.recommendations.every((r, i) => i === 0 || r.displayPriority > rEv.recommendations[i - 1].displayPriority));
+
+  // ---- Progress Tracking V1 — latest vs previous fly session ----
+  const am = (over) => ({
+    topSpeedMps: 0, avgStrideLengthM: 0, strideFrequencyHz: 0,
+    groundContactTimeMs: 90, flightTimeMs: 120, peakKneeFlexionDeg: 130, avgTrunkLeanDeg: 8, ...over,
+  });
+  // Previous (older) then latest (newer): stride 2.10 → 2.28 (improved), freq 4.5 → 4.4 (declined).
+  const prevSnap = snapshotFromAnalysisMetrics("s-prev", "2026-06-01T10:00:00Z", am({ avgStrideLengthM: 2.10, strideFrequencyHz: 4.5, topSpeedMps: 10.4 }));
+  const latestSnap = snapshotFromAnalysisMetrics("s-latest", "2026-07-01T10:00:00Z", am({ avgStrideLengthM: 2.28, strideFrequencyHz: 4.4, topSpeedMps: 10.6 }));
+
+  // 1. Progress compares latest vs previous (most recent two).
+  const prog = buildProgress([prevSnap, latestSnap], { latestLimiterCategory: "stride_length" });
+  check("progress available with two sessions", prog.available === true);
+  check("progress compares latest vs previous by date", prog.latestSessionId === "s-latest" && prog.previousSessionId === "s-prev");
+  const strideChange = prog.metrics.find((m) => m.key === "strideLengthM");
+  check("stride change computed latest−previous (+0.18 m)", strideChange && Math.abs(strideChange.delta - 0.18) < 1e-6 && strideChange.direction === "improved");
+  check("percent change reported", strideChange && Math.abs(strideChange.percentChange - 8.6) < 0.2);
+
+  // 2. Stride limiter prioritises stride-length change first.
+  check("stride limiter → stride length highlighted and first", prog.metrics[0].key === "strideLengthM" && prog.metrics[0].highlighted === true);
+
+  // 3. Frequency limiter prioritises frequency change first.
+  const progFreq = buildProgress([prevSnap, latestSnap], { latestLimiterCategory: "frequency" });
+  check("frequency limiter → frequency highlighted and first", progFreq.metrics[0].key === "frequencyHz" && progFreq.metrics[0].highlighted === true);
+  const freqChange = progFreq.metrics.find((m) => m.key === "frequencyHz");
+  check("frequency decline detected (4.5 → 4.4)", freqChange && freqChange.direction === "declined");
+
+  // 4. Missing previous session → fallback message.
+  const progOne = buildProgress([latestSnap], { latestLimiterCategory: "stride_length" });
+  check("single session → available false with fallback message", progOne.available === false && progOne.message === NEEDS_MORE_SESSIONS_MESSAGE);
+
+  // 5. 60fps-limited metrics excluded from progress entirely.
+  const trackedKeys = new Set(prog.metrics.map((m) => m.key));
+  check("progress never tracks ground contact / flight time", !["groundContactTimeMs", "flightTimeMs", "contactFlightRatio", "stiffness"].some((k) => trackedKeys.has(k)));
+  check("snapshot carries no contact/flight fields", latestSnap.metrics.groundContactTimeMs === undefined && latestSnap.metrics.flightTimeMs === undefined);
+
+  // Previous recommendation improved: previous session's inferred limiter was stride
+  // (2.10 well below 2.45) → stride improved to 2.28 → improved true.
+  check("previous recommendation's target (stride) is reported as improved", prog.previousRecommendationImproved === true);
+
+  // No fake zeros: an uncalibrated (0) metric is dropped, never compared as 0.
+  const zeroPrev = snapshotFromAnalysisMetrics("z1", "2026-06-01T10:00:00Z", am({ avgStrideLengthM: 0, strideFrequencyHz: 4.5 }));
+  const zeroLatest = snapshotFromAnalysisMetrics("z2", "2026-07-01T10:00:00Z", am({ avgStrideLengthM: 0, strideFrequencyHz: 4.7 }));
+  const progZero = buildProgress([zeroPrev, zeroLatest]);
+  check("uncalibrated (0) stride is not tracked as a real reading", !progZero.metrics.some((m) => m.key === "strideLengthM"));
 
   console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");
 } finally {

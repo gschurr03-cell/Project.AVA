@@ -4,26 +4,43 @@ import {
   type AccelerationStartEvent,
 } from "./startEvent";
 import type { AccelerationCalibration, AccelerationFrame, AccelerationPoint } from "./types";
+import {
+  CONSERVATIVE_TIMING_POLICY_V1,
+  reportTimeSeconds,
+  velocityFromReportedTime,
+} from "../measurement/timingPolicy";
 
 export interface AccelerationSegmentVelocity {
   startM: number;
   endM: number;
   timeS: number;
   velocityMps: number;
+  rawTimeS: number;
+  reportedTimeS: number;
+  rawVelocityMps: number;
+  reportedVelocityMps: number;
 }
 
 export interface AccelerationMetrics {
+  timingPolicyVersion: typeof CONSERVATIVE_TIMING_POLICY_V1;
   resultType: "acceleration";
   status: "ready" | "ready_with_warning" | "needs_review" | "unavailable";
   startEvent: AccelerationStartEvent;
   splits: { m10S: number | null; m20S: number | null; m30S: number | null };
+  rawSplits: { m10S: number | null; m20S: number | null; m30S: number | null };
   finishDistanceM: number | null;
   finishCrossingTime: number | null;
   runTime: number | null;
+  rawRunTime: number | null;
+  reportedRunTime: number | null;
   segmentVelocities: AccelerationSegmentVelocity[];
   averageVelocityMps: number | null;
+  rawAverageVelocityMps: number | null;
+  reportedAverageVelocityMps: number | null;
   earlyAccelerationMps2: number | null;
   peakVelocity: number | null;
+  rawPeakVelocity: number | null;
+  reportedPeakVelocity: number | null;
   distanceToPeakVelocity: number | null;
   summary: string;
   warnings: string[];
@@ -76,17 +93,25 @@ export function computeAccelerationMetrics(
 ): AccelerationMetrics {
   const startEvent = detectAccelerationStartEvent(frames);
   const empty = (status: "needs_review" | "unavailable", warning: string): AccelerationMetrics => ({
+    timingPolicyVersion: CONSERVATIVE_TIMING_POLICY_V1,
     resultType: "acceleration",
     status,
     startEvent,
     splits: { m10S: null, m20S: null, m30S: null },
+    rawSplits: { m10S: null, m20S: null, m30S: null },
     finishDistanceM: calibration?.finishDistanceM ?? null,
     finishCrossingTime: null,
     runTime: null,
+    rawRunTime: null,
+    reportedRunTime: null,
     segmentVelocities: [],
     averageVelocityMps: null,
+    rawAverageVelocityMps: null,
+    reportedAverageVelocityMps: null,
     earlyAccelerationMps2: null,
     peakVelocity: null,
+    rawPeakVelocity: null,
+    reportedPeakVelocity: null,
     distanceToPeakVelocity: null,
     summary:
       status === "needs_review"
@@ -142,9 +167,13 @@ export function computeAccelerationMetrics(
     const time = crossingTime(series, targetX, direction);
     if (time != null && time > startTime) crossing.set(distance, time);
   }
-  const split = (distance: number) => {
+  const rawSplit = (distance: number) => {
     const time = crossing.get(distance);
     return time == null ? null : time - startTime;
+  };
+  const split = (distance: number) => {
+    const raw = rawSplit(distance);
+    return raw == null ? null : reportTimeSeconds(raw);
   };
 
   const segmentVelocities: AccelerationSegmentVelocity[] = [];
@@ -158,8 +187,12 @@ export function computeAccelerationMetrics(
       segmentVelocities.push({
         startM: priorDistance,
         endM: distance,
-        timeS: duration,
-        velocityMps: (distance - priorDistance) / duration,
+        timeS: reportTimeSeconds(duration),
+        velocityMps: velocityFromReportedTime(distance - priorDistance, duration),
+        rawTimeS: duration,
+        reportedTimeS: reportTimeSeconds(duration),
+        rawVelocityMps: (distance - priorDistance) / duration,
+        reportedVelocityMps: velocityFromReportedTime(distance - priorDistance, duration),
       });
     }
     priorDistance = distance;
@@ -167,7 +200,10 @@ export function computeAccelerationMetrics(
   }
 
   const measuredDistance = segmentVelocities.at(-1)?.endM ?? null;
+  const rawMeasuredTime = measuredDistance == null ? null : rawSplit(measuredDistance);
   const measuredTime = measuredDistance == null ? null : split(measuredDistance);
+  const rawAverageVelocityMps =
+    measuredDistance != null && rawMeasuredTime ? measuredDistance / rawMeasuredTime : null;
   const averageVelocityMps =
     measuredDistance != null && measuredTime ? measuredDistance / measuredTime : null;
   let earlyAccelerationMps2: number | null = null;
@@ -175,7 +211,7 @@ export function computeAccelerationMetrics(
     const first = segmentVelocities[0];
     const second = segmentVelocities[1];
     const dt = first.timeS / 2 + second.timeS / 2;
-    earlyAccelerationMps2 = (second.velocityMps - first.velocityMps) / dt;
+    earlyAccelerationMps2 = (second.reportedVelocityMps - first.reportedVelocityMps) / dt;
   }
 
   const endTime = measuredDistance == null ? null : (crossing.get(measuredDistance) ?? null);
@@ -193,12 +229,18 @@ export function computeAccelerationMetrics(
     }
   }
   const fastest = [...windows].sort((a, b) => b.velocity - a.velocity).slice(0, 2);
-  const peakVelocity = fastest.length
+  const rawPeakVelocity = fastest.length
     ? fastest.reduce((sum, item) => sum + item.velocity, 0) / fastest.length
+    : null;
+  // Regression-window peak velocity has no single distance/duration pair and is
+  // retained as analytical-only until a reportable segment window exists.
+  const peakVelocity = segmentVelocities.length
+    ? Math.max(...segmentVelocities.map((segment) => segment.reportedVelocityMps))
     : null;
   const distanceToPeakVelocity = fastest[0]?.distance ?? null;
   const finishCrossingTime = crossing.get(calibration.finishDistanceM) ?? null;
-  const runTime = finishCrossingTime == null ? null : finishCrossingTime - startTime;
+  const rawRunTime = finishCrossingTime == null ? null : finishCrossingTime - startTime;
+  const runTime = rawRunTime == null ? null : reportTimeSeconds(rawRunTime);
   if (finishCrossingTime == null) {
     const result = empty(
       "unavailable",
@@ -214,6 +256,7 @@ export function computeAccelerationMetrics(
         : "No complete calibrated split was observed.";
 
   return {
+    timingPolicyVersion: CONSERVATIVE_TIMING_POLICY_V1,
     resultType: "acceleration",
     status: segmentVelocities.length
       ? startEvent.signal === "torso"
@@ -222,13 +265,20 @@ export function computeAccelerationMetrics(
       : "unavailable",
     startEvent,
     splits: { m10S: split(10), m20S: split(20), m30S: split(30) },
+    rawSplits: { m10S: rawSplit(10), m20S: rawSplit(20), m30S: rawSplit(30) },
     finishDistanceM: calibration.finishDistanceM,
     finishCrossingTime,
     runTime,
+    rawRunTime,
+    reportedRunTime: runTime,
     segmentVelocities,
     averageVelocityMps,
+    rawAverageVelocityMps,
+    reportedAverageVelocityMps: averageVelocityMps,
     earlyAccelerationMps2,
     peakVelocity,
+    rawPeakVelocity,
+    reportedPeakVelocity: peakVelocity,
     distanceToPeakVelocity,
     summary,
     warnings: [

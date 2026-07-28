@@ -35,7 +35,7 @@ try {
   writeFileSync(
     path.join(out, "tsconfig.json"),
     JSON.stringify({
-      compilerOptions: { outDir: out, rootDir: path.join(root, "src"), module: "commonjs", target: "es2022", skipLibCheck: true, esModuleInterop: true, strict: true, moduleResolution: "node", baseUrl: root, paths: { "@/*": ["src/*"] } },
+      compilerOptions: { outDir: out, rootDir: path.join(root, "src"), module: "commonjs", target: "es2022", skipLibCheck: true, esModuleInterop: true, resolveJsonModule: true, strict: true, moduleResolution: "node", baseUrl: root, paths: { "@/*": ["src/*"] } },
       files: [path.join(root, "src/lib/video/fps.ts")],
     }),
   );
@@ -60,8 +60,9 @@ try {
   check("100 stays 100 (between 60 and 120)", normalizeFps(100) === 100);
   check("invalid → null", normalizeFps(null) === null && normalizeFps(0) === 0 ? true : normalizeFps(null) === null);
 
-  // Boundary of the ±2.5% band around 60 (58.5 = exactly 2.5% below).
-  check("58.5 (2.5% below 60) snaps to 60", normalizeFps(58.5) === 60);
+  // The centralized production boundary is 59.0; lower rates need independent
+  // nominal + timestamp evidence and are not blindly snapped by one metadata field.
+  check("58.5 stays 58.5 without timestamp evidence", normalizeFps(58.5) === 58.5);
   check("58.0 (3.3% below 60) stays 58", normalizeFps(58.0) === 58);
 
   // applyFpsOverride re-times to index/fps from the chosen rate.

@@ -28,8 +28,26 @@ import { type StepMark, type StepSide, type StepDistanceScale } from "@/lib/vide
 import { summariseContactFlight, type ContactFlightSummary } from "@/lib/video/contacts";
 import { buildFullRunEvents } from "@/lib/video/events";
 import { computePeakStrideLengthM, computeStrideRetentionPct } from "@/lib/benchmark/strideMetrics";
+import {
+  CONSERVATIVE_TIMING_POLICY_V1,
+  reportNullableMilliseconds,
+  reportStrideWindows,
+  reportTimeSeconds,
+  velocityFromReportedTime,
+} from "@/lib/measurement/timingPolicy";
 import type { ManualCalibrationPoints } from "@/lib/calibration";
+import type { CalibrationGates } from "@/lib/calibration/gates";
+import { detectWorldBoundaryCrossing } from "@/lib/calibration/zoneAnchors";
 import { stepFrequenciesFromContacts } from "@/lib/video/cadence";
+import type { RawCameraEvidence } from "@/lib/video/recordingMode";
+import {
+  sourceLineToCanonicalWorld,
+  sourcePointToCanonicalWorld,
+} from "@/lib/video/worldProjection";
+import {
+  analyzeZoneSteps,
+  type ZoneStepSummary,
+} from "@/lib/video/zoneStepAnalysis";
 import {
   estimateCameraMotion,
   cameraOffsetAtTime,
@@ -126,9 +144,16 @@ export interface ZoneStep {
   stepLengthM: number | null;
   /** The previous contact's foot (the step is fromSide → side), or null. */
   fromSide: StepSide | null;
+  /** Contact position along the start→finish sprint axis. */
+  longitudinalM?: number;
+  /** Lateral offset from the sprint axis; never folded into step length. */
+  lateralM?: number;
+  classification?: "before_zone" | "inside_zone" | "after_zone" | "boundary_ambiguous";
+  qualityFlags?: string[];
 }
 
 export interface SprintMeasurements {
+  timingPolicyVersion: typeof CONSERVATIVE_TIMING_POLICY_V1;
   calibrated: boolean;
   /** Metres-per-pixel scale used, if any. */
   metersPerPixel: number | null;
@@ -140,10 +165,14 @@ export interface SprintMeasurements {
   validContacts: number;
   validLeftContacts: number;
   validRightContacts: number;
+  /** Canonical spatial membership + interval evidence for the calibrated zone. */
+  zoneStepSummary: ZoneStepSummary | null;
 
   // Zone + timing
   zone: SprintZone | null;
   zoneTimeS: number | null;
+  rawZoneTimeS: number | null;
+  reportedZoneTimeS: number | null;
   /** Torso start/finish gate crossing times (s) — the raw zone-timer endpoints. */
   zoneEntryTimeS: number | null;
   zoneExitTimeS: number | null;
@@ -158,9 +187,17 @@ export interface SprintMeasurements {
   groundContactLeftMs: number | null;
   groundContactRightMs: number | null;
   groundContactCombinedMs: number | null;
+  rawGroundContactCombinedMs: number | null;
+  reportedGroundContactCombinedMs: number | null;
+  rawGroundContactLeftMs: number | null;
+  rawGroundContactRightMs: number | null;
   flightLeftMs: number | null;
   flightRightMs: number | null;
   flightCombinedMs: number | null;
+  rawFlightCombinedMs: number | null;
+  reportedFlightCombinedMs: number | null;
+  rawFlightLeftMs: number | null;
+  rawFlightRightMs: number | null;
 
   // Step length (m) — null when uncalibrated. In AVA terms these are STRIDE lengths
   // (opposite-foot contact-to-contact distances); the field names are kept for
@@ -182,7 +219,20 @@ export interface SprintMeasurements {
   // Velocity (m/s)
   velocities: VelocityEstimate[];
   maxVelocityMps: number | null;
+  rawMaxVelocityMps: number | null;
+  reportedMaxVelocityMps: number | null;
   zoneVelocityMps: number | null;
+  rawZoneVelocityMps: number | null;
+  reportedZoneVelocityMps: number | null;
+  strideVelocityWindows: Array<{
+    startContactIndex: number;
+    endContactIndex: number;
+    distanceM: number;
+    rawDurationS: number;
+    reportedDurationS: number;
+    rawVelocityMps: number;
+    reportedVelocityMps: number;
+  }>;
   /** Spread across the velocity methods + a note when they disagree materially. */
   velocitySpreadPct: number | null;
   velocityNote: string;
@@ -339,6 +389,7 @@ export function computeSprintMeasurements(
   points: ManualCalibrationPoints | null | undefined,
   frameWidth: number | null | undefined,
   frameHeight: number | null | undefined,
+  anchorOptions?: { gates: CalibrationGates | null; cameraEvidence?: RawCameraEvidence },
 ): SprintMeasurements {
   const warnings: string[] = [];
 
@@ -425,6 +476,84 @@ export function computeSprintMeasurements(
       }
     : null;
 
+  // Canonical zone membership (Day 93): classify each contact against the
+  // world-locked start→finish axis. This is deliberately spatial only; timing
+  // remains the independent torso/gate-crossing measurement below.
+  const anchoredGates =
+    anchorOptions?.gates?.startBoundary &&
+    anchorOptions.gates.finishBoundary &&
+    anchorOptions.cameraEvidence &&
+    frameWidth &&
+    frameHeight
+      ? anchorOptions.gates
+      : null;
+  const contactId = (mark: StepMark) =>
+    `contact-${mark.sourceFrameIndex}-${mark.side}-${mark.index}`;
+  const zoneStepSummary: ZoneStepSummary | null = (() => {
+    if (!anchoredGates || !anchorOptions?.cameraEvidence || !frameWidth || !frameHeight) return null;
+    const startBoundary = anchoredGates.startBoundary!;
+    const finishBoundary = anchoredGates.finishBoundary!;
+    const startLine = sourceLineToCanonicalWorld(
+      startBoundary.sourceFrameLine.c1,
+      startBoundary.sourceFrameLine.c2,
+      startBoundary.setupFrameIndex,
+      "start",
+      anchorOptions.cameraEvidence,
+      frameWidth,
+      frameHeight,
+    );
+    const finishLine = sourceLineToCanonicalWorld(
+      finishBoundary.sourceFrameLine.c1,
+      finishBoundary.sourceFrameLine.c2,
+      finishBoundary.setupFrameIndex,
+      "finish",
+      anchorOptions.cameraEvidence,
+      frameWidth,
+      frameHeight,
+    );
+    const start = {
+      x: (startLine.c1.x + startLine.c2.x) / 2,
+      y: (startLine.c1.y + startLine.c2.y) / 2,
+    };
+    const finish = {
+      x: (finishLine.c1.x + finishLine.c2.x) / 2,
+      y: (finishLine.c1.y + finishLine.c2.y) / 2,
+    };
+    const confidenceByFrame = new Map(
+      frames.map((frame) => [
+        frame.sourceFrameIndex ?? frame.frame,
+        frame.trackingConfidence ?? 1,
+      ]),
+    );
+    const contacts = detected.map((mark) => {
+      const world = sourcePointToCanonicalWorld(
+        { x: mark.x, y: mark.y },
+        mark.sourceFrameIndex,
+        anchorOptions.cameraEvidence!,
+        frameWidth,
+        frameHeight,
+      );
+      return {
+        id: contactId(mark),
+        side: mark.side,
+        timeS: mark.time,
+        sourceFrameIndex: mark.sourceFrameIndex,
+        x: world.x,
+        y: world.y,
+        confidence: Math.min(
+          world.projectionConfidence,
+          confidenceByFrame.get(mark.sourceFrameIndex) ?? 1,
+        ),
+      };
+    });
+    return analyzeZoneSteps({
+      contacts,
+      start,
+      finish,
+      distanceM: anchoredGates.distanceM,
+    });
+  })();
+
   // Times the TORSO crosses the entry / exit gates (world x) — the zone timer.
   // Extrapolated to the gate when the far-end runner wasn't yet tracked at entry
   // (or had left the tracked span at exit), so the timer reflects the true crossing
@@ -433,7 +562,29 @@ export function computeSprintMeasurements(
   let tExit: number | null = null;
   let entryExtrapolated = false;
   let exitExtrapolated = false;
-  if (zone && worldSeries.length >= 2) {
+  const anchoredZone = anchorOptions?.gates?.startBoundary && anchorOptions.gates.finishBoundary
+    && anchorOptions.cameraEvidence && frameWidth && frameHeight ? anchorOptions.gates : null;
+  if (anchoredZone && anchorOptions?.cameraEvidence && frameWidth && frameHeight) {
+    const samples = frames.flatMap((frame) => {
+      const body = torsoPoint(frame);
+      return body ? [{
+        frameIndex: frame.sourceFrameIndex ?? frame.frame,
+        timestampS: frame.time,
+        bodyPoint: { x: body.x, y: body.y },
+        confidence: frame.trackingConfidence ?? 0,
+      }] : [];
+    });
+    const direction = anchoredZone.travelDirection ?? "left_to_right";
+    const entry = detectWorldBoundaryCrossing(samples, anchoredZone.startBoundary!,
+      anchorOptions.cameraEvidence, frameWidth, frameHeight, direction);
+    const exit = detectWorldBoundaryCrossing(samples, anchoredZone.finishBoundary!,
+      anchorOptions.cameraEvidence, frameWidth, frameHeight, direction);
+    tEntry = entry?.timestampS ?? null;
+    tExit = exit?.timestampS ?? null;
+    if (!entry || !exit) warnings.push(
+      "Physical timing was withheld because a world-anchored boundary could not be propagated or crossed confidently.",
+    );
+  } else if (zone && worldSeries.length >= 2) {
     const dir = netTravel >= 0 ? 1 : -1;
     const entryCross = crossingTime(worldSeries, zone.entryX, dir);
     const exitCross = crossingTime(worldSeries, zone.exitX, dir);
@@ -456,18 +607,19 @@ export function computeSprintMeasurements(
     tEntry != null && tExit != null && tExit > tEntry && m.time >= tEntry - EPS && m.time <= tExit + EPS;
   const inZone = (m: WorldMark) =>
     !zone || (m.wx >= zone.minX - EPS && m.wx <= zone.maxX + EPS) || inWindow(m);
-  const validMarks = marks.filter(inZone);
+  const canonicalInZoneIds = zoneStepSummary
+    ? new Set(zoneStepSummary.contacts.filter((contact) => contact.countedInZone).map((contact) => contact.id))
+    : null;
+  const validMarks = canonicalInZoneIds
+    ? marks.filter((mark) => canonicalInZoneIds.has(contactId(mark)))
+    : marks.filter(inZone);
   const validContacts = validMarks.length;
   const validLeftContacts = validMarks.filter((m) => m.side === "left").length;
   const validRightContacts = validMarks.filter((m) => m.side === "right").length;
 
-  // Entry step (Day 68 refinement): the last contact just BEFORE the start gate is
-  // marked as "Step 1", but it ONLY ANCHORS the sequence — it is NOT counted in the
-  // zone averages (frequency, contact/flight). Its single contribution is the stride
-  // LENGTH from it to the first in-zone contact, which lands in the zone; that gap is
-  // already captured as the first in-zone contact's `distanceMetersFromPrev`, so no
-  // separate handling (and no double count) is needed. All zone averages below use
-  // the IN-ZONE contacts only, and nothing past the finish gate.
+  // Legacy overlay numbering may still identify the contact before Start. It is
+  // retained only for diagnostics; canonical zone lengths explicitly begin at the
+  // first in-zone contact and never consume this pre-zone anchor.
   let entryStepMark: WorldMark | null = null;
   if (zone && validMarks.length) {
     const firstIdx = marks.indexOf(validMarks[0]);
@@ -480,8 +632,8 @@ export function computeSprintMeasurements(
 
   // Elapsed time. Primary: the COM's traversal of the zone (world x). Fallback (no
   // zone or COM never spans it): the span between the first and last VALID contact.
-  let zoneTimeS: number | null = null;
-  if (tEntry != null && tExit != null && tExit > tEntry) zoneTimeS = tExit - tEntry;
+  let rawZoneTimeS: number | null = null;
+  if (tEntry != null && tExit != null && tExit > tEntry) rawZoneTimeS = tExit - tEntry;
   // Fallback elapsed for velocity (distance ÷ time) when the COM path doesn't
   // cleanly cross both gates: the time span of the valid in-zone contacts.
   const contactSpanSource = zone ? validMarks : marks;
@@ -489,10 +641,14 @@ export function computeSprintMeasurements(
     contactSpanSource.length >= 2
       ? contactSpanSource[contactSpanSource.length - 1].time - contactSpanSource[0].time
       : null;
-  const zoneElapsedS = zoneTimeS ?? (contactSpan && contactSpan > 0 ? contactSpan : null);
-  if (zone && zoneTimeS == null) {
+  const rawZoneElapsedS = rawZoneTimeS ?? (!anchoredZone && contactSpan && contactSpan > 0 ? contactSpan : null);
+  const reportedZoneElapsedS =
+    rawZoneElapsedS == null ? null : reportTimeSeconds(rawZoneElapsedS);
+  if (zone && rawZoneTimeS == null) {
     warnings.push(
-      "Athlete's tracked path didn't cleanly cross both calibration gates — zone time falls back to the valid-contact time span.",
+      anchoredZone
+        ? "World-anchored timing is unavailable; no screen-fixed or contact-span fallback was used."
+        : "Athlete's tracked path didn't cleanly cross both calibration gates — zone time falls back to the valid-contact time span.",
     );
   }
 
@@ -504,11 +660,18 @@ export function computeSprintMeasurements(
   // Left + right therefore do NOT sum to combined — they match how VueMotion
   // reports per-side cadence, so benchmark comparisons are directly comparable.
   const freqMarks = zone ? validMarks : marks;
+  const legacyFrequency = stepFrequenciesFromContacts(freqMarks);
   const {
     combined: combinedStepFrequencyHz,
     left: leftStepFrequencyHz,
     right: rightStepFrequencyHz,
-  } = stepFrequenciesFromContacts(freqMarks);
+  } = zoneStepSummary
+    ? {
+        combined: zoneStepSummary.summaries.stepFrequencyHz,
+        left: zoneStepSummary.summaries.leftStepFrequencyHz,
+        right: zoneStepSummary.summaries.rightStepFrequencyHz,
+      }
+    : legacyFrequency;
 
   // Ground-contact + flight time (Day 68): measured from the overlay foot
   // trajectory at each contact, restricted to the IN-ZONE contacts (through the
@@ -518,25 +681,121 @@ export function computeSprintMeasurements(
   // already baked in.
   const zoneFrameSet = new Set((zone ? validMarks : marks).map((m) => m.frame));
   // Zone filter applied to the full-run contact phases (Stage 2 measuring Stage 1).
+  // Canonical sessions additionally label every contact/flight boundary event and
+  // average only full events. Partial boundary events remain visible as evidence.
   const contactPhases = fullRun.contactPhases.filter((p) => zoneFrameSet.has(p.frame));
-  const contactFlight: ContactFlightSummary = summariseContactFlight(contactPhases);
+  let contactFlight: ContactFlightSummary = summariseContactFlight(contactPhases);
+  if (zoneStepSummary) {
+    const markByFrameSide = new Map(
+      detected.map((mark) => [`${mark.frame}:${mark.side}`, mark]),
+    );
+    const phaseById = new Map(
+      fullRun.contactPhases.flatMap((phase) => {
+        const mark = markByFrameSide.get(`${phase.frame}:${phase.side}`);
+        return mark ? [[contactId(mark), phase] as const] : [];
+      }),
+    );
+    zoneStepSummary.eventBoundaries.contactEvents = zoneStepSummary.contacts.map((contact) => {
+      const phase = phaseById.get(contact.id);
+      const status =
+        contact.classification === "boundary_ambiguous"
+          ? "boundary_ambiguous"
+          : !contact.countedInZone
+            ? "excluded"
+            : phase && tExit != null && phase.toeOffTimeS > tExit + EPS
+              ? "partial_event"
+              : "full_event";
+      return {
+        contactId: contact.id,
+        status,
+        durationS: phase ? Number((phase.contactMs / 1000).toFixed(6)) : null,
+      };
+    });
+    zoneStepSummary.eventBoundaries.flightEvents = zoneStepSummary.intervals.map((interval) => {
+      const from = phaseById.get(interval.fromContactId);
+      const to = phaseById.get(interval.toContactId);
+      const durationS = from && to ? to.touchdownTimeS - from.toeOffTimeS : null;
+      const status =
+        !interval.valid || durationS == null || durationS < 0
+          ? "excluded"
+          : interval.kind === "trailing_exit"
+            ? "partial_event"
+            : "full_event";
+      return {
+        fromContactId: interval.fromContactId,
+        toContactId: interval.toContactId,
+        status,
+        durationS: durationS == null || durationS < 0 ? null : Number(durationS.toFixed(6)),
+      };
+    });
+    const fullContactIds = new Set(
+      zoneStepSummary.eventBoundaries.contactEvents
+        .filter((event) => event.status === "full_event")
+        .map((event) => event.contactId),
+    );
+    const fullPhases = [...phaseById.entries()]
+      .filter(([id]) => fullContactIds.has(id))
+      .map(([, phase]) => phase);
+    const fullFlights = zoneStepSummary.eventBoundaries.flightEvents
+      .filter((event) => event.status === "full_event" && event.durationS != null);
+    const leftContactsMs = fullPhases.filter((phase) => phase.side === "left").map((phase) => phase.contactMs);
+    const rightContactsMs = fullPhases.filter((phase) => phase.side === "right").map((phase) => phase.contactMs);
+    const flightSide = (event: (typeof fullFlights)[number]) =>
+      zoneStepSummary.contacts.find((contact) => contact.id === event.fromContactId)?.side;
+    const leftFlightsMs = fullFlights.filter((event) => flightSide(event) === "left").map((event) => event.durationS! * 1000);
+    const rightFlightsMs = fullFlights.filter((event) => flightSide(event) === "right").map((event) => event.durationS! * 1000);
+    const avg = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+    contactFlight = {
+      groundContactLeftMs: avg(leftContactsMs),
+      groundContactRightMs: avg(rightContactsMs),
+      groundContactCombinedMs: avg([...leftContactsMs, ...rightContactsMs]),
+      flightLeftMs: avg(leftFlightsMs),
+      flightRightMs: avg(rightFlightsMs),
+      flightCombinedMs: avg([...leftFlightsMs, ...rightFlightsMs]),
+      contactFramesLeft: avg(fullPhases.filter((phase) => phase.side === "left").map((phase) => phase.contactFrames)),
+      contactFramesRight: avg(fullPhases.filter((phase) => phase.side === "right").map((phase) => phase.contactFrames)),
+      leftContacts: leftContactsMs.length,
+      rightContacts: rightContactsMs.length,
+    };
+    zoneStepSummary.summaries.averageContactTimeS =
+      contactFlight.groundContactCombinedMs == null ? null : Number((contactFlight.groundContactCombinedMs / 1000).toFixed(6));
+    zoneStepSummary.summaries.averageFlightTimeS =
+      contactFlight.flightCombinedMs == null ? null : Number((contactFlight.flightCombinedMs / 1000).toFixed(6));
+  }
 
-  // Step lengths. Individual gaps come straight from consecutive contact
-  // positions (metres); the zone average is the known distance ÷ valid steps. The
-  // entry step's stride length is already present as the first in-zone contact's
-  // gap-to-previous, so the gap set stays the valid in-zone contacts (no re-add).
+  // Step lengths. With canonical gates, the interval window starts at the first
+  // in-zone contact and ends at the first post-zone contact. Older, unanchored
+  // calibrations retain their legacy gap behaviour as an explicit fallback.
   const gapMarks = zone ? validMarks : marks;
-  const individualStepLengthsM = gapMarks
-    .map((m) => m.distanceMetersFromPrev)
-    .filter((v): v is number => v != null && v > 0);
-  const leftGaps = gapMarks
-    .filter((m) => m.side === "left")
-    .map((m) => m.distanceMetersFromPrev)
-    .filter((v): v is number => v != null && v > 0);
-  const rightGaps = gapMarks
-    .filter((m) => m.side === "right")
-    .map((m) => m.distanceMetersFromPrev)
-    .filter((v): v is number => v != null && v > 0);
+  const canonicalIntervals = zoneStepSummary?.intervals ?? null;
+  const individualStepLengthsM = canonicalIntervals
+    ? canonicalIntervals
+        .map((interval) => interval.longitudinalLengthM)
+        .filter((value): value is number => value != null)
+    : gapMarks
+        .map((m) => m.distanceMetersFromPrev)
+        .filter((v): v is number => v != null && v > 0);
+  const intervalByLandingId = new Map(
+    (canonicalIntervals ?? []).map((interval) => [interval.toContactId, interval]),
+  );
+  const leftGaps = canonicalIntervals
+    ? canonicalIntervals
+        .filter((interval) => interval.toSide === "left")
+        .map((interval) => interval.longitudinalLengthM)
+        .filter((value): value is number => value != null)
+    : gapMarks
+        .filter((m) => m.side === "left")
+        .map((m) => m.distanceMetersFromPrev)
+        .filter((v): v is number => v != null && v > 0);
+  const rightGaps = canonicalIntervals
+    ? canonicalIntervals
+        .filter((interval) => interval.toSide === "right")
+        .map((interval) => interval.longitudinalLengthM)
+        .filter((value): value is number => value != null)
+    : gapMarks
+        .filter((m) => m.side === "right")
+        .map((m) => m.distanceMetersFromPrev)
+        .filter((v): v is number => v != null && v > 0);
 
   // Step-by-step sequence through the zone (Day 73): each valid in-zone contact with
   // its step length from the previous contact + which foot that was. Pure exposure of
@@ -544,21 +803,34 @@ export function computeSprintMeasurements(
   const zoneSteps: ZoneStep[] = gapMarks.map((m, i) => {
     const globalIdx = marks.indexOf(m);
     const prev = globalIdx > 0 ? marks[globalIdx - 1] : null;
+    const canonical = zoneStepSummary?.contacts.find((contact) => contact.id === contactId(m));
+    const interval = intervalByLandingId.get(contactId(m));
     return {
       index: i + 1,
       side: m.side,
       timeS: m.time,
       worldX: m.wx,
-      stepLengthM: usableScale ? m.distanceMetersFromPrev : null,
-      fromSide: prev ? prev.side : null,
+      stepLengthM: canonicalIntervals
+        ? interval?.longitudinalLengthM ?? null
+        : usableScale
+          ? m.distanceMetersFromPrev
+          : null,
+      fromSide: interval ? interval.fromSide : prev ? prev.side : null,
+      longitudinalM: canonical?.longitudinalM,
+      lateralM: canonical?.lateralM,
+      classification: canonical?.classification,
+      qualityFlags: canonical?.qualityFlags,
     };
   });
 
   const avgIndividualStepLengthM = mean(individualStepLengthsM);
-  const leftStepLengthM = median(leftGaps);
-  const rightStepLengthM = median(rightGaps);
-  const avgZoneStepLengthM =
-    zone && validContacts > 0 && usableScale ? zone.distanceM / validContacts : null;
+  const leftStepLengthM = zoneStepSummary?.summaries.leftStepAverageM ?? median(leftGaps);
+  const rightStepLengthM = zoneStepSummary?.summaries.rightStepAverageM ?? median(rightGaps);
+  const avgZoneStepLengthM = zoneStepSummary
+    ? zoneStepSummary.summaries.averageStepLengthM
+    : zone && validContacts > 0 && usableScale
+      ? zone.distanceM / validContacts
+      : null;
 
   // AVA Peak Stride Length (Day 82): average of the best-4 opposite-foot contact
   // distances (these gaps ARE AVA strides). Retention = zone average ÷ peak.
@@ -570,7 +842,13 @@ export function computeSprintMeasurements(
   // Individual reliability: tight spread → trust individual lengths; otherwise the
   // zone average is the trusted value and individuals are lower confidence.
   const cv = coefficientOfVariation(individualStepLengthsM);
-  const stepLengthConfidence: MeasurementConfidence = !usableScale
+  const stepLengthConfidence: MeasurementConfidence = zoneStepSummary
+    ? zoneStepSummary.confidence.label === "high"
+      ? "high"
+      : zoneStepSummary.confidence.label === "moderate"
+        ? "medium"
+        : "low"
+    : !usableScale
     ? "low"
     : cv == null
       ? "medium"
@@ -581,8 +859,12 @@ export function computeSprintMeasurements(
           : "low";
 
   // Velocity, three independent ways + a max and the zone value.
+  const rawDistanceOverTime =
+    zone && rawZoneElapsedS && rawZoneElapsedS > 0 ? zone.distanceM / rawZoneElapsedS : null;
   const vDistanceOverTime =
-    zone && zoneElapsedS && zoneElapsedS > 0 ? zone.distanceM / zoneElapsedS : null;
+    zone && rawZoneElapsedS && rawZoneElapsedS > 0
+      ? velocityFromReportedTime(zone.distanceM, rawZoneElapsedS)
+      : null;
   const vAvgLenFreq =
     avgIndividualStepLengthM != null && combinedStepFrequencyHz != null
       ? avgIndividualStepLengthM * combinedStepFrequencyHz
@@ -604,10 +886,15 @@ export function computeSprintMeasurements(
   // elapsed time. Averaging a full stride (both feet, two intervals) smooths the
   // frame-quantization noise and the per-foot placement asymmetry that make a single
   // step's velocity unreliable, and it uses the same clock as the zone timer so it
-  // stays consistent under FPS normalization. Falls back to longest-step × cadence
-  // when there are too few contacts to form a stride window.
+  // stays consistent under FPS normalization. With too few contacts, top speed is
+  // withheld rather than inferred from an averaged length×frequency estimate.
   const strideMarks = zone ? validMarks : marks;
-  let maxVelocityMps: number | null = null;
+  const rawStrideWindows: Array<{
+    startContactIndex: number;
+    endContactIndex: number;
+    distanceM: number;
+    rawDurationS: number;
+  }> = [];
   if (usableScale && strideMarks.length >= 3) {
     for (let i = 0; i + 2 < strideMarks.length; i++) {
       const a = strideMarks[i];
@@ -615,14 +902,18 @@ export function computeSprintMeasurements(
       const dt = b.time - a.time;
       if (dt <= 0) continue;
       const distM = Math.hypot((b.wx - a.wx) * w, (b.wy - a.wy) * h) * usableScale.metersPerPixel;
-      const v = distM / dt;
-      if (maxVelocityMps == null || v > maxVelocityMps) maxVelocityMps = v;
+      rawStrideWindows.push({
+        startContactIndex: i,
+        endContactIndex: i + 2,
+        distanceM: distM,
+        rawDurationS: dt,
+      });
     }
   }
-  const maxIndividual = individualStepLengthsM.length ? Math.max(...individualStepLengthsM) : null;
-  if (maxVelocityMps == null && maxIndividual != null && combinedStepFrequencyHz != null) {
-    maxVelocityMps = maxIndividual * combinedStepFrequencyHz;
-  }
+  const reportedStrideWindows = reportStrideWindows(rawStrideWindows);
+  const strideVelocityWindows = reportedStrideWindows.windows;
+  const rawMaxVelocityMps = reportedStrideWindows.rawTopVelocityMps;
+  const maxVelocityMps = reportedStrideWindows.reportedTopVelocityMps;
   const zoneVelocityMps = vDistanceOverTime;
 
   // Agreement across the three methods.
@@ -731,10 +1022,10 @@ export function computeSprintMeasurements(
     rightContacts: contactFlight.rightContacts,
     contactFramesLeft: contactFlight.contactFramesLeft,
     contactFramesRight: contactFlight.contactFramesRight,
-    groundContactLeftMs: contactFlight.groundContactLeftMs,
-    groundContactRightMs: contactFlight.groundContactRightMs,
-    flightLeftMs: contactFlight.flightLeftMs,
-    flightRightMs: contactFlight.flightRightMs,
+    groundContactLeftMs: reportNullableMilliseconds(contactFlight.groundContactLeftMs),
+    groundContactRightMs: reportNullableMilliseconds(contactFlight.groundContactRightMs),
+    flightLeftMs: reportNullableMilliseconds(contactFlight.flightLeftMs),
+    flightRightMs: reportNullableMilliseconds(contactFlight.flightRightMs),
   };
   if (frameMs != null && contactFlight.groundContactCombinedMs != null) {
     diagNotes.push(
@@ -754,6 +1045,7 @@ export function computeSprintMeasurements(
   };
 
   return {
+    timingPolicyVersion: CONSERVATIVE_TIMING_POLICY_V1,
     calibrated: !!usableScale,
     metersPerPixel: usableScale ? usableScale.metersPerPixel : null,
     totalContacts,
@@ -762,19 +1054,30 @@ export function computeSprintMeasurements(
     validContacts,
     validLeftContacts,
     validRightContacts,
+    zoneStepSummary,
     zone,
-    zoneTimeS: zoneElapsedS,
+    zoneTimeS: reportedZoneElapsedS,
+    rawZoneTimeS: rawZoneElapsedS,
+    reportedZoneTimeS: reportedZoneElapsedS,
     zoneEntryTimeS: tEntry,
     zoneExitTimeS: tExit,
     combinedStepFrequencyHz,
     leftStepFrequencyHz,
     rightStepFrequencyHz,
-    groundContactLeftMs: contactFlight.groundContactLeftMs,
-    groundContactRightMs: contactFlight.groundContactRightMs,
-    groundContactCombinedMs: contactFlight.groundContactCombinedMs,
-    flightLeftMs: contactFlight.flightLeftMs,
-    flightRightMs: contactFlight.flightRightMs,
-    flightCombinedMs: contactFlight.flightCombinedMs,
+    groundContactLeftMs: reportNullableMilliseconds(contactFlight.groundContactLeftMs),
+    groundContactRightMs: reportNullableMilliseconds(contactFlight.groundContactRightMs),
+    groundContactCombinedMs: reportNullableMilliseconds(contactFlight.groundContactCombinedMs),
+    rawGroundContactCombinedMs: contactFlight.groundContactCombinedMs,
+    reportedGroundContactCombinedMs: reportNullableMilliseconds(contactFlight.groundContactCombinedMs),
+    rawGroundContactLeftMs: contactFlight.groundContactLeftMs,
+    rawGroundContactRightMs: contactFlight.groundContactRightMs,
+    flightLeftMs: reportNullableMilliseconds(contactFlight.flightLeftMs),
+    flightRightMs: reportNullableMilliseconds(contactFlight.flightRightMs),
+    flightCombinedMs: reportNullableMilliseconds(contactFlight.flightCombinedMs),
+    rawFlightCombinedMs: contactFlight.flightCombinedMs,
+    reportedFlightCombinedMs: reportNullableMilliseconds(contactFlight.flightCombinedMs),
+    rawFlightLeftMs: contactFlight.flightLeftMs,
+    rawFlightRightMs: contactFlight.flightRightMs,
     avgZoneStepLengthM,
     avgIndividualStepLengthM: usableScale ? avgIndividualStepLengthM : null,
     peakStrideLengthM,
@@ -786,7 +1089,12 @@ export function computeSprintMeasurements(
     stepLengthConfidence,
     velocities,
     maxVelocityMps,
+    rawMaxVelocityMps,
+    reportedMaxVelocityMps: maxVelocityMps,
     zoneVelocityMps,
+    rawZoneVelocityMps: rawDistanceOverTime,
+    reportedZoneVelocityMps: zoneVelocityMps,
+    strideVelocityWindows,
     velocitySpreadPct,
     velocityNote,
     cameraCompensation,

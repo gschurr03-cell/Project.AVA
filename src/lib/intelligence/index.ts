@@ -93,6 +93,43 @@ export interface Limiter {
   coachingFocus: string;
   /** Suggested drills, resolved from the knowledge base. */
   drills: LimiterDrill[];
+  /** Deterministic ranking score [0,100]: impact × evidence confidence. */
+  priorityScore: number;
+  /** Numeric measurement confidence [0,100], when supplied by the evidence engine. */
+  confidenceScore: number;
+  affectedMetrics: string[];
+  supportingEvidence: Array<{
+    metric: string;
+    measured: string;
+    expected: string;
+    difference: string;
+    videoReference: string | null;
+    frameReference: string | null;
+  }>;
+  estimatedPerformanceCost: {
+    range100mSeconds: [number, number];
+    importance: "Very High" | "High" | "Moderate" | "Low";
+    caveat: string;
+  };
+  rootCause: {
+    observed: string[];
+    likelyTechnicalCauses: string[];
+    possiblePhysicalContributors: string[];
+    associatedMuscleGroups: string[];
+    alternativeExplanations: string[];
+    additionalTesting: string[];
+  };
+  recommendationPlan: {
+    primaryFocus: string;
+    secondaryFocus: string;
+    drillThemes: string[];
+    sprintThemes: string[];
+    strengthThemes: string[];
+    plyometricThemes: string[];
+    cueExamples: string[];
+  };
+  interactions: Array<{ targetKey: string; explanation: string }>;
+  performanceAreas: Array<"Acceleration" | "Maximum Velocity" | "Speed Maintenance">;
 }
 
 /** A missing/weak input and how supplying it would sharpen the analysis. */
@@ -144,6 +181,9 @@ export interface IntelligenceInputs {
    * (Day 78 fix). Falls back to the worker estimate only when this is absent.
    */
   calibratedStepFrequencyHz?: number | null;
+  /** Deterministic confidence of the measurement evidence feeding this synthesis. */
+  measurementConfidenceScore?: number | null;
+  activeFps?: number | null;
 }
 
 const METHOD =
@@ -187,6 +227,12 @@ interface LimiterDef {
   calibrationDependent: boolean;
   /** Matching recommendation-engine id, for training-focus cross-reference. */
   recommendationId: string;
+  affectedMetrics: string[];
+  costPoor: [number, number];
+  causes: Omit<Limiter["rootCause"], "observed">;
+  plan: Limiter["recommendationPlan"];
+  interactions: Limiter["interactions"];
+  performanceAreas: Limiter["performanceAreas"];
 }
 
 const LIMITER_DEFS: LimiterDef[] = [
@@ -202,6 +248,26 @@ const LIMITER_DEFS: LimiterDef[] = [
     drills: ["pogo-hops", "low-hurdle-hops", "ankle-stiffness-series"],
     calibrationDependent: false,
     recommendationId: "ground-contact-time",
+    affectedMetrics: ["Ground contact time", "Peak velocity", "Step frequency", "Stride length"],
+    costPoor: [0.03, 0.08],
+    causes: {
+      likelyTechnicalCauses: ["Foot contact may occur too far ahead of the center of mass", "Force application may be prolonged through support"],
+      possiblePhysicalContributors: ["Reactive-strength capacity", "Ankle stiffness", "Hip-extension timing"],
+      associatedMuscleGroups: ["Calf complex", "Gluteal group", "Hamstring group"],
+      alternativeExplanations: ["Acceleration-phase posture", "Low frame-rate quantization", "Fatigue late in the run"],
+      additionalTesting: ["120–240 fps side-view recording", "Force-plate or contact-mat assessment", "Repeated sprint under the same setup"],
+    },
+    plan: {
+      primaryFocus: "Shorten support without rushing the recovery leg.",
+      secondaryFocus: "Land closer beneath the hips while preserving projection.",
+      drillThemes: ["ankle stiffness", "fast support exchange"],
+      sprintThemes: ["short fly sprints with full recovery"],
+      strengthThemes: ["calf isometrics", "hip-extension strength"],
+      plyometricThemes: ["low-amplitude pogo progressions"],
+      cueExamples: ["Step down beneath the hips", "Be stiff and quick off the ground"],
+    },
+    interactions: [{ targetKey: "cadence", explanation: "Longer support can reduce the rate of step exchange." }, { targetKey: "peakVelocity", explanation: "Longer support can limit maximum-velocity expression." }],
+    performanceAreas: ["Acceleration", "Maximum Velocity", "Speed Maintenance"],
   },
   {
     key: "strideLength",
@@ -215,6 +281,26 @@ const LIMITER_DEFS: LimiterDef[] = [
     drills: ["resisted-sled-sprints", "bounding", "hill-accelerations"],
     calibrationDependent: true,
     recommendationId: "stride-length",
+    affectedMetrics: ["Stride length", "Peak velocity", "Average velocity", "Step frequency"],
+    costPoor: [0.03, 0.07],
+    causes: {
+      likelyTechnicalCauses: ["Projection may be limited at toe-off", "Front-side range may not be fully expressed"],
+      possiblePhysicalContributors: ["Horizontal-force capacity", "Hip-extension strength", "Elastic stiffness"],
+      associatedMuscleGroups: ["Gluteal group", "Hamstring group", "Hip flexor group", "Calf complex"],
+      alternativeExplanations: ["Body-proportion differences", "Conservative running strategy", "Calibration or camera-motion error"],
+      additionalTesting: ["Confirm trochanter height", "Horizontal jump assessment", "Repeat calibrated fly with stable camera"],
+    },
+    plan: {
+      primaryFocus: "Increase useful projection without reaching in front.",
+      secondaryFocus: "Preserve turnover as stride distance improves.",
+      drillThemes: ["projection", "front-side rhythm"],
+      sprintThemes: ["wicket runs", "progressive fly sprints"],
+      strengthThemes: ["hip extension", "unilateral posterior-chain strength"],
+      plyometricThemes: ["horizontal bounds with controlled contacts"],
+      cueExamples: ["Push back, rise forward", "Cover ground behind you—not by reaching"],
+    },
+    interactions: [{ targetKey: "peakVelocity", explanation: "Less distance per step directly constrains velocity when frequency is unchanged." }],
+    performanceAreas: ["Acceleration", "Maximum Velocity"],
   },
   {
     key: "cadence",
@@ -228,6 +314,26 @@ const LIMITER_DEFS: LimiterDef[] = [
     drills: ["sprint-dribbles", "wicket-runs", "a-skips"],
     calibrationDependent: false,
     recommendationId: "step-frequency",
+    affectedMetrics: ["Step frequency", "Peak velocity", "Stride length", "Velocity consistency"],
+    costPoor: [0.02, 0.06],
+    causes: {
+      likelyTechnicalCauses: ["Recovery timing may be slow", "Support exchange may be delayed"],
+      possiblePhysicalContributors: ["Hip-flexor rate capacity", "Reactive stiffness", "Coordination at speed"],
+      associatedMuscleGroups: ["Hip flexor group", "Hamstring group", "Calf complex"],
+      alternativeExplanations: ["Intentionally longer strides", "Timing-zone contact undercount", "Fatigue or unfamiliarity with the task"],
+      additionalTesting: ["Repeat contact annotation", "Compare early and late zone cadence", "High-speed front and side views"],
+    },
+    plan: {
+      primaryFocus: "Improve exchange rhythm while keeping posture and stride distance.",
+      secondaryFocus: "Avoid chasing cadence by shortening useful projection.",
+      drillThemes: ["front-side exchange", "rhythm"],
+      sprintThemes: ["wickets", "ins-and-outs"],
+      strengthThemes: ["rapid hip flexion", "hamstring eccentric control"],
+      plyometricThemes: ["rhythmic low-hurdle contacts"],
+      cueExamples: ["Switch under tall hips", "Quick exchange, relaxed shoulders"],
+    },
+    interactions: [{ targetKey: "peakVelocity", explanation: "Lower step frequency reduces velocity unless stride length compensates." }],
+    performanceAreas: ["Maximum Velocity", "Speed Maintenance"],
   },
   {
     key: "projection",
@@ -241,11 +347,57 @@ const LIMITER_DEFS: LimiterDef[] = [
     drills: ["fly-30s", "straight-leg-bounds", "wicket-runs"],
     calibrationDependent: false,
     recommendationId: "flight-time",
+    affectedMetrics: ["Flight time", "Stride length", "Peak velocity"],
+    costPoor: [0.01, 0.04],
+    causes: {
+      likelyTechnicalCauses: ["Toe-off projection may be limited", "The swing leg may cycle without enough horizontal displacement"],
+      possiblePhysicalContributors: ["Elastic power", "Hip-extension impulse", "Lower-leg stiffness"],
+      associatedMuscleGroups: ["Gluteal group", "Hamstring group", "Calf complex"],
+      alternativeExplanations: ["Frame-rate quantization", "High cadence strategy", "Contact-event detection error"],
+      additionalTesting: ["120–240 fps recording", "Jump or elastic-strength assessment", "Repeat fly sprint with visible feet"],
+    },
+    plan: {
+      primaryFocus: "Improve elastic projection while preserving quick support.",
+      secondaryFocus: "Keep the pelvis tall through toe-off.",
+      drillThemes: ["elastic projection", "hip extension"],
+      sprintThemes: ["relaxed fly sprints"],
+      strengthThemes: ["posterior-chain rate of force development"],
+      plyometricThemes: ["straight-leg bounds", "alternating bounds"],
+      cueExamples: ["Project, then switch", "Stay tall through the hips"],
+    },
+    interactions: [{ targetKey: "strideLength", explanation: "Reduced projection can shorten the distance covered per step." }, { targetKey: "peakVelocity", explanation: "Shorter flight can constrain maximum velocity when cadence does not compensate." }],
+    performanceAreas: ["Maximum Velocity"],
   },
 ];
 
 /** Severity multiplier: a clearly-poor metric limits more than a borderline one. */
 const SEVERITY_FACTOR: Record<"watch" | "poor", number> = { poor: 1, watch: 0.6 };
+const TARGET_EDGE: Record<LimiterDef["metricId"], number> = {
+  groundContactTime: 95,
+  strideLength: 2.35,
+  stepFrequency: 4.8,
+  flightTime: 100,
+};
+
+function differenceText(def: LimiterDef, value: number): string {
+  const target = TARGET_EDGE[def.metricId];
+  const pct = Math.round(Math.abs(value - target) / target * 100);
+  return `${pct}% ${value < target ? "below" : "above"} target boundary`;
+}
+
+function evidenceReference(
+  affected: AffectedPhase[],
+  fps: number | null | undefined,
+): { videoReference: string | null; frameReference: string | null } {
+  const observed = affected.find((phase) => phase.observed && phase.window);
+  if (!observed?.window) return { videoReference: null, frameReference: null };
+  const match = observed.window.match(/^([\d.]+)–([\d.]+)s$/);
+  if (!match || !fps) return { videoReference: observed.window, frameReference: null };
+  return {
+    videoReference: observed.window,
+    frameReference: `frames ${Math.round(Number(match[1]) * fps)}–${Math.round(Number(match[2]) * fps)}`,
+  };
+}
 
 /** Resolve drill ids to their knowledge-base entries (dropping any unknown id). */
 function resolveDrills(ids: string[]): LimiterDrill[] {
@@ -419,6 +571,25 @@ export function buildSprintIntelligence(inputs: IntelligenceInputs): SprintIntel
     const affectedPhases = buildAffectedPhases(def, phaseIndex);
     const impactScore = Math.min(100, round(def.weight * SEVERITY_FACTOR[status] * 4));
     const confidence = limiterConfidence(def, status, calibrationConfidence, affectedPhases);
+    const confidenceScore = Math.max(0, Math.min(100, Math.round(inputs.measurementConfidenceScore ?? (confidence === "high" ? 90 : confidence === "medium" ? 75 : 55))));
+    const priorityScore = Math.round(impactScore * confidenceScore / 100);
+    const reference = evidenceReference(affectedPhases, inputs.activeFps);
+    const supportingEvidence: Limiter["supportingEvidence"] = [{
+      metric: evaluation.label,
+      measured: `${evaluation.value} ${evaluation.unit}`,
+      expected: evaluation.targetRange,
+      difference: differenceText(def, evaluation.value),
+      ...reference,
+    }];
+    const costScale = status === "poor" ? 1 : 0.5;
+    const estimatedPerformanceCost: Limiter["estimatedPerformanceCost"] = {
+      range100mSeconds: [
+        Number((def.costPoor[0] * costScale).toFixed(2)),
+        Number((def.costPoor[1] * costScale).toFixed(2)),
+      ],
+      importance: impactScore >= 85 ? "Very High" : impactScore >= 60 ? "High" : impactScore >= 35 ? "Moderate" : "Low",
+      caveat: "Directional planning range, not a race-time prediction; individual response and issue interactions vary.",
+    };
 
     const reasoning: string[] = [
       `${evaluation.label} is ${evaluation.value} ${evaluation.unit} (${status}; target ${evaluation.targetRange}).`,
@@ -480,12 +651,25 @@ export function buildSprintIntelligence(inputs: IntelligenceInputs): SprintIntel
       affectedPhases,
       coachingFocus: def.coachingFocus,
       drills: resolveDrills(def.drills),
+      priorityScore,
+      confidenceScore,
+      affectedMetrics: def.affectedMetrics.filter((metric, index, items) => items.indexOf(metric) === index),
+      supportingEvidence,
+      estimatedPerformanceCost,
+      rootCause: {
+        observed: [`${evaluation.label}: ${evaluation.value} ${evaluation.unit} versus ${evaluation.targetRange}.`],
+        ...def.causes,
+      },
+      recommendationPlan: def.plan,
+      interactions: def.interactions,
+      performanceAreas: def.performanceAreas,
     });
   }
 
   // Rank most-limiting first; deterministic tie-breaks (severity, then metric id).
   limiters.sort(
     (a, b) =>
+      b.priorityScore - a.priorityScore ||
       b.impactScore - a.impactScore ||
       (a.severity === b.severity ? 0 : a.severity === "poor" ? -1 : 1) ||
       a.metricId.localeCompare(b.metricId),
@@ -506,8 +690,23 @@ export function buildSprintIntelligence(inputs: IntelligenceInputs): SprintIntel
   }
 
   const dataGaps = collectDataGaps(inputs, evaluations, strideFromCalibration);
-  const confidence = overallConfidence(primaryLimiter, calibrationConfidence, inputs.phases);
-  const headline = buildHeadline(primaryLimiter, limiters, evaluations, performanceContext);
+  const measurementScore = inputs.measurementConfidenceScore ?? null;
+  let confidence = overallConfidence(primaryLimiter, calibrationConfidence, inputs.phases);
+  if (measurementScore != null && measurementScore < 65) confidence = "low";
+  else if (measurementScore != null && measurementScore < 85 && confidence === "high") confidence = "medium";
+  let headline = buildHeadline(primaryLimiter, limiters, evaluations, performanceContext);
+  if (measurementScore != null && measurementScore < 65) {
+    headline = `${headline} This observation should be interpreted cautiously due to reduced tracking confidence.`;
+    warnings.push(
+      "Recommendations are presented as cautious observations because measurement confidence is below 65%.",
+    );
+    for (const limiter of limiters) {
+      limiter.confidence = "low";
+      limiter.reasoning.push(
+        `Measurement confidence is ${Math.round(measurementScore)}%; verify this pattern in a stronger recording before changing training.`,
+      );
+    }
+  }
 
   if (inputs.phases && !inputs.phases.available) {
     warnings.push(
@@ -645,3 +844,6 @@ function overallConfidence(
   if (!phases?.available) confidence = downgrade(confidence);
   return primary ? confidence : minConf(confidence, "medium");
 }
+export*from"./registry";
+export*from"./validation";
+export*from"./shared";

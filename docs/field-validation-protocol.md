@@ -1,5 +1,9 @@
 # Field Validation Protocol (Tuesday testing day)
 
+This protocol supplies validation evidence required by the canonical
+[AVA Accuracy Manifesto](./accuracy-manifesto.md). It must never be used to tune a result to
+an expected value or erase contradictory evidence.
+
 How to run a real-athlete trial so AVA's numbers can be graded against ground
 truth (timing gates + tape grid). This is **validation only** — nothing here
 changes analysis math.

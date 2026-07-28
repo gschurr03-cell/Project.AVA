@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "ava-validation-fixture-v1",
+  "fixtureId": "real-side-pan-fly-001",
+  "name": "Real side-view panning fly 001",
+  "protectedSource": {
+    "sessionId": "2f1c901b-a5e2-4682-9049-1aa1fe8e89fb",
+    "analysisId": "426397f9-6933-47e6-988e-ef30c85709fb",
+    "videoPath": "11111111-1111-4111-8111-111111111111/2f1c901b-a5e2-4682-9049-1aa1fe8e89fb.mov",
+    "sourceCommittedToRepository": false
+  },
+  "sourceMetadata": {
+    "originalFilename": "IMG_6371 2.mov",
+    "uploadedAt": "2026-07-16T23:27:40.141189Z",
+    "durationSeconds": 6.566667,
+    "detectedFps": 30,
+    "fpsClassification": "experimental_30_fps_class",
+    "frameCount": 197,
+    "width": 1280,
+    "height": 720,
+    "codec": "hevc",
+    "variableFrameRate": false,
+    "timeBase": "1/600",
+    "firstFrameTimestampSeconds": 0,
+    "lastFrameTimestampSeconds": 6.533333,
+    "timestampDerivedFps": 30.000001530612324,
+    "frameIntervalSeconds": {
+      "minimum": 0.033333,
+      "p5": 0.033333,
+      "median": 0.033333,
+      "p95": 0.033334,
+      "maximum": 0.033334
+    },
+    "duplicateTimestampCount": 0,
+    "droppedFrameGapCount": 0,
+    "repeatPictureCount": 0,
+    "timestampIrregularity": "none",
+    "trueCaptureClass": "true_30_fps_cfr"
+  },
+  "athleteDirection": "left_to_right",
+  "cameraDirection": "left_to_right",
+  "expectedRecordingClass": "smooth_pan",
+  "externalReference": {
+    "schemaVersion": "ava-external-reference-v1",
+    "measuredValue": 2.77,
+    "unit": "seconds",
+    "referenceMethod": null,
+    "referenceDistanceMeters": 30,
+    "startDefinition": null,
+    "finishDefinition": null,
+    "timingSystem": null,
+    "confidence": "unknown",
+    "source": "product_owner",
+    "completeness": "partial",
+    "comparabilityStatus": "partially_compatible",
+    "limitations": [
+      "Start and finish boundary definitions are unknown.",
+      "Timing method and whether 2.77 seconds is raw or rounded are unknown.",
+      "Only distance is known to be compatible; the observed timing difference is contextual and must not tune AVA's calculation."
+    ]
+  },
+  "validationStatus": "manual_review_required",
+  "notes": [
+    "The product owner confirmed this is a 30 m fly and the immutable V1 validation zone stores 30 m.",
+    "Private source video remains in protected AVA storage and is not committed to the repository.",
+    "The source is true constant 30 FPS and is accepted only by ava-sprint-30-experimental-v1.",
+    "The immutable V1 independent world gates now produce an experimental 30 m timing result with explicit uncertainty; unrelated event-frequency metrics remain governed by their own trust gates.",
+    "Manual review confirms a genuine left-to-right pan with several other people visible near the running lane."
+  ],
+  "createdAt": "2026-07-16T23:35:00.000Z"
+}

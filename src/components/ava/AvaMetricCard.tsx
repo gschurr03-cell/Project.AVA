@@ -23,20 +23,20 @@ export function AvaMetricCard({
   return (
     <div
       className={[
-        "group rounded-xl border border-white/[0.06] bg-[#19191C] p-4",
-        "shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition duration-200",
-        "hover:-translate-y-0.5 hover:border-white/[0.11] hover:bg-[#202024]",
+        "group rounded-2xl border border-white/[0.08] bg-[#182233] p-4",
+        "shadow-[0_6px_24px_rgba(0,0,0,0.20)] transition duration-200",
+        "hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-[#223047]",
         muted ? "opacity-75" : "",
       ].join(" ")}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[#A0A2A8]">
+          <dt className="text-xs font-medium uppercase tracking-[0.16em] text-[#b3bccb]">
             {label}
           </dt>
 
           {note ? (
-            <p className="mt-1 text-xs leading-5 text-[#6B7280]">{note}</p>
+            <p className="mt-1 text-xs leading-5 text-[#7e8797]">{note}</p>
           ) : null}
         </div>
 
@@ -50,12 +50,12 @@ export function AvaMetricCard({
       </div>
 
       <dd className="flex items-end gap-2">
-        <span className="text-3xl font-semibold tracking-tight text-[#F5F5F7]">
+        <span className="text-3xl font-semibold tracking-tight text-[#f5f7fb]">
           {value}
         </span>
 
         {unit ? (
-          <span className="mb-1 text-sm font-medium text-[#A0A2A8]">
+          <span className="mb-1 text-sm font-medium text-[#b3bccb]">
             {unit}
           </span>
         ) : null}

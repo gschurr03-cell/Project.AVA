@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { safeReturnTo } from "@/lib/auth/returnTo";
 
 export async function login(formData: FormData) {
   const supabase = await createClient();
@@ -14,7 +15,7 @@ export async function login(formData: FormData) {
   if (error) redirect(`/login?error=${encodeURIComponent(error.message)}`);
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect(safeReturnTo(formData.get("next")));
 }
 
 export async function signup(formData: FormData) {
@@ -34,6 +35,23 @@ export async function signup(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
+  redirect(safeReturnTo(formData.get("next")));
+}
+
+export async function requestPasswordReset(formData:FormData){
+  const email=String(formData.get("email")??"").trim();
+  const supabase=await createClient();
+  const origin=process.env.NEXT_PUBLIC_APP_URL??"http://localhost:3000";
+  if(email) await supabase.auth.resetPasswordForEmail(email,{redirectTo:`${origin}/auth/callback?next=/reset-password`});
+  redirect("/login?message=reset-sent");
+}
+
+export async function updatePassword(formData:FormData){
+  const password=String(formData.get("password")??"");
+  if(password.length<8) redirect("/reset-password?error=Password%20must%20be%20at%20least%208%20characters.");
+  const supabase=await createClient();
+  const {error}=await supabase.auth.updateUser({password});
+  if(error) redirect(`/reset-password?error=${encodeURIComponent(error.message)}`);
   redirect("/dashboard");
 }
 

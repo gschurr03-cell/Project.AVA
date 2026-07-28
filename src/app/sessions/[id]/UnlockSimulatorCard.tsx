@@ -22,9 +22,9 @@ interface ScenarioRow {
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-3">
-      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">{label}</p>
-      <p className={`mt-1 text-lg font-bold tracking-tight ${accent ? "text-[#E4C25A]" : "text-[#F5F5F7]"}`}>
+    <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e8797]">{label}</p>
+      <p className={`mt-1 text-lg font-bold tracking-tight ${accent ? "text-[#f5c451]" : "text-[#f5f7fb]"}`}>
         {value}
       </p>
     </div>
@@ -42,19 +42,19 @@ function ScenarioGroup({
 }) {
   if (rows.length === 0) return null;
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-      <p className="text-sm font-semibold text-[#F5F5F7]">{title}</p>
-      <p className="mt-0.5 text-xs text-[#6B7280]">{note}</p>
+    <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
+      <p className="text-sm font-semibold text-[#f5f7fb]">{title}</p>
+      <p className="mt-0.5 text-xs text-[#7e8797]">{note}</p>
       <div className="mt-3 space-y-2">
         {rows.map((r) => (
           <div key={r.label} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <div className="min-w-0">
-              <p className="text-sm text-[#F5F5F7]">{r.label}</p>
-              <p className="font-mono text-xs text-[#6B7280]">{r.formula}</p>
+              <p className="text-sm text-[#f5f7fb]">{r.label}</p>
+              <p className="font-mono text-xs text-[#7e8797]">{r.formula}</p>
             </div>
             <div className="text-right">
-              <p className="text-sm font-bold text-[#F5F5F7]">{r.projected.toFixed(2)} m/s</p>
-              <p className={`text-xs font-semibold ${r.gain > 0 ? "text-[#E4C25A]" : "text-[#6B7280]"}`}>
+              <p className="text-sm font-bold text-[#f5f7fb]">{r.projected.toFixed(2)} m/s</p>
+              <p className={`text-xs font-semibold ${r.gain > 0 ? "text-[#f5c451]" : "text-[#7e8797]"}`}>
                 {r.gain > 0 ? "+" : ""}
                 {r.gain.toFixed(2)} m/s vs current
               </p>
@@ -118,7 +118,7 @@ export default function UnlockSimulatorCard({
   return (
     <AvaPanel eyebrow="Trochanter Stride Length Optimizer" title="Unlock Simulator">
       {e.reviewFlag && (
-        <div className="-mt-3 mb-4 rounded-lg border border-[#CD7F32]/40 bg-[#CD7F32]/10 p-3 text-xs text-[#E0A063]">
+        <div className="-mt-3 mb-4 rounded-lg border border-[#f5c451]/40 bg-[#f5c451]/10 p-3 text-xs text-[#f5c451]">
           Peak stride ratio is unusually high ({r(e.ratio)}× of trochanter length) — flag for review;
           this may be a measurement or calibration issue.
         </div>
@@ -151,10 +151,10 @@ export default function UnlockSimulatorCard({
       {/* Scenarios */}
       <div className="mt-4">
         <div className="mb-2 flex items-baseline justify-between gap-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e8797]">
             Unlock scenarios · peak stride × frequency
           </p>
-          <p className="font-mono text-xs text-[#6B7280]">current {r(current)} m/s</p>
+          <p className="font-mono text-xs text-[#7e8797]">current {r(current)} m/s</p>
         </div>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <ScenarioGroup
@@ -180,7 +180,7 @@ export default function UnlockSimulatorCard({
         </div>
       </div>
 
-      <p className="mt-4 text-xs leading-5 text-[#6B7280]">
+      <p className="mt-4 text-xs leading-5 text-[#7e8797]">
         Mathematical projection only. Uses AVA peak stride length when available. Not a guaranteed
         performance prediction.
       </p>

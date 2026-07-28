@@ -22,6 +22,8 @@
 import { z } from "zod";
 
 import type { ManualCalibrationPoints } from "./index";
+import { groundBoundarySchema, GROUND_ANCHOR_SCHEMA_VERSION } from "./zoneAnchors";
+import { WORLD_COORDINATE_SCHEMA_VERSION } from "../video/worldProjection";
 
 const gatePointSchema = z.object({
   x: z.number().min(0).max(1),
@@ -35,14 +37,54 @@ const gateBarSchema = z.object({
   c2: gatePointSchema,
   /** Clip time (seconds) the gate was placed. */
   timeS: z.number().min(0),
+  setupFrameIndex: z.number().int().nonnegative().optional(),
 });
 export type GateBar = z.infer<typeof gateBarSchema>;
 
 /** Two timing-gate bars a known distance apart. Stored as `sessions.calibration_gates` (jsonb). */
+export const CALIBRATION_AUTHORITY_SCHEMA_VERSION = "ava-calibration-authority-v1" as const;
+
+/**
+ * Explicit calibration authority (Part 1). Ordered `auto < manual_draft <
+ * manual_confirmed`. A `manual_confirmed` zone is canonical: refresh, polling,
+ * worker completion, rerun, resize, and FPS normalization must never move or
+ * replace it — only an explicit Reset-to-Auto / Re-detect may. See
+ * `@/lib/calibration/authority`.
+ */
+export const calibrationSourceSchema = z.enum(["auto", "manual_draft", "manual_confirmed"]);
+export type CalibrationSource = z.infer<typeof calibrationSourceSchema>;
+
 export const calibrationGatesSchema = z.object({
   startGate: gateBarSchema,
   finishGate: gateBarSchema,
   distanceM: z.number().positive(),
+  zoneDistanceMeters: z.number().positive().optional(),
+  startGateId: z.string().min(1).optional(),
+  finishGateId: z.string().min(1).optional(),
+  connectedZoneVisualizationDeprecated: z.boolean().optional(),
+  schemaVersion: z.literal(GROUND_ANCHOR_SCHEMA_VERSION).optional(),
+  version: z.number().int().positive().optional(),
+  travelDirection: z.enum(["left_to_right", "right_to_left"]).optional(),
+  bodyReference: z.enum(["torso", "hips", "head"]).optional(),
+  startBoundary: groundBoundarySchema.optional(),
+  finishBoundary: groundBoundarySchema.optional(),
+  // --- Authority metadata (Part 1) — all optional so legacy records still parse.
+  // Carried inside the calibration_gates jsonb, so NO database migration is needed.
+  calibrationSource: calibrationSourceSchema.optional(),
+  /** ISO-8601 UTC time the user confirmed the manual zone. */
+  confirmedAt: z.string().datetime().optional(),
+  /** ISO-8601 UTC time of the last authority write. */
+  updatedAt: z.string().datetime().optional(),
+  /** Monotonic authority revision; stale (lower) writes must not overwrite newer. */
+  revision: z.number().int().nonnegative().optional(),
+  authoritySchemaVersion: z.literal(CALIBRATION_AUTHORITY_SCHEMA_VERSION).optional(),
+  coordinateSchemaVersion: z.literal(WORLD_COORDINATE_SCHEMA_VERSION).optional(),
+  referenceFrameIndex: z.number().int().nonnegative().optional(),
+  sourceFrameWidth: z.number().int().positive().optional(),
+  sourceFrameHeight: z.number().int().positive().optional(),
+  /** Provenance: the revision this one superseded (e.g. a Reset-to-Auto over a manual zone). */
+  supersededFromRevision: z.number().int().nonnegative().optional(),
+  supersededFromSource: calibrationSourceSchema.optional(),
 });
 export type CalibrationGates = z.infer<typeof calibrationGatesSchema>;
 

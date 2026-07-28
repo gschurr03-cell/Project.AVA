@@ -51,6 +51,33 @@ export interface RecommendationEvidence {
   interpretation: string;
 }
 
+/**
+ * A clickable moment in the video that backs a recommendation — a trusted, timed
+ * point AVA can jump the player to so the coach sees WHERE the limiter shows up.
+ * Built only from calibrated per-step data (contact timestamps, step lengths, sides,
+ * step-to-step velocity), never from FPS-limited timing (ground contact / flight /
+ * stiffness), so it is honest at 60 fps.
+ */
+export interface EvidenceMoment {
+  label: string;
+  /** Clip time to seek to (seconds). */
+  timeS: number;
+  /** Optional frame index (omitted — the player seeks by time). */
+  frameIndex?: number;
+  /** Plain-language "what AVA saw here". */
+  reason: string;
+  /** The trusted metric this moment supports (e.g. "strideLength", "velocity"). */
+  relatedMetric: string;
+  side?: "left" | "right" | null;
+  metricSource?: "zoneMetrics";
+  sampleWindow?: string;
+  contactIds?: string[];
+  intervalIds?: string[];
+  validSampleCount?: number;
+  confidence?: "high" | "moderate" | "low" | "insufficient";
+  qualityFlags?: string[];
+}
+
 /** The structured recommendation the UI renders. */
 export interface Recommendation {
   id: string;
@@ -65,6 +92,8 @@ export interface Recommendation {
   coachingCue: string;
   trainingFocus: string[];
   nextSessionGoal: string;
+  /** Timed video moments that back this recommendation; [] when unavailable. */
+  evidenceMoments: EvidenceMoment[];
   /** Global sort order; lower = shown first. */
   displayPriority: number;
 }
@@ -127,6 +156,183 @@ function fmt(value: number, decimals: number, unit: string): string {
   return `${value.toFixed(decimals)} ${unit}`;
 }
 
+// ---------------------------------------------------------------------------
+// Evidence moments — timed, clickable points in the clip that back a limiter.
+// All are derived ONLY from calibrated zone steps (contact time, step length,
+// side) and their step-to-step velocity. Never contact/flight/stiffness timing.
+// ---------------------------------------------------------------------------
+
+type ZoneStep = NonNullable<SprintMeasurements["zoneSteps"]>[number];
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Calibrated steps with a real (non-null) step length. */
+function calibratedSteps(m: SprintMeasurements | null): ZoneStep[] {
+  return (m?.zoneSteps ?? []).filter((s) => s.stepLengthM != null && s.timeS != null);
+}
+
+/** Per-step (contact-to-contact) velocity in m/s, from trusted length ÷ elapsed. */
+function stepVelocities(steps: ZoneStep[]): { step: ZoneStep; vMps: number }[] {
+  const out: { step: ZoneStep; vMps: number }[] = [];
+  for (let i = 1; i < steps.length; i++) {
+    const dt = steps[i].timeS - steps[i - 1].timeS;
+    const len = steps[i].stepLengthM;
+    if (dt > 0 && len != null) out.push({ step: steps[i], vMps: len / dt });
+  }
+  return out;
+}
+
+/** Stride-length evidence: the shortest in-zone stride + the best one for comparison. */
+function strideEvidence(m: SprintMeasurements | null): EvidenceMoment[] {
+  const steps = calibratedSteps(m);
+  if (steps.length === 0) return [];
+  const byLen = [...steps].sort((a, b) => (a.stepLengthM as number) - (b.stepLengthM as number));
+  const shortest = byLen[0];
+  const best = byLen[byLen.length - 1];
+  const moments: EvidenceMoment[] = [
+    {
+      label: "Shortest stride evidence",
+      timeS: shortest.timeS,
+      reason: `Shortest in-zone stride: ${(shortest.stepLengthM as number).toFixed(2)} m landing on the ${shortest.side} foot.`,
+      relatedMetric: "strideLength",
+      side: shortest.side,
+    },
+  ];
+  // Only add a "best" comparison when it is a genuinely different, longer stride.
+  if (best !== shortest && (best.stepLengthM as number) - (shortest.stepLengthM as number) > 0.03) {
+    moments.push({
+      label: "Best stride (for comparison)",
+      timeS: best.timeS,
+      reason: `Best in-zone stride: ${(best.stepLengthM as number).toFixed(2)} m — the ground the athlete can already cover.`,
+      relatedMetric: "strideLength",
+      side: best.side,
+    });
+  }
+  return moments;
+}
+
+/** Frequency evidence: the slowest turnover cycle (largest gap between contacts). */
+function frequencyEvidence(m: SprintMeasurements | null): EvidenceMoment[] {
+  const steps = (m?.zoneSteps ?? []).filter((s) => s.timeS != null);
+  if (steps.length < 2) return [];
+  let slowest = { at: steps[1], gap: steps[1].timeS - steps[0].timeS };
+  for (let i = 2; i < steps.length; i++) {
+    const gap = steps[i].timeS - steps[i - 1].timeS;
+    if (gap > slowest.gap) slowest = { at: steps[i], gap };
+  }
+  return [
+    {
+      label: "Slowest turnover cycle",
+      timeS: slowest.at.timeS,
+      reason: `Longest gap between contacts (${slowest.gap.toFixed(3)} s) — the slowest turnover cycle in the zone. Cadence evidence, not ground-contact timing.`,
+      relatedMetric: "stepFrequency",
+      side: slowest.at.side,
+    },
+  ];
+}
+
+/** Speed evidence: the peak per-step velocity moment + the lowest / biggest drop. */
+function speedEvidence(m: SprintMeasurements | null): EvidenceMoment[] {
+  const vels = stepVelocities(calibratedSteps(m));
+  if (vels.length === 0) return [];
+  const sorted = [...vels].sort((a, b) => b.vMps - a.vMps);
+  const peak = sorted[0];
+  const low = sorted[sorted.length - 1];
+  const moments: EvidenceMoment[] = [
+    {
+      label: "Peak velocity moment",
+      timeS: peak.step.timeS,
+      reason: `Fastest stride in the zone (~${peak.vMps.toFixed(2)} m/s) — the athlete's current top-end.`,
+      relatedMetric: "velocity",
+      side: peak.step.side,
+    },
+  ];
+  if (low !== peak && peak.vMps - low.vMps > 0.05) {
+    moments.push({
+      label: "Lowest velocity moment",
+      timeS: low.step.timeS,
+      reason: `Slowest stride in the zone (~${low.vMps.toFixed(2)} m/s) — where speed dips most.`,
+      relatedMetric: "velocity",
+      side: low.step.side,
+    });
+  }
+  return moments;
+}
+
+/** Rhythm evidence: the stride whose velocity deviates most from the zone mean. */
+function rhythmEvidence(m: SprintMeasurements | null): EvidenceMoment[] {
+  const vels = stepVelocities(calibratedSteps(m));
+  if (vels.length < 2) return [];
+  const mean = vels.reduce((s, v) => s + v.vMps, 0) / vels.length;
+  let worst = vels[0];
+  for (const v of vels) if (Math.abs(v.vMps - mean) > Math.abs(worst.vMps - mean)) worst = v;
+  return [
+    {
+      label: "Rhythm inconsistency moment",
+      timeS: worst.step.timeS,
+      reason: `This stride (~${worst.vMps.toFixed(2)} m/s) deviates most from the zone average (~${mean.toFixed(2)} m/s) — an unstable-rhythm point.`,
+      relatedMetric: "velocityConsistency",
+      side: worst.step.side,
+    },
+  ];
+}
+
+/** Asymmetry evidence: weaker-side moments + one left/right comparison. */
+function asymmetryEvidence(
+  m: SprintMeasurements | null,
+  key: "stepLength" | "stepFrequency",
+  weakSide: "left" | "right",
+  pct: number,
+): EvidenceMoment[] {
+  const steps = (m?.zoneSteps ?? []).filter((s) => s.timeS != null);
+  const weakSteps = steps.filter((s) => s.side === weakSide);
+  if (weakSteps.length === 0) return [];
+  const moments: EvidenceMoment[] = [];
+
+  if (key === "stepFrequency") {
+    // Slowest recovery on the weak side = largest gap between weak-side contacts.
+    let slowest = weakSteps[0];
+    let slowestGap = 0;
+    for (let i = 1; i < weakSteps.length; i++) {
+      const gap = weakSteps[i].timeS - weakSteps[i - 1].timeS;
+      if (gap > slowestGap) {
+        slowestGap = gap;
+        slowest = weakSteps[i];
+      }
+    }
+    moments.push({
+      label: `${cap(weakSide)} recovery evidence`,
+      timeS: slowest.timeS,
+      reason: `${cap(weakSide)}-side turnover reads ~${pct}% slower than the other side — this is a slow ${weakSide}-leg recovery.`,
+      relatedMetric: "stepFrequency",
+      side: weakSide,
+    });
+  } else {
+    // Shortest step on the weak side.
+    const withLen = weakSteps.filter((s) => s.stepLengthM != null);
+    const shortest = (withLen.length ? withLen : weakSteps).reduce((a, b) =>
+      (a.stepLengthM ?? Infinity) <= (b.stepLengthM ?? Infinity) ? a : b,
+    );
+    moments.push({
+      label: `${cap(weakSide)}-side step length evidence`,
+      timeS: shortest.timeS,
+      reason: `${cap(weakSide)}-side step${shortest.stepLengthM != null ? ` (${shortest.stepLengthM.toFixed(2)} m)` : ""} runs ~${pct}% shorter than the other side.`,
+      relatedMetric: "stepLength",
+      side: weakSide,
+    });
+  }
+
+  // One left/right comparison anchor on the weaker side's first contact.
+  moments.push({
+    label: "Left/right rhythm comparison",
+    timeS: weakSteps[0].timeS,
+    reason: `Compare the ${weakSide} and ${weakSide === "left" ? "right" : "left"} sides here — AVA measured a ~${pct}% ${key === "stepFrequency" ? "turnover" : "step-length"} gap.`,
+    relatedMetric: key === "stepFrequency" ? "stepFrequency" : "stepLength",
+    side: weakSide,
+  });
+  return moments;
+}
+
 /** Overall confidence the recording earns, independent of any single metric. */
 function qualityConfidence(q: RecommendationQuality | null | undefined): Confidence {
   if (!q) return "medium"; // unknown quality → neither trusted nor dismissed
@@ -145,9 +351,11 @@ function minConfidence(a: Confidence, b: Confidence): Confidence {
 }
 
 /** Internal scratch carried while sorting, stripped from the returned object. */
-interface Draft extends Recommendation {
+interface Draft extends Omit<Recommendation, "evidenceMoments"> {
   _group: number; // 0 = blocking recording issue, 1 = trusted training, 2 = experimental
   _magnitude: number; // deficit / difference / spread %, for tie-breaks
+  // Attached in one central pass after all drafts are built.
+  evidenceMoments?: EvidenceMoment[];
 }
 
 /** A trusted metric value that is present and not a "not measured" 0. */
@@ -284,6 +492,16 @@ export function buildRecommendations(inputs: RecommendationInputs): Recommendati
     const strideConf = trainConfidence(
       trusted.stepLengthConfidence === "low" ? "low" : trusted.stepLengthConfidence,
     );
+    // Rule 2: if turnover is already adequate, be explicit that the fix is projection,
+    // not more turnover — so the athlete doesn't chase frequency and overstride.
+    const frequencyAdequate =
+      usable("strideFrequencyHz", trusted.frequencyHz) && trusted.frequencyHz! >= FREQ_ELITE;
+    const strideWhy = frequencyAdequate
+      ? "Frequency is not the problem here — turnover is already at target. Top speed is stride length × frequency, so the gain is in how much ground each step covers, not in turning the legs over faster."
+      : "Top speed is stride length × frequency. A short stride leaves ground unclaimed every step, so max velocity is capped before turnover even becomes the limiter.";
+    const strideCue = frequencyAdequate
+      ? "Do not force more turnover. Improve how much ground is covered per step: push the ground back, project the hips, step down under the body, stay tall."
+      : "Push the ground back and project the hips — cover distance per step by stepping down under the body, not by spinning the legs.";
     drafts.push({
       _group: 1,
       _magnitude: deficitPct,
@@ -294,9 +512,8 @@ export function buildRecommendations(inputs: RecommendationInputs): Recommendati
       confidence: strideConf,
       trusted: trainTrusted,
       metricEvidence: evidence,
-      whyItMatters:
-        "Top speed is stride length × frequency. A short stride leaves ground unclaimed every step, so max velocity is capped before turnover even becomes the limiter.",
-      coachingCue: "Think push the ground back and project — cover distance, don't just spin the legs.",
+      whyItMatters: strideWhy,
+      coachingCue: strideCue,
       trainingFocus: [
         "Wicket runs at a spacing that demands a longer, projected stride.",
         "Bounding and alternating bounds for horizontal power.",
@@ -498,6 +715,67 @@ export function buildRecommendations(inputs: RecommendationInputs): Recommendati
     });
   }
 
+  // ---- Attach evidence moments (timed video points) from trusted data ----
+  // Calibration / tracking / experimental limiters intentionally get none (they are
+  // about the recording, not a moment in the run) → the UI shows the unavailable note.
+  const asymInsights = measurements
+    ? analyzeAsymmetry(measurements, { timingReliable: !isPrecisionLimited(activeFps) })
+    : [];
+  for (const d of drafts) {
+    switch (d.category) {
+      case "stride_length":
+        d.evidenceMoments = strideEvidence(measurements);
+        break;
+      case "frequency":
+        d.evidenceMoments = frequencyEvidence(measurements);
+        break;
+      case "speed":
+        d.evidenceMoments = speedEvidence(measurements);
+        break;
+      case "rhythm":
+        d.evidenceMoments = rhythmEvidence(measurements);
+        break;
+      case "asymmetry": {
+        const key = d.id === "asymmetry-stepFrequency" ? "stepFrequency" : "stepLength";
+        const insight = asymInsights.find((i) => i.key === key);
+        d.evidenceMoments = insight
+          ? asymmetryEvidence(measurements, key, insight.weakerSide, Math.round(insight.differencePct))
+          : [];
+        break;
+      }
+      default:
+        d.evidenceMoments = [];
+    }
+    const zoneMetrics = measurements?.zoneStepSummary;
+    if (zoneMetrics && d.evidenceMoments?.length) {
+      d.evidenceMoments = d.evidenceMoments.map((moment) => {
+        const nearest = zoneMetrics.intervals.reduce<(typeof zoneMetrics.intervals)[number] | null>(
+          (best, interval) => {
+            const contact = zoneMetrics.contacts.find((item) => item.id === interval.toContactId);
+            if (!contact) return best;
+            const bestContact = best
+              ? zoneMetrics.contacts.find((item) => item.id === best.toContactId)
+              : null;
+            return !bestContact || Math.abs(contact.timeS - moment.timeS) < Math.abs(bestContact.timeS - moment.timeS)
+              ? interval
+              : best;
+          },
+          null,
+        );
+        return {
+          ...moment,
+          metricSource: "zoneMetrics" as const,
+          sampleWindow: "first in-zone contact through first post-zone endpoint",
+          contactIds: nearest ? [nearest.fromContactId, nearest.toContactId] : [],
+          intervalIds: nearest ? [nearest.id] : [],
+          validSampleCount: zoneMetrics.stepWindow.measuredIntervalCount,
+          confidence: zoneMetrics.confidence.label,
+          qualityFlags: zoneMetrics.qualityFlags,
+        };
+      });
+    }
+  }
+
   // ---- Rank + assign displayPriority ----
   // Group first (blocking recording issue → trusted training → experimental), then
   // severity, then magnitude. Stable, deterministic.
@@ -512,10 +790,10 @@ export function buildRecommendations(inputs: RecommendationInputs): Recommendati
 
   // Strip internal scratch fields for the public shape.
   const clean = (d: Draft): Recommendation => {
-    const { _group, _magnitude, ...rest } = d;
+    const { _group, _magnitude, evidenceMoments, ...rest } = d;
     void _group;
     void _magnitude;
-    return rest;
+    return { ...rest, evidenceMoments: evidenceMoments ?? [] };
   };
 
   const recommendations = drafts.filter((d) => d._group !== 2).map(clean);

@@ -119,6 +119,25 @@ try {
       metrics.splits.m20S > metrics.splits.m10S &&
       metrics.splits.m30S > metrics.splits.m20S,
   );
+  check(
+    "acceleration persists raw and conservative reported splits",
+    metrics.timingPolicyVersion === "CONSERVATIVE_TIMING_POLICY_V1" &&
+      metrics.rawSplits.m30S <= metrics.splits.m30S &&
+      metrics.splits.m30S === Math.ceil((metrics.rawSplits.m30S - 1e-12) * 100) / 100,
+  );
+  check(
+    "average velocity is distance divided by reported time",
+    Math.abs(metrics.averageVelocityMps - 30 / metrics.splits.m30S) < 1e-9 &&
+      metrics.rawAverageVelocityMps >= metrics.averageVelocityMps,
+  );
+  check(
+    "every segment velocity uses its reported duration",
+    metrics.segmentVelocities.every(
+      (segment) =>
+        Math.abs(segment.reportedVelocityMps - (segment.endM - segment.startM) / segment.reportedTimeS) < 1e-9 &&
+        segment.rawTimeS <= segment.reportedTimeS,
+    ),
+  );
   const twenty = computeAccelerationMetrics(frames, {
     finishX: 0.9,
     finishDistanceM: 20,

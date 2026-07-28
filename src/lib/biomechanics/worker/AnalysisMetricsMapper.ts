@@ -1,5 +1,6 @@
-import { analysisMetricsSchema, type AnalysisMetrics } from "../types";
+import { persistedAnalysisMetricsSchema, type PersistedAnalysisMetrics } from "../types";
 import type { SprintAnalysisResult } from "../analysis";
+import { CONSERVATIVE_TIMING_POLICY_V1 } from "../../measurement/timingPolicy";
 
 /**
  * Bridge from the rich {@link SprintAnalysisResult} to the existing
@@ -7,22 +8,24 @@ import type { SprintAnalysisResult } from "../analysis";
  * already understand). Kept separate so the analysis module stays untouched and
  * the mapping is independently testable.
  *
- * Speed and stride length require camera calibration we don't have yet, so they
- * are emitted as `0` placeholders with a warning. Any metric the analysis could
- * not compute degrades to `0`, so the callback payload always validates.
+ * Missing values stay null. A measured zero remains a real zero and is therefore
+ * distinguishable from unavailable/withheld data at persistence time.
  */
 export const CALIBRATION_WARNING =
-  "topSpeedMps and avgStrideLengthM are placeholders (0) — they require camera calibration.";
+  "topSpeedMps and avgStrideLengthM were withheld because camera calibration is required.";
 
 export interface MappedAnalysis {
-  metrics: AnalysisMetrics;
+  metrics: PersistedAnalysisMetrics;
   modelVersion: string;
   warnings: string[];
 }
 
-const num = (v: number | undefined): number =>
-  typeof v === "number" && Number.isFinite(v) ? v : 0;
-const nonNeg = (v: number | undefined): number => Math.max(0, num(v));
+const num = (v: number | undefined): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+const nonNeg = (v: number | undefined): number | null => {
+  const value = num(v);
+  return value == null ? null : Math.max(0, value);
+};
 
 export function toAnalysisMetrics(
   result: SprintAnalysisResult,
@@ -30,31 +33,29 @@ export function toAnalysisMetrics(
 ): MappedAnalysis {
   const m = result.metrics;
 
-  // The analyzer reports peak flexion as the *minimum interior* knee angle
-  // (180° = straight, smaller = more bent). Convert to an actual flexion angle
-  // (0° = straight, larger = more flexed) = 180 − interior, using the deeper
-  // (smaller interior) of the two legs. Clamped to [0, 180].
-  const interiorKnees = [m.peakLeftKneeFlexionDeg, m.peakRightKneeFlexionDeg].filter(
-    (x): x is number => typeof x === "number" && Number.isFinite(x),
-  );
-  const peakKneeFlexionDeg = interiorKnees.length
-    ? Math.max(0, Math.min(180, 180 - Math.min(...interiorKnees)))
-    : 0;
-
-  const metrics: AnalysisMetrics = {
-    topSpeedMps: 0, // placeholder — requires calibration
-    avgStrideLengthM: 0, // placeholder — requires calibration
+  // MVP metric scope (LOCKED): the analysis pipeline only serializes the five MVP
+  // metrics (step length, stride length, step frequency, average velocity, peak
+  // velocity). Advanced timing derivatives — ground contact time, flight time, and
+  // the knee/trunk angle diagnostics — are NOT part of the MVP, so the pipeline no
+  // longer computes or serializes them: they are written as null. The schema keeps
+  // these (nullable) keys for backward compatibility with existing rows, so nothing
+  // read-side breaks and validation is unchanged. The five metrics themselves are
+  // derived downstream from the calibrated measurements, not from these fields.
+  const metrics: PersistedAnalysisMetrics = {
+    timingPolicyVersion: CONSERVATIVE_TIMING_POLICY_V1,
+    rawTimingMetrics: { groundContactTimeMs: null, flightTimeMs: null },
+    reportedTimingMetrics: { groundContactTimeMs: null, flightTimeMs: null },
+    topSpeedMps: null,
+    avgStrideLengthM: null,
     strideFrequencyHz: nonNeg(m.strideFrequencyHz),
-    groundContactTimeMs: nonNeg(m.avgGroundContactMs),
-    flightTimeMs: nonNeg(m.avgFlightTimeMs),
-    peakKneeFlexionDeg,
-    // Passed through unchanged from the analyzer; sign convention: positive =
-    // forward lean (shoulders ahead of hips), negative = backward.
-    avgTrunkLeanDeg: num(m.avgTrunkLeanDeg),
+    groundContactTimeMs: null,
+    flightTimeMs: null,
+    peakKneeFlexionDeg: null,
+    avgTrunkLeanDeg: null,
   };
 
   // Guarantees the payload is callback-valid (and guards against future drift).
-  analysisMetricsSchema.parse(metrics);
+  persistedAnalysisMetricsSchema.parse(metrics);
 
   return {
     metrics,

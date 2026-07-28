@@ -1,0 +1,82 @@
+name: quality-gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-and-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key-placeholder-000000000000
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-key-placeholder-000000000
+      ANALYSIS_WORKER_SECRET: ci-worker-secret-placeholder
+      AVA_ENVIRONMENT: test
+      AVA_RELEASE_VERSION: ${{ github.sha }}
+      AVA_BETA_ALLOWLIST_ENABLED: "false"
+      AVA_DIAGNOSTICS_ACCESS: disabled
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Reject common committed secret forms
+        run: node scripts/secret-scan.mjs
+      - run: npm audit --audit-level=high
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run production-security:sanity
+      - run: npm run scientific-validation:sanity
+      - run: npm run worker:analysis:sanity
+      - run: npm run worker:jobs:sanity
+      - run: npm run result-foundation:sanity
+      - run: npm run auth-ownership:sanity
+      - run: npm run upload-lifecycle:sanity
+      - run: npm run intelligence-architecture:sanity
+      - run: npm run orchestration-integration:sanity
+      - run: npm run training-program:sanity
+      - run: npm run training-longitudinal:sanity
+      - run: npm run mobile-contract:sanity
+      - run: npm run build
+
+  worker-container:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - name: Build immutable worker candidate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: false
+          tags: ava-analysis-worker:${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+  ios-portable-tests:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run portable Swift contract tests
+        run: swift test --package-path ios/AVASprint

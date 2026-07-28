@@ -88,7 +88,7 @@ export default function AnalysisProgressCard({
   if (FAILED.includes(status)) {
     return (
       <AvaPanel eyebrow="Analysis" title="Analysis failed">
-        <p className="text-sm text-[#ff8079]">
+        <p className="text-sm text-[#e46464]">
           {message ?? "The recording could not be analyzed."}
         </p>
         <div className="mt-4">
@@ -108,8 +108,8 @@ export default function AnalysisProgressCard({
   return (
     <AvaPanel eyebrow="Analysis" title="Analysis in progress">
       <div className="flex items-center gap-3">
-        <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-[#D72638]" />
-        <p className="text-sm font-semibold text-[#F5F5F7]">{activeLabel}</p>
+        <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-[#2f80ed]" />
+        <p className="text-sm font-semibold text-[#f5f7fb]">{activeLabel}</p>
       </div>
 
       {/* Progress bar (real stage position; coarse worker statuses mapped honestly). */}
@@ -124,7 +124,7 @@ export default function AnalysisProgressCard({
         className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/[0.08]"
       >
         <div
-          className="h-full rounded-full bg-gradient-to-r from-[#D72638] to-[#e63a4b] transition-[width] duration-500"
+          className="h-full rounded-full bg-gradient-to-r from-[#2f80ed] to-[#3b8eff] transition-[width] duration-500"
           style={{ width: `${percent}%` }}
         />
       </div>
@@ -138,10 +138,10 @@ export default function AnalysisProgressCard({
               <span
                 className={
                   state === "done"
-                    ? "text-[#4ade80]"
+                    ? "text-[#89d46a]"
                     : state === "active"
-                      ? "text-[#F5F5F7]"
-                      : "text-[#4B5563]"
+                      ? "text-[#f5f7fb]"
+                      : "text-[#55617a]"
                 }
               >
                 {state === "done" ? "✓" : state === "active" ? "◉" : "○"}
@@ -149,10 +149,10 @@ export default function AnalysisProgressCard({
               <span
                 className={
                   state === "active"
-                    ? "font-semibold text-[#F5F5F7]"
+                    ? "font-semibold text-[#f5f7fb]"
                     : state === "done"
-                      ? "text-[#A0A2A8]"
-                      : "text-[#6B7280]"
+                      ? "text-[#b3bccb]"
+                      : "text-[#7e8797]"
                 }
               >
                 {stage.label}
@@ -162,7 +162,7 @@ export default function AnalysisProgressCard({
         })}
       </ol>
 
-      <p className="mt-3 text-[11px] text-[#6B7280]">
+      <p className="mt-3 text-[11px] text-[#7e8797]">
         Your previous result is being replaced. Results will appear automatically when
         processing finishes — you can leave this page and come back.
       </p>

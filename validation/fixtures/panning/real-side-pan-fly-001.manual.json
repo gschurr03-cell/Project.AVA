@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "ava-panning-manual-annotation-v1",
+  "fixtureId": "real-side-pan-fly-001",
+  "coordinateSpace": "normalized_source_frame",
+  "reviewStatus": "engineering_manual_review",
+  "frames": [
+    {
+      "frame": 15,
+      "timeSeconds": 0.5,
+      "role": "first_clear_athlete",
+      "expectedAthleteBox": { "x": 0.39, "y": 0.34, "width": 0.08, "height": 0.29 },
+      "expectedAthleteCenter": { "x": 0.43, "y": 0.485 },
+      "fullBodyVisible": true,
+      "expectedCropCenter": { "x": 0.43, "y": 0.485 },
+      "overlayAlignmentQuality": "not_available_fps_gate",
+      "backgroundFeatureSuitability": "high",
+      "flags": ["multiple_people_near_start"]
+    },
+    {
+      "frame": 45,
+      "timeSeconds": 1.5,
+      "role": "early_pan",
+      "expectedAthleteBox": { "x": 0.39, "y": 0.34, "width": 0.09, "height": 0.32 },
+      "expectedAthleteCenter": { "x": 0.435, "y": 0.5 },
+      "fullBodyVisible": true,
+      "expectedCropCenter": { "x": 0.435, "y": 0.5 },
+      "overlayAlignmentQuality": "not_available_fps_gate",
+      "backgroundFeatureSuitability": "high",
+      "flags": ["other_runner_visible"]
+    },
+    {
+      "frame": 90,
+      "timeSeconds": 3.0,
+      "role": "middle",
+      "expectedAthleteBox": { "x": 0.35, "y": 0.29, "width": 0.11, "height": 0.43 },
+      "expectedAthleteCenter": { "x": 0.405, "y": 0.505 },
+      "fullBodyVisible": true,
+      "expectedCropCenter": { "x": 0.405, "y": 0.505 },
+      "overlayAlignmentQuality": "not_available_fps_gate",
+      "backgroundFeatureSuitability": "high",
+      "flags": ["smooth_pan"]
+    },
+    {
+      "frame": 135,
+      "timeSeconds": 4.5,
+      "role": "fastest_apparent_pan",
+      "expectedAthleteBox": { "x": 0.43, "y": 0.27, "width": 0.14, "height": 0.52 },
+      "expectedAthleteCenter": { "x": 0.5, "y": 0.53 },
+      "fullBodyVisible": true,
+      "expectedCropCenter": { "x": 0.5, "y": 0.53 },
+      "overlayAlignmentQuality": "not_available_fps_gate",
+      "backgroundFeatureSuitability": "high",
+      "flags": ["foreground_rail", "moving_shadow"]
+    },
+    {
+      "frame": 165,
+      "timeSeconds": 5.5,
+      "role": "final_athlete_section",
+      "expectedAthleteBox": { "x": 0.73, "y": 0.24, "width": 0.17, "height": 0.58 },
+      "expectedAthleteCenter": { "x": 0.815, "y": 0.53 },
+      "fullBodyVisible": true,
+      "expectedCropCenter": { "x": 0.815, "y": 0.53 },
+      "overlayAlignmentQuality": "not_available_fps_gate",
+      "backgroundFeatureSuitability": "moderate",
+      "flags": ["athlete_near_frame_edge", "bystanders_visible"]
+    },
+    {
+      "frame": 195,
+      "timeSeconds": 6.5,
+      "role": "tracking_loss_after_exit",
+      "expectedAthleteBox": null,
+      "expectedAthleteCenter": null,
+      "fullBodyVisible": false,
+      "expectedCropCenter": null,
+      "overlayAlignmentQuality": "not_available_fps_gate",
+      "backgroundFeatureSuitability": "high",
+      "flags": ["athlete_exited_frame"]
+    }
+  ],
+  "suspectedZoomIntervals": [],
+  "reviewNotes": [
+    "Genuine side-view left-to-right camera pan.",
+    "Several other people are visible; production single-pose identity stability cannot be validated because the FPS gate correctly stops pose analysis.",
+    "No obvious optical zoom was observed in the contact-sheet review; perspective scale changes as the athlete approaches remain possible.",
+    "Boxes are lightweight manual validation annotations and are never production inputs."
+  ]
+}

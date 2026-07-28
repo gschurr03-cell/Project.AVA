@@ -25,10 +25,10 @@ const TOOLS: { key: TelestrationTool; label: string; icon: string }[] = [
 ];
 
 const COLORS: { key: string; value: string }[] = [
-  { key: "Red", value: "#ef4444" },
+  { key: "Red", value: "#e46464" },
   { key: "Blue", value: "#3b82f6" },
-  { key: "Green", value: "#22c55e" },
-  { key: "Yellow", value: "#eab308" },
+  { key: "Green", value: "#89d46a" },
+  { key: "Yellow", value: "#f5c451" },
   { key: "White", value: "#ffffff" },
 ];
 

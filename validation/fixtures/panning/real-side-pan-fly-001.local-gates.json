@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "ava-local-gate-manual-annotations-v1",
+  "coordinateSpace": "original_source_frame_pixels",
+  "annotationMethod": "Independent manual source-pixel review of the selected white markings; no cones used.",
+  "sourceDimensions": { "width": 1280, "height": 720 },
+  "gates": {
+    "start": {
+      "keyframes": [
+        { "frame": 84, "line": [[657, 496], [763, 471]], "role": "approach" }
+      ]
+    },
+    "finish": {
+      "keyframes": [
+        { "frame": 170, "line": [[1020, 457], [1108, 498]], "role": "crossing_neighborhood_exit" },
+        { "frame": 175, "line": [[845, 473], [932, 512]], "role": "later_visible" }
+      ]
+    }
+  }
+}

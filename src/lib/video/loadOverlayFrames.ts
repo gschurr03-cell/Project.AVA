@@ -1,6 +1,7 @@
 import { poseSequenceSchema, type JointName, type PoseSequence } from "@/lib/biomechanics/pose";
 import type { createClient } from "@/lib/supabase/server";
 import { buildOverlayFrames, type OverlayFrame } from "./overlay";
+import type { RawCameraEvidence, RecordingAssessment } from "./recordingMode";
 
 /**
  * Server-only loader that turns an analysis's stored pose artifact into overlay
@@ -8,16 +9,18 @@ import { buildOverlayFrames, type OverlayFrame } from "./overlay";
  * malformed JSON, wrong shape) resolves to `[]` after a safe server-side warning
  * — never throws — so the session page simply keeps its overlay placeholder.
  *
- * NOTE: `analyses.keypoints_path` is not populated by the current worker (which
- * writes the pose sequence to a local file, not storage), so today this returns
- * `[]` for real sessions. It activates automatically once the worker uploads the
- * artifact to the bucket below and sends `keypointsPath` in its callback.
+ * Production workers populate `analyses.keypoints_path` with an immutable object
+ * in the private pose-artifacts bucket. Artifact identity is the cache key, so a
+ * version switch cannot reuse frames from another analysis.
  */
 
 type ServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /** Bucket the pose artifact is expected to live in (override via env). */
 const POSE_ARTIFACTS_BUCKET = process.env.POSE_ARTIFACTS_BUCKET ?? "pose-artifacts";
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_MAX_ENTRIES = 24;
+const overlayCache = new Map<string, { expiresAt: number; result: OverlayLoadResult }>();
 
 /**
  * MediaPipe landmark index → AVA canonical joint. `buildOverlayFrames` reads a
@@ -72,6 +75,7 @@ function toOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
     }
     return {
       frame: frame.index,
+      sourceFrameIndex: frame.sourceFrameIndex,
       time: frame.tMs / 1000,
       landmarks,
       backend: sequence.backend,
@@ -88,7 +92,13 @@ function toOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
 export interface OverlayLoadResult {
   frames: OverlayFrame[];
   /** Detected source metadata from the pose artifact; null when unavailable. */
-  meta: { fps: number; width: number; height: number } | null;
+  meta: {
+    fps: number;
+    width: number;
+    height: number;
+    recordingAssessment?: RecordingAssessment;
+    cameraEvidence?: RawCameraEvidence;
+  } | null;
 }
 
 export async function loadOverlayFrames(
@@ -96,6 +106,9 @@ export async function loadOverlayFrames(
   keypointsPath: string | null | undefined,
 ): Promise<OverlayLoadResult> {
   if (!keypointsPath) return { frames: [], meta: null };
+  const cached = overlayCache.get(keypointsPath);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  if (cached) overlayCache.delete(keypointsPath);
 
   try {
     const { data, error } = await supabase.storage
@@ -117,10 +130,23 @@ export async function loadOverlayFrames(
     // The artifact carries the true detected fps + source dimensions (the worker
     // computed them from the video). The session row may not have them, so expose
     // them here as the detected-metadata fallback for calibration + timing.
-    return {
+    const result: OverlayLoadResult = {
       frames: toOverlayFrames(sequence),
-      meta: { fps: sequence.fps, width: sequence.width, height: sequence.height },
+      meta: {
+        fps: sequence.fps,
+        width: sequence.width,
+        height: sequence.height,
+        recordingAssessment: sequence.recordingAssessment,
+        cameraEvidence: sequence.cameraEvidence,
+      },
     };
+    overlayCache.set(keypointsPath, { expiresAt: Date.now() + CACHE_TTL_MS, result });
+    while (overlayCache.size > CACHE_MAX_ENTRIES) {
+      const oldest = overlayCache.keys().next().value;
+      if (oldest) overlayCache.delete(oldest);
+      else break;
+    }
+    return result;
   } catch (err) {
     console.warn(
       `[overlay] failed to build overlay frames: ${err instanceof Error ? err.message : "unknown error"}`,

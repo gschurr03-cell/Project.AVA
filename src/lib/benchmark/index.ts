@@ -163,9 +163,9 @@ export function assembleAvaValues(
     // average (distance ÷ whole steps) is count-limited by boundary/partial steps.
     // Fall back to the zone average when individual gaps aren't trustworthy.
     avgStepLengthM:
-      m.stepLengthConfidence === "high" && m.avgIndividualStepLengthM != null
-        ? m.avgIndividualStepLengthM
-        : (m.avgZoneStepLengthM ?? m.avgIndividualStepLengthM),
+      m.zoneStepSummary?.summaries.averageStepLengthM ??
+      m.avgZoneStepLengthM ??
+      m.avgIndividualStepLengthM,
     leftStepLengthM: m.leftStepLengthM,
     rightStepLengthM: m.rightStepLengthM,
     combinedStepFrequencyHz: m.combinedStepFrequencyHz,

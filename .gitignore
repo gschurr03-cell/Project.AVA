@@ -5,6 +5,7 @@
 
 # next.js
 /.next/
+/.next-e2e/
 /out/
 next-env.d.ts
 
@@ -65,6 +66,8 @@ yarn-error.log*
 
 # Local runtime logs
 worker.log
+/playwright-report/
+/test-results/
 
 # Python
 .venv-rtmpose/
@@ -73,3 +76,8 @@ __pycache__/
 
 # Logs
 *.log
+.build/
+ios/AVASprint/Configuration/*.xcconfig
+!ios/AVASprint/Configuration/*.xcconfig.example
+*.xcuserstate
+xcuserdata/

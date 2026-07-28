@@ -58,12 +58,17 @@ const rand = (min, max, d = 2) => round(min + Math.random() * (max - min), d);
 
 /** Realistic-ish sprint biomechanics values (SI units unless the name says otherwise). */
 function mockMetrics() {
+  const groundContactTimeMs = round(rand(80, 120), 0);
+  const flightTimeMs = round(rand(100, 140), 0);
   return {
+    timingPolicyVersion: "CONSERVATIVE_TIMING_POLICY_V1",
+    rawTimingMetrics: { groundContactTimeMs, flightTimeMs },
+    reportedTimingMetrics: { groundContactTimeMs, flightTimeMs },
     topSpeedMps: rand(9.0, 11.5),
     avgStrideLengthM: rand(1.9, 2.5),
     strideFrequencyHz: rand(4.0, 5.0),
-    groundContactTimeMs: round(rand(80, 120), 0),
-    flightTimeMs: round(rand(100, 140), 0),
+    groundContactTimeMs,
+    flightTimeMs,
     peakKneeFlexionDeg: rand(95, 130, 1),
     avgTrunkLeanDeg: rand(5, 12, 1),
   };

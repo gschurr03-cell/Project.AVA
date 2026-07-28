@@ -38,6 +38,7 @@ export const accelerationStartEventSchema = z.object({
 });
 
 export const accelerationMetricsSchema = z.object({
+  timingPolicyVersion: z.literal("CONSERVATIVE_TIMING_POLICY_V1"),
   resultType: z.literal("acceleration"),
   status: z.enum(["ready", "ready_with_warning", "needs_review", "unavailable"]),
   startEvent: accelerationStartEventSchema,
@@ -46,20 +47,35 @@ export const accelerationMetricsSchema = z.object({
     m20S: z.number().positive().nullable(),
     m30S: z.number().positive().nullable(),
   }),
+  rawSplits: z.object({
+    m10S: z.number().positive().nullable(),
+    m20S: z.number().positive().nullable(),
+    m30S: z.number().positive().nullable(),
+  }),
   finishDistanceM: z.number().positive().nullable(),
   finishCrossingTime: z.number().nonnegative().nullable(),
   runTime: z.number().positive().nullable(),
+  rawRunTime: z.number().positive().nullable(),
+  reportedRunTime: z.number().positive().nullable(),
   segmentVelocities: z.array(
     z.object({
       startM: z.number().nonnegative(),
       endM: z.number().positive(),
       timeS: z.number().positive(),
       velocityMps: z.number().positive(),
+      rawTimeS: z.number().positive(),
+      reportedTimeS: z.number().positive(),
+      rawVelocityMps: z.number().positive(),
+      reportedVelocityMps: z.number().positive(),
     }),
   ),
   averageVelocityMps: z.number().positive().nullable(),
+  rawAverageVelocityMps: z.number().positive().nullable(),
+  reportedAverageVelocityMps: z.number().positive().nullable(),
   earlyAccelerationMps2: z.number().nullable(),
   peakVelocity: z.number().positive().nullable(),
+  rawPeakVelocity: z.number().positive().nullable(),
+  reportedPeakVelocity: z.number().positive().nullable(),
   distanceToPeakVelocity: z.number().nonnegative().nullable(),
   summary: z.string(),
   warnings: z.array(z.string()),
@@ -76,6 +92,9 @@ export const accelerationAnalysisSuccessSchema = z.object({
   modelVersion: z.string().min(1),
   metrics: accelerationMetricsSchema,
   keypointsPath: z.string().nullable().optional(),
+  provenance: z.unknown().optional(),
+  inputSnapshot: z.unknown().optional(),
+  resultPayload: z.unknown().optional(),
 });
 
 export type PersistedAccelerationMetrics = z.infer<typeof accelerationMetricsSchema>;

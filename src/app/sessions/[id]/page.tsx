@@ -59,9 +59,7 @@ import { buildRecommendations } from "@/lib/intelligence/recommendations";
 import { buildProgress, snapshotFromAnalysisMetrics } from "@/lib/intelligence/progress";
 import { calculateAvaPerformanceScore } from "@/lib/intelligence/performanceScore";
 import { evaluateTrochanterStepLength } from "@/lib/intelligence/trochanterOptimizer";
-import MetricsPanel from "./MetricsPanel";
 import CalibrationPanel from "./CalibrationPanel";
-import PhaseTimelinePanel from "./PhaseTimelinePanel";
 import AvaIntelligencePanel from "./AvaIntelligencePanel";
 import AvaPerformanceScoreCard from "./AvaPerformanceScoreCard";
 import PerformancePotentialCard from "./PerformancePotentialCard";
@@ -73,9 +71,11 @@ import AnalysisProgressCard from "./AnalysisProgressCard";
 import RerunAnalysisButton from "./RerunAnalysisButton";
 import CoachNotesForm from "./CoachNotesForm";
 import RecordingQualityCard from "./RecordingQualityCard";
+import BenchmarkPanel from "./BenchmarkPanel";
 import PerformanceSummaryCard from "./PerformanceSummaryCard";
 import CoachingRecommendationsCard from "./CoachingRecommendationsCard";
 import ProgressCard from "./ProgressCard";
+import AppShell from "@/components/nav/AppShell";
 import { AvaPanel } from "@/components/ava/AvaPanel";
 import { experimental30ResultSchema } from "@/lib/analysis/experimental30";
 import Experimental30TimingCard from "./Experimental30TimingCard";
@@ -114,6 +114,25 @@ const finiteNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 const pointPair = (value: unknown): [number | null, number | null] =>
   Array.isArray(value) ? [finiteNumber(value[0]), finiteNumber(value[1])] : [null, null];
+
+/**
+ * MVP metric scope (LOCKED): the analysis page presents only the five primary sprint
+ * metrics (step length, stride length, step frequency, average velocity, peak velocity)
+ * via PerformanceSummaryCard. Every other secondary metric / score / prediction card is
+ * hidden while this is true, keeping the MVP focused and intentional. Flip to re-enable
+ * the fuller analysis surface in a later release.
+ */
+const MVP_FIVE_ONLY = true;
+
+/**
+ * Cumulative normalized horizontal camera translation (summed |translationX| across all
+ * frames) above which the recording is treated as a genuine pan and camera-motion
+ * compensation is applied to the metric engine. Below it the camera is effectively
+ * stationary and the clean, uncompensated coordinate path is used (Phase 1). A real pan
+ * that follows a sprinter accumulates several frame-widths (>3); a tripod / minor shake
+ * stays well under a quarter frame-width.
+ */
+const CAMERA_MEANINGFUL_PAN_CUMULATIVE = 0.25;
 
 /**
  * Session detail page. Shows the session's metadata and lets the coach rename
@@ -367,11 +386,23 @@ export default async function SessionPage({
   // + per-side frequency, average/individual/per-side step length, and the three
   // cross-checked velocities. The manual calibration points supply both the scale
   // and the zone bounds; frames are already FPS-retimed above.
+  // Phase 1 — a stationary recording has ONE clean coordinate path. Camera-motion
+  // compensation is only meaningful when the camera actually pans; on a static camera the
+  // per-frame world reprojection injects noise that degrades step length / frequency and
+  // can break the zone-crossing interpolation (world-anchored entry/exit resolve out of
+  // order → Average Velocity withheld). Pass camera evidence to the MEASUREMENT engine
+  // only when the cumulative horizontal camera translation is non-negligible. Overlay
+  // world-lock is unaffected — it consumes camera evidence through its own render path.
+  const cameraEvidence = overlayMeta?.cameraEvidence;
+  const cumulativeCameraPanX = cameraEvidence
+    ? cameraEvidence.transforms.reduce((sum, t) => sum + Math.abs(t.translationX ?? 0), 0)
+    : 0;
+  const cameraPansMeaningfully = cumulativeCameraPanX > CAMERA_MEANINGFUL_PAN_CUMULATIVE;
   const measurements =
     session.analysis_type === "fly" && overlayFrames.length
       ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight, {
           gates: calibrationGates,
-          cameraEvidence: overlayMeta?.cameraEvidence,
+          cameraEvidence: cameraPansMeaningfully ? cameraEvidence : undefined,
         })
       : null;
   const accelerationMetrics = parsedAccelerationMetrics?.success
@@ -778,8 +809,8 @@ export default async function SessionPage({
   });
 
   return (
-    <main className="ava-carbon min-h-screen">
-      <div className="mx-auto max-w-7xl space-y-6 px-6 py-8">
+    <AppShell userEmail={user.email ?? ""} wide>
+      <div className="space-y-6">
         {/* Live analysis progress + terminal refresh are owned by AnalysisProgressCard,
             rendered in the in-flight branch below (no passive poller here). */}
         {/* Non-visible acceptance hooks (Part 1 §4): canonical calibration values +
@@ -805,12 +836,12 @@ export default async function SessionPage({
         <div className="flex items-center justify-between gap-4">
           <Link
             href={`/athletes/${session.athlete_id}`}
-            className="text-sm font-medium text-[#A0A2A8] transition hover:text-[#F5F5F7]"
+            className="text-sm font-medium text-[#b3bccb] transition hover:text-[#f5f7fb]"
           >
             ← Back to athlete
           </Link>
 
-          <p className="hidden text-[11px] font-semibold uppercase tracking-[0.28em] text-[#6B7280] sm:block">
+          <p className="hidden text-[11px] font-semibold uppercase tracking-[0.28em] text-[#7e8797] sm:block">
             {hasSelectedMode ? mode.analysisTitle : "Choose Analysis Mode"}
           </p>
 
@@ -829,13 +860,13 @@ export default async function SessionPage({
         {error && (
           <p
             role="alert"
-            className="rounded-xl border border-[#FF3B30]/40 bg-[#FF3B30]/10 px-4 py-3 text-sm text-[#ff8079]"
+            className="rounded-xl border border-[#e46464]/40 bg-[#e46464]/10 px-4 py-3 text-sm text-[#e46464]"
           >
             {error}
           </p>
         )}
         {saved && (
-          <p className="rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-3 text-sm text-[#D4AF37]">
+          <p className="rounded-xl border border-[#f5c451]/40 bg-[#f5c451]/10 px-4 py-3 text-sm text-[#f5c451]">
             Calibration saved.
           </p>
         )}
@@ -853,9 +884,9 @@ export default async function SessionPage({
         )}
 
         {analysis?.experimental && (
-          <div className="rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-3">
-            <p className="text-sm font-semibold text-[#E4C25A]">Experimental analysis</p>
-            <p className="mt-1 text-sm text-[#C8CAD0]">
+          <div className="rounded-xl border border-[#f5c451]/40 bg-[#f5c451]/10 px-4 py-3">
+            <p className="text-sm font-semibold text-[#f5c451]">Experimental analysis</p>
+            <p className="mt-1 text-sm text-[#b3bccb]">
               AVA used the experimental 30 FPS analysis model for this recording. These
               results are kept separate from validated 60 FPS analyses while the model
               continues to be tested and refined.
@@ -867,14 +898,14 @@ export default async function SessionPage({
         <AvaPanel>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#D72638]">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#2f80ed]">
                 {hasSelectedMode ? mode.analysisTitle : "Sprint Analysis"}
               </p>
-              <h1 className="truncate text-3xl font-bold tracking-tight text-[#F5F5F7]">
+              <h1 className="truncate text-3xl font-bold tracking-tight text-[#f5f7fb]">
                 {displayName}
               </h1>
               {hasSelectedMode && (
-                <p className="mt-2 text-sm text-[#A0A2A8]">
+                <p className="mt-2 text-sm text-[#b3bccb]">
                   {session.analysis_type === "acceleration"
                     ? `${mode.displayTitle} · ${accelerationProfileLabel(profileDistance)}`
                     : flyDistanceLabel
@@ -922,14 +953,14 @@ export default async function SessionPage({
               <div className="flex flex-wrap gap-2">
                 <Link
                   href={`/sessions/${session.id}/timing`}
-                  className="rounded-lg border border-[#D72638]/50 bg-[#D72638]/10 px-4 py-2 text-sm font-semibold text-[#F16B78] transition hover:bg-[#D72638]/20"
+                  className="rounded-lg border border-[#2f80ed]/50 bg-[#2f80ed]/10 px-4 py-2 text-sm font-semibold text-[#3b8eff] transition hover:bg-[#2f80ed]/20"
                 >
                   Open Timing Workspace
                 </Link>
                 {workingVersion.status === "complete" && FEATURES.coachReportEngine ? (
                   <Link
                     href={`/sessions/${session.id}/report`}
-                    className="rounded-lg border border-white/[0.12] px-4 py-2 text-sm font-semibold text-[#F5F5F7] transition hover:border-[#D72638]/60"
+                    className="rounded-lg border border-white/[0.12] px-4 py-2 text-sm font-semibold text-[#f5f7fb] transition hover:border-[#2f80ed]/60"
                   >
                     Open Coach Report
                   </Link>
@@ -937,23 +968,23 @@ export default async function SessionPage({
                 <RerunAnalysisButton sessionId={session.id} />
                 <form action={saveAnalysisVersion} className="flex gap-2">
                   <input type="hidden" name="id" value={session.id} />
-                  <input name="version_notes" placeholder="Snapshot notes (optional)" className="rounded-lg border border-white/[0.08] bg-[#0d0d0f] px-3 py-2 text-sm text-[#F5F5F7]" />
-                  <button disabled={workingVersion.status !== "complete"} className="rounded-lg border border-[#D4AF37]/40 px-4 py-2 text-sm font-semibold text-[#E4C25A] disabled:cursor-not-allowed disabled:opacity-40" type="submit">
+                  <input name="version_notes" placeholder="Snapshot notes (optional)" className="rounded-lg border border-white/[0.08] bg-[#081019] px-3 py-2 text-sm text-[#f5f7fb]" />
+                  <button disabled={workingVersion.status !== "complete"} className="rounded-lg border border-[#f5c451]/40 px-4 py-2 text-sm font-semibold text-[#f5c451] disabled:cursor-not-allowed disabled:opacity-40" type="submit">
                     Save Version
                   </button>
                 </form>
                 <form action={resetWorkingAnalysis}>
                   <input type="hidden" name="id" value={session.id} />
-                  <button className="rounded-lg border border-white/[0.1] px-4 py-2 text-sm font-semibold text-[#A0A2A8]" type="submit">
+                  <button className="rounded-lg border border-white/[0.1] px-4 py-2 text-sm font-semibold text-[#b3bccb]" type="submit">
                     Reset Working Analysis
                   </button>
                 </form>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-[#A0A2A8]">No working analysis yet. Run analysis to create one from the preserved source video.</p>
+            <p className="text-sm text-[#b3bccb]">No working analysis yet. Run analysis to create one from the preserved source video.</p>
           )}
-          <p className="mt-3 text-xs text-[#6B7280]">
+          <p className="mt-3 text-xs text-[#7e8797]">
             Reruns replace this working result. They do not create visible version numbers.
           </p>
         </AvaPanel>
@@ -967,8 +998,8 @@ export default async function SessionPage({
                   href={`/sessions/${session.id}?analysis=${version.id}`}
                   className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                     version.id === analysis?.id
-                      ? "border-[#D4AF37]/60 bg-[#D4AF37]/10 text-[#E4C25A]"
-                      : "border-white/[0.08] bg-white/[0.03] text-[#A0A2A8] hover:bg-white/[0.07]"
+                      ? "border-[#f5c451]/60 bg-[#f5c451]/10 text-[#f5c451]"
+                      : "border-white/[0.08] bg-white/[0.03] text-[#b3bccb] hover:bg-white/[0.07]"
                   }`}
                 >
                   Version {version.saved_version_number}
@@ -978,12 +1009,12 @@ export default async function SessionPage({
                 </Link>
               ))}
               {requestedSavedVersion && (
-                <Link href={`/sessions/${session.id}`} className="rounded-lg border border-white/[0.08] px-3 py-2 text-sm text-[#A0A2A8]">
+                <Link href={`/sessions/${session.id}`} className="rounded-lg border border-white/[0.08] px-3 py-2 text-sm text-[#b3bccb]">
                   Return to Working
                 </Link>
               )}
             </div>
-            <p className="mt-3 text-xs text-[#6B7280]">Only explicit snapshots appear here. Saved artifacts and inputs remain immutable.</p>
+            <p className="mt-3 text-xs text-[#7e8797]">Only explicit snapshots appear here. Saved artifacts and inputs remain immutable.</p>
           </AvaPanel>
         )}
 
@@ -992,10 +1023,10 @@ export default async function SessionPage({
             <VideoPlayer videoUrl={signedVideo.signedUrl} markers={timelineMarkers} />
           ) : (
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
-              <p className="text-sm text-[#A0A2A8]">The protected source video could not be loaded.</p>
+              <p className="text-sm text-[#b3bccb]">The protected source video could not be loaded.</p>
             </div>
           )}
-          <p className="mt-3 text-xs text-[#6B7280]">
+          <p className="mt-3 text-xs text-[#7e8797]">
             Original media · {resolutionLabel ?? "resolution pending"} · source {detectedFps ?? "—"} FPS
           </p>
         </AvaPanel>
@@ -1007,17 +1038,17 @@ export default async function SessionPage({
         >
           {session.analysis_type === "acceleration" && (
             <div className="mb-4 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
-              <p className="text-sm text-[#A0A2A8]">
+              <p className="text-sm text-[#b3bccb]">
                 Set finish distance. AVA detects first movement automatically.
               </p>
-              <div className="mt-3 inline-flex rounded-lg border border-white/[0.1] bg-[#121214] p-1">
+              <div className="mt-3 inline-flex rounded-lg border border-white/[0.1] bg-[#101827] p-1">
                 {[10, 20, 30].map((distance) => (
                   <form action={setAccelerationFinishDistance} key={distance}>
                     <input type="hidden" name="id" value={session.id} />
                     <input type="hidden" name="finish_distance_m" value={distance} />
                     <button
                       type="submit"
-                      className={`rounded-md px-4 py-2 text-sm font-semibold ${accelerationFinishDistance === distance ? "bg-[#D72638] text-white" : "text-[#A0A2A8] hover:bg-white/[0.06]"}`}
+                      className={`rounded-md px-4 py-2 text-sm font-semibold ${accelerationFinishDistance === distance ? "bg-[#2f80ed] text-white" : "text-[#b3bccb] hover:bg-white/[0.06]"}`}
                     >
                       {distance}m
                     </button>
@@ -1030,15 +1061,15 @@ export default async function SessionPage({
             <div className="mb-5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
               {!analysis && (
                 <>
-                  <p className="mb-3 text-sm font-semibold text-[#F5F5F7]">Choose analysis mode</p>
-                  <div className="inline-flex rounded-lg border border-white/[0.1] bg-[#121214] p-1">
+                  <p className="mb-3 text-sm font-semibold text-[#f5f7fb]">Choose analysis mode</p>
+                  <div className="inline-flex rounded-lg border border-white/[0.1] bg-[#101827] p-1">
                     {(["fly", "acceleration"] as const).map((type) => (
                       <form action={setSessionAnalysisType} key={type}>
                         <input type="hidden" name="id" value={session.id} />
                         <input type="hidden" name="analysis_type" value={type} />
                         <button
                           type="submit"
-                          className={`rounded-md px-4 py-2 text-sm font-semibold transition ${session.analysis_type === type ? "bg-[#D72638] text-white" : "text-[#A0A2A8] hover:bg-white/[0.06] hover:text-white"}`}
+                          className={`rounded-md px-4 py-2 text-sm font-semibold transition ${session.analysis_type === type ? "bg-[#2f80ed] text-white" : "text-[#b3bccb] hover:bg-white/[0.06] hover:text-white"}`}
                         >
                           {type === "fly" ? "Fly Analysis" : "Acceleration Analysis"}
                         </button>
@@ -1049,10 +1080,10 @@ export default async function SessionPage({
               )}
               {session.analysis_type === "fly" && FEATURES.rtmpose && (
                 <div className="mt-4">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#7e8797]">
                     Pose engine
                   </p>
-                  <div className="inline-flex rounded-lg border border-white/[0.1] bg-[#121214] p-1">
+                  <div className="inline-flex rounded-lg border border-white/[0.1] bg-[#101827] p-1">
                     {(["mediapipe", "rtmpose"] as const).map((engine) => (
                       <form action={setFlyPoseEngine} key={engine}>
                         <input type="hidden" name="id" value={session.id} />
@@ -1061,8 +1092,8 @@ export default async function SessionPage({
                           type="submit"
                           className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
                             (session.pose_engine ?? "mediapipe") === engine
-                              ? "bg-[#D72638] text-white"
-                              : "text-[#A0A2A8] hover:bg-white/[0.06]"
+                              ? "bg-[#2f80ed] text-white"
+                              : "text-[#b3bccb] hover:bg-white/[0.06]"
                           }`}
                         >
                           {engine === "mediapipe"
@@ -1080,10 +1111,10 @@ export default async function SessionPage({
                   <RerunAnalysisButton
                     sessionId={session.id}
                     label="Run Analysis"
-                    className="ava-red-glow rounded-lg bg-[#D72638] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#e63a4b] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="ava-red-glow rounded-lg bg-[#2f80ed] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3b8eff] disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 ) : (
-                  <p className="text-xs text-[#E4C25A]">
+                  <p className="text-xs text-[#f5c451]">
                     {workingVersion
                       ? "Use Working Analysis controls above to rerun."
                       : session.analysis_type === "acceleration"
@@ -1130,7 +1161,7 @@ export default async function SessionPage({
               />
           ) : (
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
-              <p className="text-sm text-[#A0A2A8]">
+              <p className="text-sm text-[#b3bccb]">
                 {analysisComplete
                   ? "This analysis has no readable pose artifact. The original video remains available above."
                   : "Run an analysis to add a synchronized pose overlay. The original video remains available above."}
@@ -1152,41 +1183,43 @@ export default async function SessionPage({
                 moved on. A recompute-in-flight or an older-revision run is called out
                 explicitly above the metric cards. */}
             {calibrationResultStatus !== "current" && (
-              <div className="rounded-xl border border-[#D4AF37]/30 bg-[#D4AF37]/[0.06] px-4 py-3 text-sm text-[#E4C25A]">
+              <div className="rounded-xl border border-[#f5c451]/30 bg-[#f5c451]/[0.06] px-4 py-3 text-sm text-[#f5c451]">
                 {calibrationResultStatus === "pending"
                   ? "Recalculation pending — these metrics are being recomputed against the current timing zone."
                   : "Previous result — this analysis was produced against an earlier timing zone (superseded). Rerun to refresh."}
               </div>
             )}
-            <AnalysisMethodPanel
-              provenance={analysisProvenance}
-              result={explainableResult}
-              legacy={!analysisProvenance || !explainableResult}
-            />
-            {accelerationMetrics && <AccelerationMetricsPanel metrics={accelerationMetrics} />}
+            {!MVP_FIVE_ONLY && (
+              <AnalysisMethodPanel
+                provenance={analysisProvenance}
+                result={explainableResult}
+                legacy={!analysisProvenance || !explainableResult}
+              />
+            )}
+            {!MVP_FIVE_ONLY && accelerationMetrics && <AccelerationMetricsPanel metrics={accelerationMetrics} />}
 
             {/* Trusted-only headline score. */}
-            {session.analysis_type === "fly" && performanceScore && (
+            {!MVP_FIVE_ONLY && session.analysis_type === "fly" && performanceScore && (
               <AvaPerformanceScoreCard result={performanceScore} />
             )}
 
             {/* Progress since last session — how the trusted metrics moved. */}
-            {session.analysis_type === "fly" && <ProgressCard report={progress} />}
+            {!MVP_FIVE_ONLY && session.analysis_type === "fly" && <ProgressCard report={progress} />}
 
             {/* PRIMARY FEATURE: the ranked limiting-factor diagnosis. */}
-            {session.analysis_type === "fly" && intelligence && diagnosis && (
+            {!MVP_FIVE_ONLY && session.analysis_type === "fly" && intelligence && diagnosis && (
               <AvaIntelligencePanel report={intelligence} diagnosis={diagnosis} />
             )}
 
-            {/* Performance headroom from correcting those factors. */}
-            {session.analysis_type === "fly" && diagnosis && (
+            {/* Performance headroom from correcting those factors (Estimated Meet Velocity). */}
+            {!MVP_FIVE_ONLY && session.analysis_type === "fly" && diagnosis && (
               <PerformancePotentialCard potential={diagnosis.potential} />
             )}
 
             {/* Coaching Recommendations V2: the actionable "what to do next" layer,
                 grounded in the trusted metrics; FPS-gated timing stays experimental.
                 The exercise selector reads this session context to gate + side-target. */}
-            {session.analysis_type === "fly" && recommendations.available && (
+            {!MVP_FIVE_ONLY && session.analysis_type === "fly" && recommendations.available && (
               <CoachingRecommendationsCard
                 report={recommendations}
                 context={{
@@ -1207,7 +1240,8 @@ export default async function SessionPage({
             )}
 
             {/* Trochanter stride-length optimizer + unlock simulator (needs leg length). */}
-            {session.analysis_type === "fly" &&
+            {!MVP_FIVE_ONLY &&
+              session.analysis_type === "fly" &&
               trochanter &&
               trusted?.strideLengthM != null &&
               trusted?.frequencyHz != null && (
@@ -1251,30 +1285,37 @@ export default async function SessionPage({
               />
             )}
 
-            {/* Everything else is experimental / not-yet-trusted. Pass the recording's
-                pose-tracking confidence so confidence-limited metrics (and ≥120 fps
-                timing) are gated honestly rather than shown as trusted. */}
-            {session.analysis_type === "fly" && parsedMetrics?.success && (
-              <MetricsPanel
-                metrics={parsedMetrics.data}
-                activeFps={activeFps}
-                poseConfidence={poseQuality?.poseConfidence ?? null}
-                confidenceEvidence={confidenceEvidence}
-              />
-            )}
+            {/* MVP metric scope is LOCKED to the five primary metrics rendered by
+                PerformanceSummaryCard (step length, stride length, step frequency,
+                average velocity, peak velocity). The experimental metrics bin
+                (ground contact time, flight time, knee flexion, trunk lean, and other
+                advanced timing derivatives) is intentionally NOT shown in the MVP. */}
 
             {/* Detailed Systems — secondary engines + validation, collapsed. */}
-            <details className="group rounded-2xl border border-white/[0.06] bg-[#121214]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
-              <summary className="flex cursor-pointer items-center gap-2 text-lg font-semibold tracking-tight text-[#F5F5F7]">
-                <span className="inline-block text-[#D72638] transition group-open:rotate-90">
+            <details className="group rounded-2xl border border-white/[0.06] bg-[#101827]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+              <summary className="flex cursor-pointer items-center gap-2 text-lg font-semibold tracking-tight text-[#f5f7fb]">
+                <span className="inline-block text-[#2f80ed] transition group-open:rotate-90">
                   ▸
                 </span>
                 Detailed Systems
-                <span className="text-xs font-normal text-[#6B7280]">
+                <span className="text-xs font-normal text-[#7e8797]">
                   calibration &amp; sprint phases
                 </span>
               </summary>
               <div className="mt-5 space-y-4">
+                {session.analysis_type === "fly" && measurements && (
+                  <BenchmarkPanel
+                    sessionId={session.id}
+                    measurements={measurements}
+                    activeFps={activeFps}
+                    fpsSource={session.fps_override != null ? "override" : detectedFps != null ? "detected" : "none"}
+                    detectedFps={detectedFps}
+                    fpsOverride={session.fps_override ?? null}
+                    benchmarks={[]}
+                    linkedBenchmarkId={null}
+                    comparison={null}
+                  />
+                )}
                 {calibrationReport && <CalibrationPanel report={calibrationReport} />}
                 <CalibrationAuthorityControls
                   sessionId={session.id}
@@ -1295,9 +1336,8 @@ export default async function SessionPage({
                   timingBodyReference={session.timing_body_reference}
                   timingSplits={Array.isArray(session.timing_splits) ? session.timing_splits.filter((value): value is number => typeof value === "number") : []}
                 />
-                {session.analysis_type === "fly" && phaseReport && (
-                  <PhaseTimelinePanel report={phaseReport} />
-                )}
+                {/* PhaseTimelinePanel (sprint-phase timing: contact/flight phases) is
+                    withheld — outside the locked MVP five-metric scope. */}
                 {/* Race-time prediction removed for now — deriving 60/100/200 m from
                     peak velocity alone isn't trustworthy. Coming soon (see
                     PerformancePotentialCard TODO). The coaching-report / raw-metric /
@@ -1311,21 +1351,21 @@ export default async function SessionPage({
           </div>
         ) : analysisComplete ? (
           <AvaPanel eyebrow="Analysis" title="Metrics unavailable">
-            <p className="text-sm text-[#A0A2A8]">
+            <p className="text-sm text-[#b3bccb]">
               This analysis completed, but its metrics could not be read. Rerun the analysis to
               regenerate them.
             </p>
           </AvaPanel>
         ) : analysisInFlight ? (
           <AvaPanel eyebrow="Analysis" title="Analysis in progress">
-            <p className="text-sm text-[#A0A2A8]">
+            <p className="text-sm text-[#b3bccb]">
               Live progress is shown at the top of this page. Results will appear here
               automatically when processing finishes.
             </p>
           </AvaPanel>
         ) : analysis?.status === "failed" ? (
           <AvaPanel eyebrow="Analysis" title="Analysis failed">
-            <p className="text-sm text-[#ff8079]">
+            <p className="text-sm text-[#e46464]">
               {jobStatus?.user_message ?? analysis.error ?? "The recording could not be analyzed."}
             </p>
             <div className="mt-4">
@@ -1334,18 +1374,18 @@ export default async function SessionPage({
           </AvaPanel>
         ) : (
           <AvaPanel eyebrow="Analysis" title="Not analyzed yet">
-            <p className="text-sm text-[#A0A2A8]">
+            <p className="text-sm text-[#b3bccb]">
               No analysis has been run for this session. Use{" "}
-              <span className="font-semibold text-[#F5F5F7]">Run Analysis</span> above to generate
+              <span className="font-semibold text-[#f5f7fb]">Run Analysis</span> above to generate
               sprint intelligence.
             </p>
           </AvaPanel>
         )}
 
         {/* F. Session Admin — rename lives here, dark and out of the primary flow. */}
-        <details className="group rounded-2xl border border-white/[0.06] bg-[#121214]/95 p-5">
-          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[#A0A2A8]">
-            <span className="inline-block text-[#6B7280] transition group-open:rotate-90">▸</span>
+        <details className="group rounded-2xl border border-white/[0.06] bg-[#101827]/95 p-5">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-[#b3bccb]">
+            <span className="inline-block text-[#7e8797] transition group-open:rotate-90">▸</span>
             Session Admin
           </summary>
           <form action={renameSession} className="mt-4 flex gap-2">
@@ -1354,11 +1394,11 @@ export default async function SessionPage({
               name="name"
               defaultValue={session.name ?? ""}
               placeholder={session.original_filename ?? "Session name"}
-              className="flex-1 rounded-lg border border-white/[0.08] bg-[#19191C] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none"
+              className="flex-1 rounded-lg border border-white/[0.08] bg-[#182233] px-3 py-2 text-sm text-[#f5f7fb] placeholder:text-[#7e8797] focus:border-[#2f80ed]/50 focus:outline-none"
             />
             <button
               type="submit"
-              className="rounded-lg border border-white/[0.12] bg-white/[0.05] px-4 py-2 text-sm font-medium text-[#F5F5F7] transition hover:bg-white/[0.09]"
+              className="rounded-lg border border-white/[0.12] bg-white/[0.05] px-4 py-2 text-sm font-medium text-[#f5f7fb] transition hover:bg-white/[0.09]"
             >
               Save
             </button>
@@ -1371,13 +1411,13 @@ export default async function SessionPage({
             <input type="hidden" name="id" value={session.id} />
             <button
               type="submit"
-              className="rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-[#8a8a90] transition hover:border-[#FF3B30]/40 hover:text-[#FF3B30]"
+              className="rounded-lg border border-white/[0.08] px-3 py-1.5 text-xs text-[#7e8797] transition hover:border-[#e46464]/40 hover:text-[#e46464]"
             >
               Delete session
             </button>
           </form>
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

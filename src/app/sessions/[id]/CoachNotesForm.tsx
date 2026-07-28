@@ -15,7 +15,7 @@ export default function CoachNotesForm({
 }) {
   return (
     <AvaPanel eyebrow="Coach Notes" title="Session Emphasis">
-      <p className="-mt-3 mb-3 text-sm text-[#6B7280]">
+      <p className="-mt-3 mb-3 text-sm text-[#7e8797]">
         Add your own coaching emphasis for this session.
       </p>
 
@@ -27,13 +27,13 @@ export default function CoachNotesForm({
           rows={3}
           maxLength={1000}
           placeholder="e.g. Focus on wickets and dribbles this week. Keep volume low."
-          className="w-full rounded-lg border border-white/[0.08] bg-[#0d0d0f] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none"
+          className="w-full rounded-lg border border-white/[0.08] bg-[#081019] px-3 py-2 text-sm text-[#f5f7fb] placeholder:text-[#7e8797] focus:border-[#2f80ed]/50 focus:outline-none"
         />
-        <p className="text-xs text-[#6B7280]">Max 1,000 characters.</p>
+        <p className="text-xs text-[#7e8797]">Max 1,000 characters.</p>
         <div>
           <button
             type="submit"
-            className="rounded-lg border border-white/[0.12] bg-white/[0.05] px-4 py-2 text-sm font-medium text-[#F5F5F7] transition hover:bg-white/[0.09]"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.05] px-4 py-2 text-sm font-medium text-[#f5f7fb] transition hover:bg-white/[0.09]"
           >
             Save notes
           </button>

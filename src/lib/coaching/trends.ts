@@ -1,6 +1,11 @@
-import { analysisMetricsSchema, type AnalysisMetrics } from "@/lib/biomechanics/types";
+import {
+  analysisMetricsSchema,
+  persistedAnalysisMetricsSchema,
+  type AnalysisMetrics,
+} from "@/lib/biomechanics/types";
 
 import { generateCoachingReport } from "./report";
+import { analysesAreCompatible, versionIdentity } from "@/lib/analysis/historyCompatibility";
 
 /** Chart-ready trend series derived from an athlete's completed analyses. */
 export interface AthleteTrendData {
@@ -33,9 +38,15 @@ const TREND_FLAT_PCT = 3;
 function slopePerSession(values: number[]): number {
   const n = values.length;
   if (n < 2) return 0;
-  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  let sx = 0,
+    sy = 0,
+    sxx = 0,
+    sxy = 0;
   for (let i = 0; i < n; i++) {
-    sx += i; sy += values[i]; sxx += i * i; sxy += i * values[i];
+    sx += i;
+    sy += values[i];
+    sxx += i * i;
+    sxy += i * values[i];
   }
   const denom = n * sxx - sx * sx;
   return denom === 0 ? 0 : (n * sxy - sx * sy) / denom;
@@ -54,7 +65,13 @@ export function analyzeTrend(
 ): TrendSignal {
   const n = values.length;
   if (n < 2) {
-    return { direction: "insufficient", ratePerSession: 0, changePct: 0, confidence: "low", summary: "Not enough sessions yet — analyze more to reveal a trend." };
+    return {
+      direction: "insufficient",
+      ratePerSession: 0,
+      changePct: 0,
+      confidence: "low",
+      summary: "Not enough sessions yet — analyze more to reveal a trend.",
+    };
   }
   const first = values[0];
   const last = values[n - 1];
@@ -72,7 +89,13 @@ export function analyzeTrend(
       ? `Plateauing — roughly flat across ${n} sessions.`
       : `${direction === "improving" ? "Improving" : "Declining"} — ${changePct >= 0 ? "up" : "down"} ${Math.abs(changePct).toFixed(0)}% over ${n} sessions (~${slope >= 0 ? "+" : ""}${slope.toFixed(2)}${unit}/session).`;
 
-  return { direction, ratePerSession: Number(slope.toFixed(3)), changePct: Number(changePct.toFixed(1)), confidence, summary };
+  return {
+    direction,
+    ratePerSession: Number(slope.toFixed(3)),
+    changePct: Number(changePct.toFixed(1)),
+    confidence,
+    summary,
+  };
 }
 
 /** Minimal shape of a completed analysis row this helper needs. */
@@ -80,6 +103,13 @@ export interface TrendAnalysisInput {
   id: string;
   created_at: string;
   metrics: unknown;
+  analysis_fps?: number | null;
+  model_version?: string | null;
+  analysis_pipeline_version?: string | null;
+  metric_schema_version?: string | null;
+  timing_policy_version?: string | null;
+  recording_mode_version?: string | null;
+  camera_motion_model_version?: string | null;
 }
 
 /** At-a-glance progress read for one athlete (Day 76 dashboard). Pure. */
@@ -141,9 +171,19 @@ export function buildAthleteTrends(analyses: TrendAnalysisInput[]): AthleteTrend
   const sorted = [...analyses].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
+  const baseline = sorted.length ? versionIdentity(sorted[0]) : null;
 
   for (const analysis of sorted) {
-    const parsed = analysisMetricsSchema.safeParse(analysis.metrics);
+    if (baseline && !analysesAreCompatible(baseline, versionIdentity(analysis))) continue;
+    const persisted = persistedAnalysisMetricsSchema.safeParse(analysis.metrics);
+    if (
+      !persisted.success ||
+      persisted.data.strideFrequencyHz == null ||
+      persisted.data.groundContactTimeMs == null ||
+      persisted.data.flightTimeMs == null
+    )
+      continue;
+    const parsed = analysisMetricsSchema.safeParse(persisted.data);
     if (!parsed.success) continue;
 
     const report = generateCoachingReport(toCoachingMetrics(parsed.data), analysis.id);

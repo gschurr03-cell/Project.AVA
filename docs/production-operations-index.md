@@ -1,0 +1,30 @@
+# Production operations index
+
+Owner: engineering/platform until named owners are assigned. Reviewed: 2026-07-18.
+
+- [15A readiness audit](./production-readiness-audit-15a.md)
+- [Environment architecture](./environment-architecture.md)
+- [Deployment architecture](./production-deployment-architecture.md)
+- [CI quality gates](./ci-quality-gates.md)
+- [Migration runbook](./database-migration-runbook.md)
+- [Secret management](./secret-management-runbook.md)
+- [Authorization](./authorization-model.md)
+- [Data classification](./data-classification-and-handling.md)
+- [Deletion](./data-deletion-runbook.md)
+- [Threat model](./threat-model.md)
+- [AI security](./ai-security-and-data-flow.md)
+- [Scientific integrity](./scientific-result-integrity.md)
+- [Training-plan integrity](./training-plan-integrity.md)
+- [Observability](./observability-architecture.md)
+- [Closed-beta SLOs](./service-level-objectives.md)
+- [Load test plan](./load-test-plan-and-results.md)
+- [Backup/restore](./backup-and-restore-runbook.md)
+- [Release/rollback](./release-and-rollback-runbook.md)
+- [Incident response](./incident-response-plan.md)
+- [Cost model](./closed-beta-cost-model.md)
+- [Legal/policy readiness](./legal-policy-readiness.md)
+- [Launch gates](./closed-beta-launch-gates.md)
+- [Go/no-go](./closed-beta-go-no-go.md)
+- [Launch day](./closed-beta-launch-day-runbook.md)
+- [Release blockers](./ava-release-blockers.md)
+

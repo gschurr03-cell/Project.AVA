@@ -5,6 +5,7 @@ import type { OverlayFrame } from "@/lib/video/overlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
 import {
   saveGateCalibration,
+  saveGateCalibrationAction,
   removeCalibration,
   recomputeFromZone,
   saveTrochanterOverlayPoint,
@@ -23,6 +24,7 @@ import type { CalibrationGates } from "@/lib/calibration/gates";
 import PlayerControls from "./PlayerControls";
 import TelestrationCanvas from "./TelestrationCanvas";
 import type { TrochanterMarker } from "@/lib/video/overlayAlignment";
+import type { RawCameraEvidence } from "@/lib/video/recordingMode";
 
 type Props = {
   videoUrl: string;
@@ -44,6 +46,11 @@ type Props = {
   trochanterMarker?: TrochanterMarker | null;
   athleteHeightCm?: number | null;
   enableTrochanterAlignment?: boolean;
+  sourceFps?: number | null;
+  analysisFps?: number | null;
+  cameraEvidence?: RawCameraEvidence;
+  sourceWidth?: number | null;
+  sourceHeight?: number | null;
 };
 
 /**
@@ -64,6 +71,11 @@ export default function OverlayVideoPlayer({
   trochanterMarker = null,
   athleteHeightCm = null,
   enableTrochanterAlignment = false,
+  sourceFps = null,
+  analysisFps = null,
+  cameraEvidence,
+  sourceWidth = null,
+  sourceHeight = null,
 }: Props) {
   const calibration: SurfaceCalibration | undefined = sessionId
     ? {
@@ -71,6 +83,7 @@ export default function OverlayVideoPlayer({
         savedGates: calibrationGates,
         saved: manualCalibration,
         onSave: saveGateCalibration,
+        onSaveAction: saveGateCalibrationAction,
         onClear: removeCalibration,
         onRecompute: recomputeFromZone,
         trochanter: enableTrochanterAlignment ? trochanterMarker : null,
@@ -80,11 +93,32 @@ export default function OverlayVideoPlayer({
       }
     : undefined;
   const surfaceRef = useRef<OverlaySurfaceHandle>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [flash, setFlash] = useState(false);
   const [state, setState] = useState<SurfaceState>({
     currentTime: 0,
     isPlaying: false,
     speed: 1,
   });
+
+  // Evidence bridge (Recommendation Evidence Frames): the Coaching Recommendations
+  // card dispatches a window event when a coach clicks "View evidence"; we pause,
+  // seek the video to that timestamp, scroll the player into view, and briefly flash
+  // the frame so the coach sees where AVA found the limiter. Decoupled — the card
+  // never imports the player.
+  useEffect(() => {
+    const onSeek = (event: Event) => {
+      const detail = (event as CustomEvent<{ timeS: number }>).detail;
+      if (!detail || typeof detail.timeS !== "number" || !Number.isFinite(detail.timeS)) return;
+      surfaceRef.current?.pause();
+      surfaceRef.current?.seek(detail.timeS);
+      containerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setFlash(true);
+      window.setTimeout(() => setFlash(false), 1600);
+    };
+    window.addEventListener("ava:evidence-seek", onSeek as EventListener);
+    return () => window.removeEventListener("ava:evidence-seek", onSeek as EventListener);
+  }, []);
 
   const hasFrames = frames.length > 0;
   const currentIndex = hasFrames ? frameIndexForTime(frames, state.currentTime) : 0;
@@ -113,6 +147,12 @@ export default function OverlayVideoPlayer({
   }, [frames]);
 
   return (
+    <div
+      ref={containerRef}
+      className={`scroll-mt-24 rounded-2xl transition-all duration-300 ${
+        flash ? "ring-2 ring-[#2f80ed] ring-offset-2 ring-offset-[#081019]" : "ring-0"
+      }`}
+    >
     <OverlaySurface
       ref={surfaceRef}
       videoUrl={videoUrl}
@@ -121,6 +161,9 @@ export default function OverlayVideoPlayer({
       stepCadenceHz={stepCadenceHz}
       stepContactCount={stepContactCount}
       calibration={calibration}
+      cameraEvidence={cameraEvidence}
+      sourceWidth={sourceWidth}
+      sourceHeight={sourceHeight}
       onState={setState}
       overlaySlot={
         <>
@@ -150,6 +193,8 @@ export default function OverlayVideoPlayer({
           lastTime={lastTime}
           currentFrameTime={currentFrameTime}
           speed={state.speed}
+          sourceFps={sourceFps}
+          analysisFps={analysisFps}
           speeds={SPEEDS}
           onTogglePlay={() => surfaceRef.current?.togglePlay()}
           onSeek={(time) => surfaceRef.current?.seek(time)}
@@ -159,5 +204,6 @@ export default function OverlayVideoPlayer({
         />
       }
     />
+    </div>
   );
 }

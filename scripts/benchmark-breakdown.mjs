@@ -70,7 +70,7 @@ try {
   writeFileSync(
     path.join(out, "tsconfig.json"),
     JSON.stringify({
-      compilerOptions: { outDir: out, rootDir: path.join(root, "src"), module: "commonjs", target: "es2022", skipLibCheck: true, esModuleInterop: true, strict: false, moduleResolution: "node", baseUrl: root, paths: { "@/*": ["src/*"] } },
+      compilerOptions: { outDir: out, rootDir: path.join(root, "src"), module: "commonjs", target: "es2022", skipLibCheck: true, esModuleInterop: true, resolveJsonModule: true, strict: false, moduleResolution: "node", baseUrl: root, paths: { "@/*": ["src/*"] } },
       files: [
         path.join(root, "src/lib/video/overlay.ts"),
         path.join(root, "src/lib/video/fps.ts"),
@@ -113,7 +113,7 @@ try {
     const m = computeSprintMeasurements(frames, points, W, H);
     console.log(`\n### ${label} ###`);
     console.log(`metres/pixel: ${m.metersPerPixel?.toExponential(4)}   zone dist: ${m.zone?.distanceM} m`);
-    console.log(`start crossing: ${num(m.zoneEntryTimeS, 4)}s   finish crossing: ${num(m.zoneExitTimeS, 4)}s   zone time: ${num(m.zoneTimeS, 4)}s`);
+    console.log(`start crossing: ${num(m.zoneEntryTimeS, 4)}s   finish crossing: ${num(m.zoneExitTimeS, 4)}s   zone time raw/reported: ${num(m.rawZoneTimeS, 6)}s / ${num(m.reportedZoneTimeS, 2)}s`);
     console.log(`contacts: full-run ${m.totalContacts} (L${m.leftContacts}/R${m.rightContacts})   in-zone ${m.validContacts} (L${m.validLeftContacts}/R${m.validRightContacts})`);
     console.log(`\n  in-zone steps (contact-to-contact):`);
     console.log(`   #  side  time     worldX   from→  stepLen(m)`);
@@ -126,7 +126,11 @@ try {
     const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
     console.log(`\n  step length — individual mean: ${num(m.avgIndividualStepLengthM, 3)} m   zone D÷N: ${num(m.avgZoneStepLengthM, 3)} m`);
     console.log(`  per-side (median): L ${num(m.leftStepLengthM, 3)}  R ${num(m.rightStepLengthM, 3)}   (per-side mean: L ${num(avg(lefts), 3)}  R ${num(avg(rights), 3)})`);
-    console.log(`  frequency: combined ${num(m.combinedStepFrequencyHz)}  L ${num(m.leftStepFrequencyHz)}  R ${num(m.rightStepFrequencyHz)}   velocity: zone ${num(m.zoneVelocityMps)}  max ${num(m.maxVelocityMps)}`);
+    console.log(`  peak stride length: ${num(m.peakStrideLengthM, 3)} m   frequency: combined ${num(m.combinedStepFrequencyHz)}  L ${num(m.leftStepFrequencyHz)}  R ${num(m.rightStepFrequencyHz)}`);
+    console.log(`  velocity raw/reported: zone ${num(m.rawZoneVelocityMps, 6)} / ${num(m.reportedZoneVelocityMps)}   top ${num(m.rawMaxVelocityMps, 6)} / ${num(m.reportedMaxVelocityMps)}`);
+    for (const window of m.strideVelocityWindows) {
+      console.log(`    stride ${window.startContactIndex}→${window.endContactIndex}: ${num(window.distanceM, 4)}m ÷ raw ${num(window.rawDurationS, 6)}s / reported ${num(window.reportedDurationS, 2)}s = raw ${num(window.rawVelocityMps, 4)} / reported ${num(window.reportedVelocityMps, 4)} m/s`);
+    }
 
     const ava = assembleAvaValues(m, null, { activeFps: fps });
     console.log(`\n  AVA vs benchmark:`);

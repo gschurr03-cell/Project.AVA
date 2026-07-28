@@ -42,6 +42,28 @@ export interface ForecastSession {
   avgStepLengthM: number | null;
   combinedStepFrequencyHz: number | null;
   qualityScore: number | null; // 0–100 recording quality
+  zoneMetricSchemaVersion?: "zone-step-metrics-v1" | "legacy" | null;
+  zoneStepSampleCount?: number | null;
+  zoneStepConfidence?: ForecastConfidence | null;
+}
+
+/** PB inputs may use step metrics only when semantics and evidence are compatible. */
+export function authoritativeStepMetricForForecast(
+  session: ForecastSession,
+): { avgStepLengthM: number; combinedStepFrequencyHz: number } | null {
+  if (
+    session.zoneMetricSchemaVersion !== "zone-step-metrics-v1" ||
+    (session.zoneStepSampleCount ?? 0) < 4 ||
+    !["high", "medium"].includes(session.zoneStepConfidence ?? "insufficient") ||
+    session.avgStepLengthM == null ||
+    session.combinedStepFrequencyHz == null ||
+    !Number.isFinite(session.avgStepLengthM) ||
+    !Number.isFinite(session.combinedStepFrequencyHz)
+  ) return null;
+  return {
+    avgStepLengthM: session.avgStepLengthM,
+    combinedStepFrequencyHz: session.combinedStepFrequencyHz,
+  };
 }
 
 export interface VelocitySample {

@@ -10,7 +10,7 @@ import { getExercise, type CoachingRecommendation } from "@/lib/coaching/recomme
  */
 
 const BADGE_BASE = "rounded px-2 py-0.5 text-xs font-semibold uppercase tracking-wide border";
-const LABEL = "text-xs font-semibold uppercase tracking-wide text-[#6B7280]";
+const LABEL = "text-xs font-semibold uppercase tracking-wide text-[#7e8797]";
 
 /** Urgency tone by recommendation priority (high/medium/low). */
 const PRIORITY_TONE: Record<string, AvaTone> = {
@@ -30,10 +30,10 @@ function PriorityBadge({ priority }: { priority: string }) {
 function SupportingMetrics({ metrics }: { metrics: CoachingRecommendation["supportingMetrics"] }) {
   if (metrics.length === 0) return null;
   return (
-    <ul className="mt-1 space-y-0.5 text-sm text-[#A0A2A8]">
+    <ul className="mt-1 space-y-0.5 text-sm text-[#b3bccb]">
       {metrics.map((metric) => (
         <li key={metric.label}>
-          <span className="font-medium text-[#F5F5F7]">{metric.label}:</span> {metric.value}
+          <span className="font-medium text-[#f5f7fb]">{metric.label}:</span> {metric.value}
         </li>
       ))}
     </ul>
@@ -46,16 +46,16 @@ function ExerciseDetail({ id }: { id: string }) {
   if (!exercise) return null;
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
-      <p className="font-medium text-[#F5F5F7]">{exercise.name}</p>
+      <p className="font-medium text-[#f5f7fb]">{exercise.name}</p>
 
       <p className={`mt-2 ${LABEL}`}>Purpose</p>
-      <p className="text-sm text-[#A0A2A8]">{exercise.purpose}</p>
+      <p className="text-sm text-[#b3bccb]">{exercise.purpose}</p>
 
       <p className={`mt-2 ${LABEL}`}>Cue</p>
-      <p className="text-sm text-[#A0A2A8]">{exercise.coachingCue}</p>
+      <p className="text-sm text-[#b3bccb]">{exercise.coachingCue}</p>
 
       <p className={`mt-2 ${LABEL}`}>Difficulty</p>
-      <p className="text-sm text-[#A0A2A8]">{exercise.difficulty}</p>
+      <p className="text-sm text-[#b3bccb]">{exercise.difficulty}</p>
     </div>
   );
 }
@@ -66,7 +66,7 @@ function ExerciseCompact({ id }: { id: string }) {
   if (!exercise) return null;
   return (
     <li>
-      <span className="font-medium text-[#A0A2A8]">{exercise.name}</span> — {exercise.coachingCue} (
+      <span className="font-medium text-[#b3bccb]">{exercise.name}</span> — {exercise.coachingCue} (
       {exercise.difficulty})
     </li>
   );
@@ -80,7 +80,7 @@ export default function RecommendationsPanel({
   if (recommendations.length === 0) {
     return (
       <AvaPanel eyebrow="Training Plan" title="Recommendations">
-        <p className="text-sm text-[#A0A2A8]">No recommendations available.</p>
+        <p className="text-sm text-[#b3bccb]">No recommendations available.</p>
       </AvaPanel>
     );
   }
@@ -91,19 +91,19 @@ export default function RecommendationsPanel({
     <AvaPanel eyebrow="Training Plan" title="Recommendations">
       <div className="space-y-6">
         {/* Top priority */}
-        <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
+        <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
           <div className="flex items-center justify-between gap-3">
             <p className={LABEL}>Top Priority</p>
             <div className="flex items-center gap-2">
               <PriorityBadge priority={top.priority} />
-              <span className="text-xs font-medium text-[#6B7280]">{top.confidence}% confidence</span>
+              <span className="text-xs font-medium text-[#7e8797]">{top.confidence}% confidence</span>
             </div>
           </div>
 
-          <h3 className="mt-2 text-lg font-semibold text-[#F5F5F7]">{top.title}</h3>
+          <h3 className="mt-2 text-lg font-semibold text-[#f5f7fb]">{top.title}</h3>
 
           <p className={`mt-3 ${LABEL}`}>Why this matters</p>
-          <p className="text-sm text-[#A0A2A8]">{top.rationale}</p>
+          <p className="text-sm text-[#b3bccb]">{top.rationale}</p>
 
           <p className={`mt-3 ${LABEL}`}>Supporting Metrics</p>
           <SupportingMetrics metrics={top.supportingMetrics} />
@@ -123,29 +123,29 @@ export default function RecommendationsPanel({
         {/* Secondary priorities */}
         {secondary.length > 0 && (
           <div>
-            <h3 className="mb-2 text-base font-semibold text-[#F5F5F7]">Secondary Priorities</h3>
+            <h3 className="mb-2 text-base font-semibold text-[#f5f7fb]">Secondary Priorities</h3>
             <div className="space-y-3">
               {secondary.map((recommendation) => (
                 <div
                   key={recommendation.id}
-                  className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4"
+                  className="rounded-xl border border-white/[0.06] bg-[#182233] p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-semibold text-[#F5F5F7]">{recommendation.title}</p>
+                    <p className="font-semibold text-[#f5f7fb]">{recommendation.title}</p>
                     <div className="flex items-center gap-2">
                       <PriorityBadge priority={recommendation.priority} />
-                      <span className="text-xs font-medium text-[#6B7280]">
+                      <span className="text-xs font-medium text-[#7e8797]">
                         {recommendation.confidence}%
                       </span>
                     </div>
                   </div>
 
-                  <p className="mt-2 text-sm text-[#A0A2A8]">{recommendation.explanation}</p>
+                  <p className="mt-2 text-sm text-[#b3bccb]">{recommendation.explanation}</p>
 
                   <SupportingMetrics metrics={recommendation.supportingMetrics} />
 
                   {recommendation.drills.length > 0 && (
-                    <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#6B7280]">
+                    <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#7e8797]">
                       {recommendation.drills.map((id) => (
                         <ExerciseCompact key={id} id={id} />
                       ))}

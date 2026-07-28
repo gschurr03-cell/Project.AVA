@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Canonical accuracy standard
+
+Read and follow [`docs/accuracy-manifesto.md`](docs/accuracy-manifesto.md) before proposing
+or changing any feature, algorithm, model, metric, database, benchmark, recommendation,
+user interface, or architecture. Work that violates it is not ready to merge or release.
+
 ## What this is
 
 Project AVA is an AI-powered sprint biomechanics web platform. Coaches upload a

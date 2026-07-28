@@ -17,10 +17,10 @@ import {
 // Categorical phase colours (a legend, not performance status). A warm/neutral ramp
 // with no blue/teal — reads at a glance on the dark surface and stays on-brand.
 const PHASE_COLOR: Record<SprintPhase, string> = {
-  start: "bg-[#6B7280]",
-  acceleration: "bg-[#CD7F32]",
-  transition: "bg-[#D4AF37]",
-  maxVelocity: "bg-[#D72638]",
+  start: "bg-[#7e8797]",
+  acceleration: "bg-[#f5c451]",
+  transition: "bg-[#f5c451]",
+  maxVelocity: "bg-[#2f80ed]",
   maintenance: "bg-[#E4A672]",
   deceleration: "bg-[#4b4b52]",
 };
@@ -42,14 +42,14 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
 
   return (
     <AvaPanel eyebrow="Sprint Phases" title="Phase Timeline">
-      <p className="-mt-3 mb-4 text-xs text-[#6B7280]">
+      <p className="-mt-3 mb-4 text-xs text-[#7e8797]">
         Detected from the velocity profile and step marks. Phase boundaries are estimates.
       </p>
 
       {!report.available ? (
-        <div className="rounded-lg border border-[#CD7F32]/40 bg-[#CD7F32]/10 p-4">
-          <p className="text-sm font-semibold text-[#E0A063]">Phases unavailable</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#A0A2A8]">
+        <div className="rounded-lg border border-[#f5c451]/40 bg-[#f5c451]/10 p-4">
+          <p className="text-sm font-semibold text-[#f5c451]">Phases unavailable</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#b3bccb]">
             {report.warnings.map((w) => (
               <li key={w}>{w}</li>
             ))}
@@ -71,7 +71,7 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
               );
             })}
           </div>
-          <div className="mt-1 flex justify-between text-xs text-[#6B7280]">
+          <div className="mt-1 flex justify-between text-xs text-[#7e8797]">
             <span>{fmt(report.spanStart)}</span>
             {report.peakVelocityTime != null && (
               <span>Peak velocity ≈ {fmt(report.peakVelocityTime)}</span>
@@ -87,7 +87,7 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
           </ul>
 
           {report.warnings.length > 0 && (
-            <ul className="mt-4 list-disc space-y-1 pl-5 text-xs text-[#E0A063]">
+            <ul className="mt-4 list-disc space-y-1 pl-5 text-xs text-[#f5c451]">
               {report.warnings.map((w) => (
                 <li key={w}>{w}</li>
               ))}
@@ -101,18 +101,18 @@ export default function PhaseTimelinePanel({ report }: { report: PhaseReport }) 
 
 function PhaseRow({ band }: { band: PhaseBand }) {
   return (
-    <li className="rounded-xl border border-white/[0.06] bg-[#19191C] p-3">
+    <li className="rounded-xl border border-white/[0.06] bg-[#182233] p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className={`inline-block h-3 w-3 rounded-sm ${PHASE_COLOR[band.phase]}`} />
-          <span className="text-sm font-semibold text-[#F5F5F7]">{PHASE_LABELS[band.phase]}</span>
-          <span className="font-mono text-xs text-[#6B7280]">
+          <span className="text-sm font-semibold text-[#f5f7fb]">{PHASE_LABELS[band.phase]}</span>
+          <span className="font-mono text-xs text-[#7e8797]">
             {fmt(band.startTime)}–{fmt(band.endTime)}
           </span>
         </div>
         <ConfidenceBadge confidence={band.confidence} />
       </div>
-      <p className="mt-1 text-sm text-[#A0A2A8]">{band.explanation}</p>
+      <p className="mt-1 text-sm text-[#b3bccb]">{band.explanation}</p>
     </li>
   );
 }

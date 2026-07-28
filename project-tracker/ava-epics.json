@@ -1,0 +1,290 @@
+[
+  {
+    "epic_id": "AVA-EPIC-001",
+    "title": "Engineering Foundation",
+    "objective": "Reproducible repository, builds and engineering governance",
+    "included_scope": "Reproducible repository, builds and engineering governance",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Foundation",
+    "dependencies": [],
+    "current_percentage": 57,
+    "target_percentage": 100,
+    "owner_type": "DevOps or Platform Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-002",
+    "title": "Architecture and Result Authority",
+    "objective": "One versioned source for analysis, manifests and intelligence",
+    "included_scope": "One versioned source for analysis, manifests and intelligence",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Native vertical slice",
+    "dependencies": [],
+    "current_percentage": 58,
+    "target_percentage": 100,
+    "owner_type": "Backend Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-003",
+    "title": "Identity, Authentication and Authorization",
+    "objective": "Secure identity and tenant isolation across clients",
+    "included_scope": "Secure identity and tenant isolation across clients",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Staging",
+    "dependencies": [],
+    "current_percentage": 55,
+    "target_percentage": 100,
+    "owner_type": "Security Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-004",
+    "title": "Video Ingestion and Storage",
+    "objective": "Reliable validated upload, retention and deletion",
+    "included_scope": "Reliable validated upload, retention and deletion",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Native vertical slice",
+    "dependencies": [],
+    "current_percentage": 51,
+    "target_percentage": 100,
+    "owner_type": "Backend Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-005",
+    "title": "Worker and Analysis Reliability",
+    "objective": "Deployable observable MediaPipe job execution",
+    "included_scope": "Deployable observable MediaPipe job execution",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Native vertical slice",
+    "dependencies": [],
+    "current_percentage": 65,
+    "target_percentage": 100,
+    "owner_type": "Computer Vision Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-006",
+    "title": "Metrics, Confidence and Scientific Validation",
+    "objective": "Scientifically responsible metrics, confidence and claims",
+    "included_scope": "Scientifically responsible metrics, confidence and claims",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Scientific beta",
+    "dependencies": [],
+    "current_percentage": 30,
+    "target_percentage": 100,
+    "owner_type": "Data or Scientific Engineer",
+    "risk_level": "Critical"
+  },
+  {
+    "epic_id": "AVA-EPIC-007",
+    "title": "Reports and Coaching Intelligence",
+    "objective": "Consistent reports, root cause, recommendations and priorities",
+    "included_scope": "Consistent reports, root cause, recommendations and priorities",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Scientific beta",
+    "dependencies": [],
+    "current_percentage": 53,
+    "target_percentage": 100,
+    "owner_type": "Backend Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-008",
+    "title": "Native iOS Platform",
+    "objective": "Signed connected accessible native athlete workflow",
+    "included_scope": "Signed connected accessible native athlete workflow",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Native vertical slice",
+    "dependencies": [],
+    "current_percentage": 38,
+    "target_percentage": 100,
+    "owner_type": "Native iOS Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-009",
+    "title": "Training and Longitudinal Coaching",
+    "objective": "Persisted coach-approved safe training lifecycle",
+    "included_scope": "Persisted coach-approved safe training lifecycle",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Training beta",
+    "dependencies": [],
+    "current_percentage": 34,
+    "target_percentage": 100,
+    "owner_type": "Backend Engineer",
+    "risk_level": "Critical"
+  },
+  {
+    "epic_id": "AVA-EPIC-010",
+    "title": "Security, Privacy and Legal",
+    "objective": "Protect data and constrain claims and release risk",
+    "included_scope": "Protect data and constrain claims and release risk",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Closed beta",
+    "dependencies": [],
+    "current_percentage": 48,
+    "target_percentage": 100,
+    "owner_type": "Security Engineer",
+    "risk_level": "Critical"
+  },
+  {
+    "epic_id": "AVA-EPIC-011",
+    "title": "Infrastructure, Operations and Observability",
+    "objective": "Isolated environments, recovery, telemetry and capacity",
+    "included_scope": "Isolated environments, recovery, telemetry and capacity",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Staging",
+    "dependencies": [],
+    "current_percentage": 31,
+    "target_percentage": 100,
+    "owner_type": "DevOps or Platform Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-012",
+    "title": "CI, Testing and Release Engineering",
+    "objective": "Enforced evidence-producing quality and supply-chain gates",
+    "included_scope": "Enforced evidence-producing quality and supply-chain gates",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Foundation",
+    "dependencies": [],
+    "current_percentage": 47,
+    "target_percentage": 100,
+    "owner_type": "QA Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-013",
+    "title": "History, Benchmarks and Athlete Progress",
+    "objective": "Compatible longitudinal and comparison truth",
+    "included_scope": "Compatible longitudinal and comparison truth",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Scientific beta",
+    "dependencies": [],
+    "current_percentage": 45,
+    "target_percentage": 100,
+    "owner_type": "Data or Scientific Engineer",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-014",
+    "title": "Beta, App Store and Public Launch",
+    "objective": "Controlled progression through release stages",
+    "included_scope": "Controlled progression through release stages",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Closed beta",
+    "dependencies": [],
+    "current_percentage": 24,
+    "target_percentage": 100,
+    "owner_type": "Product or Operations Lead",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-015",
+    "title": "Coach Operations and Notifications",
+    "objective": "Least-privilege review, escalation and communication",
+    "included_scope": "Least-privilege review, escalation and communication",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Coach operations",
+    "dependencies": [],
+    "current_percentage": 25,
+    "target_percentage": 100,
+    "owner_type": "Product or Operations Lead",
+    "risk_level": "High"
+  },
+  {
+    "epic_id": "AVA-EPIC-016",
+    "title": "Technical Debt and Documentation",
+    "objective": "Reduce ambiguity without derailing the critical path",
+    "included_scope": "Reduce ambiguity without derailing the critical path",
+    "excluded_scope": "Unverified expansion outside audited AVA Sprint scope",
+    "audit_evidence": [
+      "docs/audit/ava-codebase-audit-summary.md",
+      "docs/backlog/ava-master-engineering-backlog.md"
+    ],
+    "completion_definition": "All child tasks meet the definition of complete with required environment evidence.",
+    "release_stage": "Foundation",
+    "dependencies": [],
+    "current_percentage": 45,
+    "target_percentage": 100,
+    "owner_type": "Backend Engineer",
+    "risk_level": "High"
+  }
+]

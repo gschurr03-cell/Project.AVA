@@ -3,8 +3,8 @@ import { updateSessionCalibration } from "@/app/sessions/actions";
 import { MIN_FPS, MAX_FPS } from "@/lib/video/fps";
 
 const FIELD =
-  "mt-1 rounded-lg border border-white/[0.08] bg-[#0d0d0f] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none";
-const FIELD_LABEL = "block text-sm font-medium text-[#A0A2A8]";
+  "mt-1 rounded-lg border border-white/[0.08] bg-[#081019] px-3 py-2 text-sm text-[#f5f7fb] placeholder:text-[#7e8797] focus:border-[#2f80ed]/50 focus:outline-none";
+const FIELD_LABEL = "block text-sm font-medium text-[#b3bccb]";
 
 /**
  * Coach-controlled calibration inputs for a session (Day 61):
@@ -24,6 +24,10 @@ export default function CalibrationControlsForm({
   zoneStartS,
   zoneEndS,
   zoneDistanceM,
+  timingMode,
+  timingDirection,
+  timingBodyReference,
+  timingSplits,
 }: {
   sessionId: string;
   detectedFps: number | null;
@@ -31,10 +35,14 @@ export default function CalibrationControlsForm({
   zoneStartS: number | null;
   zoneEndS: number | null;
   zoneDistanceM: number | null;
+  timingMode: string;
+  timingDirection: string;
+  timingBodyReference: string;
+  timingSplits: number[];
 }) {
   return (
-    <AvaPanel eyebrow="Calibration" title="Calibration Controls">
-      <p className="-mt-3 mb-4 text-xs text-[#6B7280]">
+    <AvaPanel eyebrow="Analysis Controls" title="Calibration & Timing Workspace">
+      <p className="-mt-3 mb-4 text-xs text-[#7e8797]">
         Improve timing and real-world accuracy. These override detected values and
         recompute step, calibration, and phase timing.
       </p>
@@ -43,15 +51,15 @@ export default function CalibrationControlsForm({
         <input type="hidden" name="id" value={sessionId} />
 
         {/* FPS override */}
-        <fieldset className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-          <legend className="px-1 text-sm font-semibold text-[#F5F5F7]">Frame rate</legend>
-          <p className="mb-3 text-xs text-[#6B7280]">
+        <fieldset className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
+          <legend className="px-1 text-sm font-semibold text-[#f5f7fb]">Frame rate</legend>
+          <p className="mb-3 text-xs text-[#7e8797]">
             Detected FPS:{" "}
-            <span className="font-medium text-[#A0A2A8]">{detectedFps ?? "unknown"}</span>. Override
+            <span className="font-medium text-[#b3bccb]">{detectedFps ?? "unknown"}</span>. Override
             it if the video&apos;s true frame rate differs (e.g. slow-motion capture).
           </p>
           <label htmlFor="fps_override" className={FIELD_LABEL}>
-            FPS override <span className="text-[#6B7280]">({MIN_FPS}–{MAX_FPS})</span>
+            FPS override <span className="text-[#7e8797]">({MIN_FPS}–{MAX_FPS})</span>
           </label>
           <input
             id="fps_override"
@@ -67,19 +75,61 @@ export default function CalibrationControlsForm({
           />
         </fieldset>
 
+        <fieldset className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
+          <legend className="px-1 text-sm font-semibold text-[#f5f7fb]">Timing profile</legend>
+          <p className="mb-3 text-xs text-[#7e8797]">
+            These settings are captured in a new immutable analysis version when saved.
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <label className={FIELD_LABEL}>
+              Mode
+              <select name="timing_mode" defaultValue={timingMode} className={`${FIELD} w-full`}>
+                <option value="fly">Fly timing</option>
+                <option value="split">Split timing</option>
+                <option value="custom">Custom timing</option>
+              </select>
+            </label>
+            <label className={FIELD_LABEL}>
+              Direction
+              <select name="timing_direction" defaultValue={timingDirection} className={`${FIELD} w-full`}>
+                <option value="auto">Automatic</option>
+                <option value="left_to_right">Left to right</option>
+                <option value="right_to_left">Right to left</option>
+              </select>
+            </label>
+            <label className={FIELD_LABEL}>
+              Body reference
+              <select name="timing_body_reference" defaultValue={timingBodyReference} className={`${FIELD} w-full`}>
+                <option value="torso">Torso</option>
+                <option value="hips">Hips</option>
+                <option value="head">Head</option>
+              </select>
+            </label>
+          </div>
+          <label className={`${FIELD_LABEL} mt-4`}>
+            Split distances <span className="text-[#7e8797]">(metres, comma-separated)</span>
+            <input
+              name="timing_splits"
+              defaultValue={timingSplits.join(", ")}
+              placeholder="e.g. 10, 20"
+              className={`${FIELD} w-full`}
+            />
+          </label>
+        </fieldset>
+
         {/* Calibration zone */}
-        <fieldset className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-          <legend className="px-1 text-sm font-semibold text-[#F5F5F7]">
+        <fieldset className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
+          <legend className="px-1 text-sm font-semibold text-[#f5f7fb]">
             Known-distance zone
           </legend>
-          <p className="mb-3 text-xs text-[#6B7280]">
+          <p className="mb-3 text-xs text-[#7e8797]">
             Mark a segment of the clip with a known distance (e.g. a 30 m fly zone) to get a
             high-confidence scale and segment velocity. Set all three, or leave all blank.
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label htmlFor="calibration_zone_start_s" className={FIELD_LABEL}>
-                Zone start <span className="text-[#6B7280]">(s)</span>
+                Zone start <span className="text-[#7e8797]">(s)</span>
               </label>
               <input
                 id="calibration_zone_start_s"
@@ -95,7 +145,7 @@ export default function CalibrationControlsForm({
             </div>
             <div>
               <label htmlFor="calibration_zone_end_s" className={FIELD_LABEL}>
-                Zone end <span className="text-[#6B7280]">(s)</span>
+                Zone end <span className="text-[#7e8797]">(s)</span>
               </label>
               <input
                 id="calibration_zone_end_s"
@@ -111,7 +161,7 @@ export default function CalibrationControlsForm({
             </div>
             <div>
               <label htmlFor="calibration_zone_distance_m" className={FIELD_LABEL}>
-                Known distance <span className="text-[#6B7280]">(m)</span>
+                Known distance <span className="text-[#7e8797]">(m)</span>
               </label>
               <input
                 id="calibration_zone_distance_m"
@@ -130,9 +180,9 @@ export default function CalibrationControlsForm({
 
         <button
           type="submit"
-          className="ava-red-glow rounded-lg bg-[#D72638] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#e63a4b]"
+          className="ava-red-glow rounded-lg bg-[#2f80ed] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3b8eff]"
         >
-          Save calibration
+          Save & create new analysis version
         </button>
       </form>
     </AvaPanel>

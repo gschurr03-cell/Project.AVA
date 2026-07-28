@@ -1,0 +1,237 @@
+[
+  {
+    "risk_id": "R01",
+    "risk": "Wrong athlete/data access",
+    "likelihood": "M",
+    "impact": "Critical",
+    "current_control": "RLS/ownership",
+    "mitigating_task_ids": [
+      "AVA-0005"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "staging negative matrix + alert"
+  },
+  {
+    "risk_id": "R02",
+    "risk": "Incorrect sprint metric",
+    "likelihood": "H",
+    "impact": "Critical",
+    "current_control": "confidence/withholding",
+    "mitigating_task_ids": [
+      "AVA-0014",
+      "AVA-0015",
+      "AVA-0016",
+      "AVA-0034"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "locked references + review"
+  },
+  {
+    "risk_id": "R03",
+    "risk": "Scientific overclaim",
+    "likelihood": "H",
+    "impact": "High",
+    "current_control": "language policies",
+    "mitigating_task_ids": [
+      "AVA-0016",
+      "AVA-0037"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "claims registry enforcement"
+  },
+  {
+    "risk_id": "R04",
+    "risk": "Unsafe training recommendation",
+    "likelihood": "M",
+    "impact": "Critical",
+    "current_control": "disabled/approval rules",
+    "mitigating_task_ids": [
+      "AVA-0020",
+      "AVA-0021",
+      "AVA-0023",
+      "AVA-0037"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "professional review + durable gates"
+  },
+  {
+    "risk_id": "R05",
+    "risk": "Original video/data loss",
+    "likelihood": "M",
+    "impact": "Critical",
+    "current_control": "private storage",
+    "mitigating_task_ids": [
+      "AVA-0011",
+      "AVA-0012",
+      "AVA-0027"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "reconciliation/backup/restore"
+  },
+  {
+    "risk_id": "R06",
+    "risk": "Failed/orphan upload",
+    "likelihood": "H",
+    "impact": "High",
+    "current_control": "lifecycle checks",
+    "mitigating_task_ids": [
+      "AVA-0026",
+      "AVA-0027"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "resumable idempotent upload"
+  },
+  {
+    "risk_id": "R07",
+    "risk": "Analysis backlog/stuck lease",
+    "likelihood": "M",
+    "impact": "High",
+    "current_control": "leases/retries",
+    "mitigating_task_ids": [
+      "AVA-0009",
+      "AVA-0010",
+      "AVA-0028",
+      "AVA-0029"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "hosted load/alerts/dead-letter ops"
+  },
+  {
+    "risk_id": "R08",
+    "risk": "Stale offline plan",
+    "likelihood": "M",
+    "impact": "Critical",
+    "current_control": "offline safety contracts",
+    "mitigating_task_ids": [
+      "AVA-0022",
+      "AVA-0023"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "expiry/sync/provider/device tests"
+  },
+  {
+    "risk_id": "R09",
+    "risk": "Lost pain/safety event",
+    "likelihood": "M",
+    "impact": "Critical",
+    "current_control": "pure event model",
+    "mitigating_task_ids": [
+      "AVA-0023",
+      "AVA-0043"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "durable ingestion + paging"
+  },
+  {
+    "risk_id": "R10",
+    "risk": "Secret/service-role exposure",
+    "likelihood": "L",
+    "impact": "Critical",
+    "current_control": "separation/scanner",
+    "mitigating_task_ids": [
+      "AVA-0003",
+      "AVA-0031",
+      "AVA-0035"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "managed rotation + monitoring"
+  },
+  {
+    "risk_id": "R11",
+    "risk": "Uncompleted deletion",
+    "likelihood": "M",
+    "impact": "High",
+    "current_control": "runbook",
+    "mitigating_task_ids": [
+      "AVA-0012",
+      "AVA-0027"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "end-to-end erasure job/evidence"
+  },
+  {
+    "risk_id": "R12",
+    "risk": "Native crash/background loss",
+    "likelihood": "H",
+    "impact": "High",
+    "current_control": "portable tests",
+    "mitigating_task_ids": [
+      "AVA-0007",
+      "AVA-0008",
+      "AVA-0025",
+      "AVA-0036"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "device matrix/crash reporting"
+  },
+  {
+    "risk_id": "R13",
+    "risk": "Model/version drift",
+    "likelihood": "M",
+    "impact": "High",
+    "current_control": "provenance/manifest",
+    "mitigating_task_ids": [
+      "AVA-0017",
+      "AVA-0018",
+      "AVA-0034",
+      "AVA-0047"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "release pinning/equivalence alert"
+  },
+  {
+    "risk_id": "R14",
+    "risk": "Cost overrun",
+    "likelihood": "M",
+    "impact": "Medium",
+    "current_control": "cost model",
+    "mitigating_task_ids": [
+      "AVA-0013",
+      "AVA-0042"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "quotas/budgets/alerts"
+  },
+  {
+    "risk_id": "R15",
+    "risk": "Coach distrust/misreading",
+    "likelihood": "H",
+    "impact": "High",
+    "current_control": "cautious language",
+    "mitigating_task_ids": [
+      "AVA-0017",
+      "AVA-0024",
+      "AVA-0037"
+    ],
+    "residual_risk": "Unaccepted until evidence exists",
+    "milestone": "M6",
+    "evidence_required": "blinded review/comprehension"
+  },
+  {
+    "risk_id": "R16",
+    "risk": "Database integration assertions can be omitted from canonical pgTAP evidence",
+    "likelihood": "M",
+    "impact": "High",
+    "current_control": "Failure is visible in npx supabase test db; no false pass accepted",
+    "mitigating_task_ids": [
+      "AVA-0051"
+    ],
+    "residual_risk": "Unaccepted until orchestration assertions run under a valid TAP plan",
+    "milestone": "M0",
+    "evidence_required": "Passing canonical database suite with orchestration assertion count"
+  }
+]

@@ -1,0 +1,422 @@
+[
+  {
+    "dependency_id": "DEP-AVA-0002-AVA-0003",
+    "from_task_id": "AVA-0002",
+    "to_task_id": "AVA-0003",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0003 names AVA-0002 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0002-AVA-0004",
+    "from_task_id": "AVA-0002",
+    "to_task_id": "AVA-0004",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0004 names AVA-0002 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0004-AVA-0005",
+    "from_task_id": "AVA-0004",
+    "to_task_id": "AVA-0005",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0005 names AVA-0004 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0004-AVA-0006",
+    "from_task_id": "AVA-0004",
+    "to_task_id": "AVA-0006",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0006 names AVA-0004 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0005-AVA-0006",
+    "from_task_id": "AVA-0005",
+    "to_task_id": "AVA-0006",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0006 names AVA-0005 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0006-AVA-0007",
+    "from_task_id": "AVA-0006",
+    "to_task_id": "AVA-0007",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0007 names AVA-0006 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0002-AVA-0009",
+    "from_task_id": "AVA-0002",
+    "to_task_id": "AVA-0009",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0009 names AVA-0002 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0004-AVA-0009",
+    "from_task_id": "AVA-0004",
+    "to_task_id": "AVA-0009",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0009 names AVA-0004 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0002-AVA-0010",
+    "from_task_id": "AVA-0002",
+    "to_task_id": "AVA-0010",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0010 names AVA-0002 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0002-AVA-0011",
+    "from_task_id": "AVA-0002",
+    "to_task_id": "AVA-0011",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0011 names AVA-0002 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0004-AVA-0011",
+    "from_task_id": "AVA-0004",
+    "to_task_id": "AVA-0011",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0011 names AVA-0004 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0004-AVA-0012",
+    "from_task_id": "AVA-0004",
+    "to_task_id": "AVA-0012",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0012 names AVA-0004 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0006-AVA-0012",
+    "from_task_id": "AVA-0006",
+    "to_task_id": "AVA-0012",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0012 names AVA-0006 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0002-AVA-0013",
+    "from_task_id": "AVA-0002",
+    "to_task_id": "AVA-0013",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0013 names AVA-0002 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0014-AVA-0015",
+    "from_task_id": "AVA-0014",
+    "to_task_id": "AVA-0015",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0015 names AVA-0014 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0015-AVA-0016",
+    "from_task_id": "AVA-0015",
+    "to_task_id": "AVA-0016",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0016 names AVA-0015 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0009-AVA-0017",
+    "from_task_id": "AVA-0009",
+    "to_task_id": "AVA-0017",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0017 names AVA-0009 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0017-AVA-0018",
+    "from_task_id": "AVA-0017",
+    "to_task_id": "AVA-0018",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0018 names AVA-0017 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0018-AVA-0019",
+    "from_task_id": "AVA-0018",
+    "to_task_id": "AVA-0019",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0019 names AVA-0018 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0005-AVA-0020",
+    "from_task_id": "AVA-0005",
+    "to_task_id": "AVA-0020",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0020 names AVA-0005 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0020-AVA-0021",
+    "from_task_id": "AVA-0020",
+    "to_task_id": "AVA-0021",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0021 names AVA-0020 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0006-AVA-0022",
+    "from_task_id": "AVA-0006",
+    "to_task_id": "AVA-0022",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0022 names AVA-0006 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0020-AVA-0022",
+    "from_task_id": "AVA-0020",
+    "to_task_id": "AVA-0022",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0022 names AVA-0020 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0021-AVA-0022",
+    "from_task_id": "AVA-0021",
+    "to_task_id": "AVA-0022",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0022 names AVA-0021 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0010-AVA-0023",
+    "from_task_id": "AVA-0010",
+    "to_task_id": "AVA-0023",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0023 names AVA-0010 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0020-AVA-0023",
+    "from_task_id": "AVA-0020",
+    "to_task_id": "AVA-0023",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0023 names AVA-0020 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0014-AVA-0024",
+    "from_task_id": "AVA-0014",
+    "to_task_id": "AVA-0024",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0024 names AVA-0014 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0017-AVA-0024",
+    "from_task_id": "AVA-0017",
+    "to_task_id": "AVA-0024",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0024 names AVA-0017 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0007-AVA-0025",
+    "from_task_id": "AVA-0007",
+    "to_task_id": "AVA-0025",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0025 names AVA-0007 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0006-AVA-0026",
+    "from_task_id": "AVA-0006",
+    "to_task_id": "AVA-0026",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0026 names AVA-0006 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0012-AVA-0027",
+    "from_task_id": "AVA-0012",
+    "to_task_id": "AVA-0027",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0027 names AVA-0012 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0026-AVA-0027",
+    "from_task_id": "AVA-0026",
+    "to_task_id": "AVA-0027",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0027 names AVA-0026 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0009-AVA-0028",
+    "from_task_id": "AVA-0009",
+    "to_task_id": "AVA-0028",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0028 names AVA-0009 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0010-AVA-0028",
+    "from_task_id": "AVA-0010",
+    "to_task_id": "AVA-0028",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0028 names AVA-0010 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0010-AVA-0029",
+    "from_task_id": "AVA-0010",
+    "to_task_id": "AVA-0029",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0029 names AVA-0010 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0028-AVA-0029",
+    "from_task_id": "AVA-0028",
+    "to_task_id": "AVA-0029",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0029 names AVA-0028 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0001-AVA-0030",
+    "from_task_id": "AVA-0001",
+    "to_task_id": "AVA-0030",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0030 names AVA-0001 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0030-AVA-0031",
+    "from_task_id": "AVA-0030",
+    "to_task_id": "AVA-0031",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0031 names AVA-0030 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0004-AVA-0032",
+    "from_task_id": "AVA-0004",
+    "to_task_id": "AVA-0032",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0032 names AVA-0004 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0030-AVA-0032",
+    "from_task_id": "AVA-0030",
+    "to_task_id": "AVA-0032",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0032 names AVA-0030 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0030-AVA-0033",
+    "from_task_id": "AVA-0030",
+    "to_task_id": "AVA-0033",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0033 names AVA-0030 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0014-AVA-0034",
+    "from_task_id": "AVA-0014",
+    "to_task_id": "AVA-0034",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0034 names AVA-0014 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0030-AVA-0034",
+    "from_task_id": "AVA-0030",
+    "to_task_id": "AVA-0034",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0034 names AVA-0030 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0007-AVA-0035",
+    "from_task_id": "AVA-0007",
+    "to_task_id": "AVA-0035",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0035 names AVA-0007 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0008-AVA-0036",
+    "from_task_id": "AVA-0008",
+    "to_task_id": "AVA-0036",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0036 names AVA-0008 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0010-AVA-0036",
+    "from_task_id": "AVA-0010",
+    "to_task_id": "AVA-0036",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0036 names AVA-0010 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0010-AVA-0038",
+    "from_task_id": "AVA-0010",
+    "to_task_id": "AVA-0038",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0038 names AVA-0010 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0012-AVA-0038",
+    "from_task_id": "AVA-0012",
+    "to_task_id": "AVA-0038",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0038 names AVA-0012 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0017-AVA-0041",
+    "from_task_id": "AVA-0017",
+    "to_task_id": "AVA-0041",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0041 names AVA-0017 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0002-AVA-0042",
+    "from_task_id": "AVA-0002",
+    "to_task_id": "AVA-0042",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0042 names AVA-0002 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0010-AVA-0042",
+    "from_task_id": "AVA-0010",
+    "to_task_id": "AVA-0042",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0042 names AVA-0010 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0007-AVA-0043",
+    "from_task_id": "AVA-0007",
+    "to_task_id": "AVA-0043",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0043 names AVA-0007 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0023-AVA-0043",
+    "from_task_id": "AVA-0023",
+    "to_task_id": "AVA-0043",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0043 names AVA-0023 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0005-AVA-0044",
+    "from_task_id": "AVA-0005",
+    "to_task_id": "AVA-0044",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0044 names AVA-0005 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0010-AVA-0044",
+    "from_task_id": "AVA-0010",
+    "to_task_id": "AVA-0044",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0044 names AVA-0010 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0017-AVA-0046",
+    "from_task_id": "AVA-0017",
+    "to_task_id": "AVA-0046",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0046 names AVA-0017 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0017-AVA-0047",
+    "from_task_id": "AVA-0017",
+    "to_task_id": "AVA-0047",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0047 names AVA-0017 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0014-AVA-0048",
+    "from_task_id": "AVA-0014",
+    "to_task_id": "AVA-0048",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0048 names AVA-0014 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0014-AVA-0049",
+    "from_task_id": "AVA-0014",
+    "to_task_id": "AVA-0049",
+    "type": "hard technical dependency",
+    "rationale": "AVA-0049 names AVA-0014 as an audited prerequisite."
+  },
+  {
+    "dependency_id": "DEP-AVA-0030-AVA-0051",
+    "from_task_id": "AVA-0030",
+    "to_task_id": "AVA-0051",
+    "type": "hard technical dependency",
+    "rationale": "Canonical database integration evidence belongs behind the protected required-check baseline."
+  }
+]

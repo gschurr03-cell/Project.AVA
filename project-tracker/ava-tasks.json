@@ -1,0 +1,2587 @@
+[
+  {
+    "task_id": "AVA-0001",
+    "title": "Commit and review reproducible baseline",
+    "epic_id": "AVA-EPIC-001",
+    "feature_id": "AVA-FEAT-001",
+    "story_id": "AVA-STORY-001",
+    "subsystem": "Release",
+    "description": "Implement and verify commit and review reproducible baseline without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-001.",
+    "source_finding_ids": [
+      "AVA-001"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "Audit"
+    ],
+    "acceptance_criteria": [
+      "Clean intentional commits reproduce gates"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-01",
+    "milestone_id": "M0",
+    "blocked_by_external": false,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [
+      "2026-07-18: worktree baseline proves substantial user-owned changes remain unpartitioned; no unrelated work was staged or committed"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0002",
+    "title": "Provision isolated staging Supabase/web/worker",
+    "epic_id": "AVA-EPIC-011",
+    "feature_id": "AVA-FEAT-002",
+    "story_id": "AVA-STORY-002",
+    "subsystem": "Infra",
+    "description": "Implement and verify provision isolated staging supabase/web/worker without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-002.",
+    "source_finding_ids": [
+      "AVA-002"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "Provider decision"
+    ],
+    "acceptance_criteria": [
+      "IaC/repeatable deploy and health"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-02",
+    "milestone_id": "M1",
+    "blocked_by_external": true,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 02: repository topology, environment contract, worker health and local validation exist; staging provider/account/region and deployment remain externally blocked"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0003",
+    "title": "Managed secrets and rotation",
+    "epic_id": "AVA-EPIC-011",
+    "feature_id": "AVA-FEAT-003",
+    "story_id": "AVA-STORY-003",
+    "subsystem": "Security",
+    "description": "Implement and verify managed secrets and rotation without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-003.",
+    "source_finding_ids": [
+      "AVA-003"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0002"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "No local secrets; rotation rehearsed"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Direct",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-02",
+    "milestone_id": "M1",
+    "blocked_by_external": true,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 02: secret scan and configuration sanity passed; managed store selection and rotation rehearsal remain blocked by AVA-0002/EXT-02"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0004",
+    "title": "Apply/verify 52 migrations in staging",
+    "epic_id": "AVA-EPIC-011",
+    "feature_id": "AVA-FEAT-004",
+    "story_id": "AVA-STORY-004",
+    "subsystem": "Database",
+    "description": "Implement and verify apply/verify 52 migrations in staging without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-004.",
+    "source_finding_ids": [
+      "AVA-004"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0002"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Checksums, smoke and rollback pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "Possible",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-02",
+    "milestone_id": "M1",
+    "blocked_by_external": true,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 02: all 53 repository migrations align with the disposable local database; staging apply/checksum/rollback evidence remains blocked"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0005",
+    "title": "Complete authorization operation matrix",
+    "epic_id": "AVA-EPIC-003",
+    "feature_id": "AVA-FEAT-005",
+    "story_id": "AVA-STORY-005",
+    "subsystem": "Authz",
+    "description": "Implement and verify complete authorization operation matrix without replacing working systems.",
+    "reason": "Audited S0/P0 finding AVA-005.",
+    "source_finding_ids": [
+      "AVA-005"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0004"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Cross-athlete negative suite passes"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Direct",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S0",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-02",
+    "milestone_id": "M1",
+    "blocked_by_external": false,
+    "owner_type": "Security Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 02: source ownership sanity and 12 mobile pgTAP assertions passed locally; applied-staging cross-athlete/cross-organization adversarial matrix remains unavailable"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0006",
+    "title": "Implement `/api/mobile/v1` provider",
+    "epic_id": "AVA-EPIC-008",
+    "feature_id": "AVA-FEAT-006",
+    "story_id": "AVA-STORY-006",
+    "subsystem": "Mobile/API",
+    "description": "Implement and verify implement `/api/mobile/v1` provider without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-006.",
+    "source_finding_ids": [
+      "AVA-006"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0004",
+      "AVA-0005"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Versioned contract tests pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-03",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Native iOS Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 03: local /api/mobile/v1 provider, versioned envelopes, authenticated server-derived profile, 12 database assertions, contract/safety gates, web build and 19 Swift tests pass; staging deployment and AVA-0004/AVA-0005 authorization evidence remain required"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0007",
+    "title": "Connect native auth/capture/upload/result",
+    "epic_id": "AVA-EPIC-008",
+    "feature_id": "AVA-FEAT-007",
+    "story_id": "AVA-STORY-007",
+    "subsystem": "iOS",
+    "description": "Implement and verify connect native auth/capture/upload/result without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-007.",
+    "source_finding_ids": [
+      "AVA-007"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0006"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Real device E2E passes"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-04",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Native iOS Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 04: existing actor-based networking, Keychain abstraction, serialized refresh, mobile DTOs and 19 portable tests were audited and pass; AVA-0006 staging plus simulator/real-device auth-capture-upload-result E2E remain required"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0008",
+    "title": "Replace placeholder app identity/signing",
+    "epic_id": "AVA-EPIC-008",
+    "feature_id": "AVA-FEAT-008",
+    "story_id": "AVA-STORY-008",
+    "subsystem": "iOS",
+    "description": "Implement and verify replace placeholder app identity/signing without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-008.",
+    "source_finding_ids": [
+      "AVA-008"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "Apple account"
+    ],
+    "acceptance_criteria": [
+      "Archive succeeds"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-04",
+    "milestone_id": "M2",
+    "blocked_by_external": true,
+    "owner_type": "Native iOS Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 04: placeholder com.placeholder.* bundle IDs and empty DEVELOPMENT_TEAM were confirmed; official Apple identity/signing assets, full Xcode and a successful archive remain unavailable"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0009",
+    "title": "Hosted worker golden-video execution",
+    "epic_id": "AVA-EPIC-005",
+    "feature_id": "AVA-FEAT-009",
+    "story_id": "AVA-STORY-009",
+    "subsystem": "Analysis",
+    "description": "Implement and verify hosted worker golden-video execution without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-009.",
+    "source_finding_ids": [
+      "AVA-009"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0002",
+      "AVA-0004"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "60/120/240 jobs complete with provenance"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M2",
+    "blocked_by_external": true,
+    "owner_type": "Computer Vision Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: worker configuration/model discovery, 60 FPS, job and result sanity gates pass locally; hosted 60/120/240 golden-video execution remains blocked by AVA-0002/AVA-0004"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0010",
+    "title": "Deploy telemetry/dashboards/alerts",
+    "epic_id": "AVA-EPIC-011",
+    "feature_id": "AVA-FEAT-010",
+    "story_id": "AVA-STORY-010",
+    "subsystem": "Ops",
+    "description": "Implement and verify deploy telemetry/dashboards/alerts without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-010.",
+    "source_finding_ids": [
+      "AVA-010"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0002"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Queue/upload/activation alerts rehearsed"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-02",
+    "milestone_id": "M1",
+    "blocked_by_external": true,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 02: structured worker health/logging and redaction tests passed locally; collector, dashboards, alert routing and rehearsal remain externally blocked"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0011",
+    "title": "Backup restore and rollback rehearsal",
+    "epic_id": "AVA-EPIC-011",
+    "feature_id": "AVA-FEAT-011",
+    "story_id": "AVA-STORY-011",
+    "subsystem": "DR",
+    "description": "Implement and verify backup restore and rollback rehearsal without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-011.",
+    "source_finding_ids": [
+      "AVA-011"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0002",
+      "AVA-0004"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Timed restore/RPO/RTO evidence"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-02",
+    "milestone_id": "M1",
+    "blocked_by_external": true,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 02: authoritative restore runbook reviewed; no managed backup or isolated restore target exists, so RPO/RTO remain unproved"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0012",
+    "title": "End-to-end deletion/export",
+    "epic_id": "AVA-EPIC-010",
+    "feature_id": "AVA-FEAT-012",
+    "story_id": "AVA-STORY-012",
+    "subsystem": "Privacy",
+    "description": "Implement and verify end-to-end deletion/export without replacing working systems.",
+    "reason": "Audited S0/P0 finding AVA-012.",
+    "source_finding_ids": [
+      "AVA-012"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0004",
+      "AVA-0006"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "DB/storage/derived erasure proven"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Direct",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S0",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Closed beta",
+    "sprint_id": "SPRINT-03",
+    "milestone_id": "M6",
+    "blocked_by_external": false,
+    "owner_type": "Security Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 03: deletion behavior and media-deletion fail-closed contracts were audited and regression-tested; account export plus end-to-end staging DB/storage/derived erasure remain unproved behind AVA-0004/AVA-0006"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0013",
+    "title": "Distributed rate/upload admission",
+    "epic_id": "AVA-EPIC-011",
+    "feature_id": "AVA-FEAT-013",
+    "story_id": "AVA-STORY-013",
+    "subsystem": "Security",
+    "description": "Implement and verify distributed rate/upload admission without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-013.",
+    "source_finding_ids": [
+      "AVA-013"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0002"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Abuse/load tests pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Direct",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-02",
+    "milestone_id": "M1",
+    "blocked_by_external": true,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 02: local upload validation passed; no distributed staging runtime/store exists for abuse or load proof"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0014",
+    "title": "Consent/reference dataset collection",
+    "epic_id": "AVA-EPIC-006",
+    "feature_id": "AVA-FEAT-014",
+    "story_id": "AVA-STORY-014",
+    "subsystem": "Science",
+    "description": "Implement and verify consent/reference dataset collection without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-014.",
+    "source_finding_ids": [
+      "AVA-014"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "Protocol/review"
+    ],
+    "acceptance_criteria": [
+      "Eligible locked 60/120/240 cohort"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "XL",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-07",
+    "milestone_id": "M3",
+    "blocked_by_external": true,
+    "owner_type": "Data or Scientific Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0015",
+    "title": "Metric reference validation",
+    "epic_id": "AVA-EPIC-006",
+    "feature_id": "AVA-FEAT-015",
+    "story_id": "AVA-STORY-015",
+    "subsystem": "Science",
+    "description": "Implement and verify metric reference validation without replacing working systems.",
+    "reason": "Audited S0/P0 finding AVA-015.",
+    "source_finding_ids": [
+      "AVA-015"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0014"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Error/CI targets satisfied"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S0",
+    "effort": "XL",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-07",
+    "milestone_id": "M3",
+    "blocked_by_external": true,
+    "owner_type": "Data or Scientific Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0016",
+    "title": "Enforce claims registry in presentation",
+    "epic_id": "AVA-EPIC-006",
+    "feature_id": "AVA-FEAT-016",
+    "story_id": "AVA-STORY-016",
+    "subsystem": "Safety",
+    "description": "Implement and verify enforce claims registry in presentation without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-016.",
+    "source_finding_ids": [
+      "AVA-016"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0015"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Unvalidated outputs withheld"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-03",
+    "milestone_id": "M3",
+    "blocked_by_external": false,
+    "owner_type": "Data or Scientific Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 03: mobile safe-result allowlist and scientific-validation gates pass locally and withhold unsupported metrics; AVA-0015 reference validation and an accepted claims registry remain required"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0017",
+    "title": "Immutable report read path",
+    "epic_id": "AVA-EPIC-002",
+    "feature_id": "AVA-FEAT-017",
+    "story_id": "AVA-STORY-017",
+    "subsystem": "Reports",
+    "description": "Implement and verify immutable report read path without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-017.",
+    "source_finding_ids": [
+      "AVA-017"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0009"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Web/native use same activated version"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-03",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 03: versioned safe-result route, Swift decoding fixture and ownership checks pass locally; hosted AVA-0009 execution and accepted canonical activated-result equivalence remain required"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0018",
+    "title": "Resolve legacy/manifest equivalence",
+    "epic_id": "AVA-EPIC-002",
+    "feature_id": "AVA-FEAT-018",
+    "story_id": "AVA-STORY-018",
+    "subsystem": "Intelligence",
+    "description": "Implement and verify resolve legacy/manifest equivalence without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-018.",
+    "source_finding_ids": [
+      "AVA-018"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0017"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Shadow thresholds and rollback pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: local orchestration shadow, rollback, integration and load sanity pass; AVA-0017 canonical activated-result equivalence remains unaccepted"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0019",
+    "title": "Consolidate legacy coaching thresholds",
+    "epic_id": "AVA-EPIC-007",
+    "feature_id": "AVA-FEAT-019",
+    "story_id": "AVA-STORY-019",
+    "subsystem": "Intelligence",
+    "description": "Implement and verify consolidate legacy coaching thresholds without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-019.",
+    "source_finding_ids": [
+      "AVA-019"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0018"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "One versioned definition per rule"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M3",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: versioned intelligence registries exist, but threshold consolidation was not authorized before AVA-0018 equivalence completes"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0020",
+    "title": "Persist training plans/revisions/events",
+    "epic_id": "AVA-EPIC-009",
+    "feature_id": "AVA-FEAT-020",
+    "story_id": "AVA-STORY-020",
+    "subsystem": "Training",
+    "description": "Implement and verify persist training plans/revisions/events without replacing working systems.",
+    "reason": "Audited S1/P1 finding AVA-020.",
+    "source_finding_ids": [
+      "AVA-020"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0005"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Append-only RLS store passes"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "Possible",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S1",
+    "effort": "XL",
+    "confidence": "Medium",
+    "status": "Deferred",
+    "release_stage": "Training beta",
+    "sprint_id": "SPRINT-08",
+    "milestone_id": "M4",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0021",
+    "title": "Authorized coach training approval",
+    "epic_id": "AVA-EPIC-009",
+    "feature_id": "AVA-FEAT-021",
+    "story_id": "AVA-STORY-021",
+    "subsystem": "Training",
+    "description": "Implement and verify authorized coach training approval without replacing working systems.",
+    "reason": "Audited S0/P1 finding AVA-021.",
+    "source_finding_ids": [
+      "AVA-021"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0020"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "No athlete activation without approval"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "Possible",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S0",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Deferred",
+    "release_stage": "Training beta",
+    "sprint_id": "SPRINT-08",
+    "milestone_id": "M4",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0022",
+    "title": "Native training execution/offline sync",
+    "epic_id": "AVA-EPIC-008",
+    "feature_id": "AVA-FEAT-022",
+    "story_id": "AVA-STORY-022",
+    "subsystem": "Mobile",
+    "description": "Implement and verify native training execution/offline sync without replacing working systems.",
+    "reason": "Audited S1/P1 finding AVA-022.",
+    "source_finding_ids": [
+      "AVA-022"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0006",
+      "AVA-0020",
+      "AVA-0021"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Stale/pain/retry device tests pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S1",
+    "effort": "XL",
+    "confidence": "Medium",
+    "status": "Deferred",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-09",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Native iOS Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0023",
+    "title": "Safety-event ingestion/escalation",
+    "epic_id": "AVA-EPIC-009",
+    "feature_id": "AVA-FEAT-023",
+    "story_id": "AVA-STORY-023",
+    "subsystem": "Training",
+    "description": "Implement and verify safety-event ingestion/escalation without replacing working systems.",
+    "reason": "Audited S0/P1 finding AVA-023.",
+    "source_finding_ids": [
+      "AVA-023"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0010",
+      "AVA-0020"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Loss/duplicate tests and paging pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "Possible",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S0",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Deferred",
+    "release_stage": "Training beta",
+    "sprint_id": "SPRINT-09",
+    "milestone_id": "M4",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0024",
+    "title": "Coach/report comprehension studies",
+    "epic_id": "AVA-EPIC-006",
+    "feature_id": "AVA-FEAT-024",
+    "story_id": "AVA-STORY-024",
+    "subsystem": "Science/UX",
+    "description": "Implement and verify coach/report comprehension studies without replacing working systems.",
+    "reason": "Audited S1/P1 finding AVA-024.",
+    "source_finding_ids": [
+      "AVA-024"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0014",
+      "AVA-0017"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Prespecified thresholds pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S1",
+    "effort": "XL",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-07",
+    "milestone_id": "M3",
+    "blocked_by_external": true,
+    "owner_type": "Data or Scientific Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0025",
+    "title": "Device/accessibility matrix",
+    "epic_id": "AVA-EPIC-008",
+    "feature_id": "AVA-FEAT-025",
+    "story_id": "AVA-STORY-025",
+    "subsystem": "iOS",
+    "description": "Implement and verify device/accessibility matrix without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-025.",
+    "source_finding_ids": [
+      "AVA-025"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0007"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Supported devices, VoiceOver, Dynamic Type"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-04",
+    "milestone_id": "M2",
+    "blocked_by_external": true,
+    "owner_type": "Native iOS Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 04: existing accessibility documentation and native preparation were audited; AVA-0007, full Xcode/simulator and supported physical-device VoiceOver/Dynamic Type evidence remain required"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0026",
+    "title": "Resumable/idempotent uploads",
+    "epic_id": "AVA-EPIC-004",
+    "feature_id": "AVA-FEAT-026",
+    "story_id": "AVA-STORY-026",
+    "subsystem": "Upload",
+    "description": "Implement and verify resumable/idempotent uploads without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-026.",
+    "source_finding_ids": [
+      "AVA-026"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0006"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Kill/relaunch/network-loss recovery"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Direct",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-05",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 05: portable persisted upload recovery, canonical idempotency, bounded retry, reconciliation, HTTPS authorization safety, monotonic/stale-safe progress, cancellation, typed initiate/status/confirm DTOs and 24 Swift tests pass; real kill/relaunch/network-loss storage transfer remains required behind AVA-0006/full Xcode/staging"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0027",
+    "title": "Storage lifecycle/orphan reconciliation",
+    "epic_id": "AVA-EPIC-004",
+    "feature_id": "AVA-FEAT-027",
+    "story_id": "AVA-STORY-027",
+    "subsystem": "Storage",
+    "description": "Implement and verify storage lifecycle/orphan reconciliation without replacing working systems.",
+    "reason": "Audited S1/P1 finding AVA-027.",
+    "source_finding_ids": [
+      "AVA-027"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0012",
+      "AVA-0026"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Zero unexplained orphan classes"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-05",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 05: account-scoped local media/persisted-upload reconciliation, safe deletion boundary, server ownership/object-path controls and 12 database assertions pass; AVA-0012 plus deployed DB/storage/derived inventory is required to prove zero unexplained orphan classes"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0028",
+    "title": "Worker termination/concurrency/load tests",
+    "epic_id": "AVA-EPIC-005",
+    "feature_id": "AVA-FEAT-028",
+    "story_id": "AVA-STORY-028",
+    "subsystem": "Worker",
+    "description": "Implement and verify worker termination/concurrency/load tests without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-028.",
+    "source_finding_ids": [
+      "AVA-028"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0009",
+      "AVA-0010"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Lease/retry/SLO targets pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M2",
+    "blocked_by_external": true,
+    "owner_type": "Computer Vision Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: static job claim/lease/retry/stale-token sanity passes; hosted termination/concurrency/SLO evidence remains blocked by AVA-0009/AVA-0010"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0029",
+    "title": "Operational dead-letter console/runbook",
+    "epic_id": "AVA-EPIC-005",
+    "feature_id": "AVA-FEAT-029",
+    "story_id": "AVA-STORY-029",
+    "subsystem": "Worker",
+    "description": "Implement and verify operational dead-letter console/runbook without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-029.",
+    "source_finding_ids": [
+      "AVA-029"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0010",
+      "AVA-0028"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Authorized replay/audit proven"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Computer Vision Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: local dead-letter/retry contracts and runbooks exist; authorized deployed replay/audit remains blocked by AVA-0010/AVA-0028"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0030",
+    "title": "CI protected branch and required gates",
+    "epic_id": "AVA-EPIC-012",
+    "feature_id": "AVA-FEAT-030",
+    "story_id": "AVA-STORY-030",
+    "subsystem": "CI",
+    "description": "Implement and verify ci protected branch and required gates without replacing working systems.",
+    "reason": "Audited S1/P1 finding AVA-030.",
+    "source_finding_ids": [
+      "AVA-030"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0001"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Remote required checks observed"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-01",
+    "milestone_id": "M0",
+    "blocked_by_external": true,
+    "owner_type": "QA Engineer",
+    "completion_evidence": [
+      "2026-07-18: local quality workflow exists, but AVA-0001 is incomplete and no remote protected-branch required-check run was observed"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0031",
+    "title": "Container/SBOM/vulnerability provenance",
+    "epic_id": "AVA-EPIC-012",
+    "feature_id": "AVA-FEAT-031",
+    "story_id": "AVA-STORY-031",
+    "subsystem": "Supply chain",
+    "description": "Implement and verify container/sbom/vulnerability provenance without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-031.",
+    "source_finding_ids": [
+      "AVA-031"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0030"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Signed immutable artifact"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Direct",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-11",
+    "milestone_id": "M0",
+    "blocked_by_external": true,
+    "owner_type": "QA Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0032",
+    "title": "Database type/schema drift gate",
+    "epic_id": "AVA-EPIC-012",
+    "feature_id": "AVA-FEAT-032",
+    "story_id": "AVA-STORY-032",
+    "subsystem": "Database",
+    "description": "Implement and verify database type/schema drift gate without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-032.",
+    "source_finding_ids": [
+      "AVA-032"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0004",
+      "AVA-0030"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Generated types clean in CI"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "Possible",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "S",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-01",
+    "milestone_id": "M0",
+    "blocked_by_external": true,
+    "owner_type": "QA Engineer",
+    "completion_evidence": [
+      "2026-07-18: blocked by unapplied/unverified staging migrations (AVA-0004) and remote CI evidence (AVA-0030)"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0033",
+    "title": "Unified test runner/coverage taxonomy",
+    "epic_id": "AVA-EPIC-012",
+    "feature_id": "AVA-FEAT-033",
+    "story_id": "AVA-STORY-033",
+    "subsystem": "Tests",
+    "description": "Implement and verify unified test runner/coverage taxonomy without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-033.",
+    "source_finding_ids": [
+      "AVA-033"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0030"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Aliases no longer inflate evidence"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Ready",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-11",
+    "milestone_id": "M0",
+    "blocked_by_external": false,
+    "owner_type": "QA Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0034",
+    "title": "Worker golden regression CI",
+    "epic_id": "AVA-EPIC-012",
+    "feature_id": "AVA-FEAT-034",
+    "story_id": "AVA-STORY-034",
+    "subsystem": "Science",
+    "description": "Implement and verify worker golden regression ci without replacing working systems.",
+    "reason": "Audited S1/P1 finding AVA-034.",
+    "source_finding_ids": [
+      "AVA-034"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0014",
+      "AVA-0030"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Locked output tolerance gate"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M0",
+    "blocked_by_external": true,
+    "owner_type": "QA Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: local analysis and 60 FPS regression scripts pass; locked scientific output tolerance remains blocked by AVA-0014/AVA-0030"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0035",
+    "title": "CSP resource inventory and rollout",
+    "epic_id": "AVA-EPIC-010",
+    "feature_id": "AVA-FEAT-035",
+    "story_id": "AVA-STORY-035",
+    "subsystem": "Security",
+    "description": "Implement and verify csp resource inventory and rollout without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-035.",
+    "source_finding_ids": [
+      "AVA-035"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0007"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Report-only then enforce"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Direct",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Ready",
+    "release_stage": "Closed beta",
+    "sprint_id": "SPRINT-11",
+    "milestone_id": "M6",
+    "blocked_by_external": false,
+    "owner_type": "Security Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0036",
+    "title": "Native crash reporting/symbols",
+    "epic_id": "AVA-EPIC-008",
+    "feature_id": "AVA-FEAT-036",
+    "story_id": "AVA-STORY-036",
+    "subsystem": "iOS/Ops",
+    "description": "Implement and verify native crash reporting/symbols without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-036.",
+    "source_finding_ids": [
+      "AVA-036"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0008",
+      "AVA-0010"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Test crash visible"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-04",
+    "milestone_id": "M2",
+    "blocked_by_external": true,
+    "owner_type": "Native iOS Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 04: local safe telemetry boundaries were audited; AVA-0008 signing, AVA-0010 deployed collector, symbol upload and visible symbolicated test crash remain required"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0037",
+    "title": "Privacy/legal/health claim review",
+    "epic_id": "AVA-EPIC-010",
+    "feature_id": "AVA-FEAT-037",
+    "story_id": "AVA-STORY-037",
+    "subsystem": "Legal",
+    "description": "Implement and verify privacy/legal/health claim review without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-037.",
+    "source_finding_ids": [
+      "AVA-037"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "Product scope"
+    ],
+    "acceptance_criteria": [
+      "Signed approval and policy updates"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Closed beta",
+    "sprint_id": "SPRINT-07",
+    "milestone_id": "M6",
+    "blocked_by_external": true,
+    "owner_type": "Security Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0038",
+    "title": "Incident/support ownership rehearsal",
+    "epic_id": "AVA-EPIC-011",
+    "feature_id": "AVA-FEAT-038",
+    "story_id": "AVA-STORY-038",
+    "subsystem": "Ops",
+    "description": "Implement and verify incident/support ownership rehearsal without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-038.",
+    "source_finding_ids": [
+      "AVA-038"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0010",
+      "AVA-0012"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Tabletop passes"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-02",
+    "milestone_id": "M1",
+    "blocked_by_external": true,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [
+      "2026-07-18 Sprint 02: incident plan and SLO targets reviewed; tabletop cannot pass without telemetry/on-call ownership and completed deletion controls"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0039",
+    "title": "Hide developer/experimental surfaces",
+    "epic_id": "AVA-EPIC-014",
+    "feature_id": "AVA-FEAT-039",
+    "story_id": "AVA-STORY-039",
+    "subsystem": "Product",
+    "description": "Implement and verify hide developer/experimental surfaces without replacing working systems.",
+    "reason": "Audited S1/P0 finding AVA-039.",
+    "source_finding_ids": [
+      "AVA-039"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "Release manifest"
+    ],
+    "acceptance_criteria": [
+      "Production route/flag audit passes"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P0",
+    "severity": "S1",
+    "effort": "S",
+    "confidence": "Medium",
+    "status": "Verified Complete",
+    "release_stage": "Closed beta",
+    "sprint_id": "SPRINT-01",
+    "milestone_id": "M6",
+    "blocked_by_external": false,
+    "owner_type": "Product or Operations Lead",
+    "completion_evidence": [
+      "2026-07-18: DEC-007, config/production-surface-policy.json, canonical feature-loader enforcement, release-surfaces sanity, production build and 13-pass Playwright route regression"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0040",
+    "title": "Replace deprecated lint command/hook warning",
+    "epic_id": "AVA-EPIC-016",
+    "feature_id": "AVA-FEAT-040",
+    "story_id": "AVA-STORY-040",
+    "subsystem": "Quality",
+    "description": "Implement and verify replace deprecated lint command/hook warning without replacing working systems.",
+    "reason": "Audited S3/P2 finding AVA-040.",
+    "source_finding_ids": [
+      "AVA-040"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "None"
+    ],
+    "acceptance_criteria": [
+      "ESLint CLI clean"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P2",
+    "severity": "S3",
+    "effort": "S",
+    "confidence": "Medium",
+    "status": "Verified Complete",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-01",
+    "milestone_id": "M0",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [
+      "2026-07-18: DEC-008, eslint.config.mjs, ESLint CLI package entry and VideoOverlay dependency correction; lint completed with zero warnings"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0041",
+    "title": "Split session-page derivation",
+    "epic_id": "AVA-EPIC-016",
+    "feature_id": "AVA-FEAT-041",
+    "story_id": "AVA-STORY-041",
+    "subsystem": "Web",
+    "description": "Implement and verify split session-page derivation without replacing working systems.",
+    "reason": "Audited S3/P2 finding AVA-041.",
+    "source_finding_ids": [
+      "AVA-041"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0017"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Typed selectors; behavior unchanged"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P2",
+    "severity": "S3",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Ready",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-11",
+    "milestone_id": "M0",
+    "blocked_by_external": false,
+    "owner_type": "Backend Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0042",
+    "title": "Performance/cost capacity validation",
+    "epic_id": "AVA-EPIC-011",
+    "feature_id": "AVA-FEAT-042",
+    "story_id": "AVA-STORY-042",
+    "subsystem": "Ops",
+    "description": "Implement and verify performance/cost capacity validation without replacing working systems.",
+    "reason": "Audited S2/P2 finding AVA-042.",
+    "source_finding_ids": [
+      "AVA-042"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0002",
+      "AVA-0010"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Cohort SLO and budget pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P2",
+    "severity": "S2",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Staging",
+    "sprint_id": "SPRINT-10",
+    "milestone_id": "M1",
+    "blocked_by_external": true,
+    "owner_type": "DevOps or Platform Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0043",
+    "title": "Notification provider/deep links",
+    "epic_id": "AVA-EPIC-015",
+    "feature_id": "AVA-FEAT-043",
+    "story_id": "AVA-STORY-043",
+    "subsystem": "Mobile",
+    "description": "Implement and verify notification provider/deep links without replacing working systems.",
+    "reason": "Audited S2/P2 finding AVA-043.",
+    "source_finding_ids": [
+      "AVA-043"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0007",
+      "AVA-0023"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Consent/delivery/fallback tested"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P2",
+    "severity": "S2",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Deferred",
+    "release_stage": "Coach operations",
+    "sprint_id": "SPRINT-09",
+    "milestone_id": "M5",
+    "blocked_by_external": false,
+    "owner_type": "Product or Operations Lead",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0044",
+    "title": "Coach-admin operational tools",
+    "epic_id": "AVA-EPIC-015",
+    "feature_id": "AVA-FEAT-044",
+    "story_id": "AVA-STORY-044",
+    "subsystem": "Ops",
+    "description": "Implement and verify coach-admin operational tools without replacing working systems.",
+    "reason": "Audited S2/P2 finding AVA-044.",
+    "source_finding_ids": [
+      "AVA-044"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0005",
+      "AVA-0010"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Least-privilege actions/audit"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P2",
+    "severity": "S2",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Ready",
+    "release_stage": "Coach operations",
+    "sprint_id": "SPRINT-10",
+    "milestone_id": "M5",
+    "blocked_by_external": false,
+    "owner_type": "Product or Operations Lead",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0045",
+    "title": "Retire mock default from generic production path",
+    "epic_id": "AVA-EPIC-005",
+    "feature_id": "AVA-FEAT-045",
+    "story_id": "AVA-STORY-045",
+    "subsystem": "Analysis",
+    "description": "Implement and verify retire mock default from generic production path without replacing working systems.",
+    "reason": "Audited S2/P2 finding AVA-045.",
+    "source_finding_ids": [
+      "AVA-045"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "Call-site audit"
+    ],
+    "acceptance_criteria": [
+      "Production fails closed"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P2",
+    "severity": "S2",
+    "effort": "S",
+    "confidence": "Medium",
+    "status": "Verified Complete",
+    "release_stage": "Native vertical slice",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M2",
+    "blocked_by_external": false,
+    "owner_type": "Computer Vision Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: processVideo now requires an explicit PoseBackend at type and runtime boundaries; missing backend fails closed, production worker explicitly uses MediaPipe, explicit mock tests remain available, pose sanity/typecheck/build pass"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0046",
+    "title": "Resolve zero-placeholder legacy consumers",
+    "epic_id": "AVA-EPIC-006",
+    "feature_id": "AVA-FEAT-046",
+    "story_id": "AVA-STORY-046",
+    "subsystem": "Metrics",
+    "description": "Implement and verify resolve zero-placeholder legacy consumers without replacing working systems.",
+    "reason": "Audited S1/P1 finding AVA-046.",
+    "source_finding_ids": [
+      "AVA-046"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0017"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Null/availability everywhere"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S1",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M3",
+    "blocked_by_external": false,
+    "owner_type": "Data or Scientific Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: worker metric mapper and result foundation sanity preserve unavailable values as null; all legacy consumers await AVA-0017 canonical result acceptance"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0047",
+    "title": "History compatibility/provenance filtering",
+    "epic_id": "AVA-EPIC-013",
+    "feature_id": "AVA-FEAT-047",
+    "story_id": "AVA-STORY-047",
+    "subsystem": "History",
+    "description": "Implement and verify history compatibility/provenance filtering without replacing working systems.",
+    "reason": "Audited S2/P1 finding AVA-047.",
+    "source_finding_ids": [
+      "AVA-047"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0017"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Mixed versions not compared"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "Possible",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "M",
+    "confidence": "Medium",
+    "status": "In Progress",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M3",
+    "blocked_by_external": false,
+    "owner_type": "Data or Scientific Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: local version/provenance contracts and compatibility helpers exist; immutable mixed-history filtering remains tied to incomplete AVA-0017"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0048",
+    "title": "Benchmark dataset governance/population",
+    "epic_id": "AVA-EPIC-013",
+    "feature_id": "AVA-FEAT-048",
+    "story_id": "AVA-STORY-048",
+    "subsystem": "Science",
+    "description": "Implement and verify benchmark dataset governance/population without replacing working systems.",
+    "reason": "Audited S2/P2 finding AVA-048.",
+    "source_finding_ids": [
+      "AVA-048"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0014"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "Reviewed compatible cohorts"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P2",
+    "severity": "S2",
+    "effort": "XL",
+    "confidence": "Medium",
+    "status": "Deferred",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-12",
+    "milestone_id": "M3",
+    "blocked_by_external": true,
+    "owner_type": "Data or Scientific Engineer",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0049",
+    "title": "Peak-velocity definition/reference decision",
+    "epic_id": "AVA-EPIC-006",
+    "feature_id": "AVA-FEAT-049",
+    "story_id": "AVA-STORY-049",
+    "subsystem": "Metrics",
+    "description": "Implement and verify peak-velocity definition/reference decision without replacing working systems.",
+    "reason": "Audited S1/P1 finding AVA-049.",
+    "source_finding_ids": [
+      "AVA-049"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [
+      "AVA-0014"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "One definition or remain hidden"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "Direct",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P1",
+    "severity": "S1",
+    "effort": "L",
+    "confidence": "Medium",
+    "status": "Blocked",
+    "release_stage": "Scientific beta",
+    "sprint_id": "SPRINT-06",
+    "milestone_id": "M3",
+    "blocked_by_external": false,
+    "owner_type": "Data or Scientific Engineer",
+    "completion_evidence": [
+      "2026-07-19 Sprint 06: peak velocity remains safely hidden; one accepted definition/reference decision remains blocked by AVA-0014"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-19"
+  },
+  {
+    "task_id": "AVA-0050",
+    "title": "Public launch scale/security program",
+    "epic_id": "AVA-EPIC-014",
+    "feature_id": "AVA-FEAT-050",
+    "story_id": "AVA-STORY-050",
+    "subsystem": "Release",
+    "description": "Implement and verify public launch scale/security program without replacing working systems.",
+    "reason": "Audited S1/P4 finding AVA-050.",
+    "source_finding_ids": [
+      "AVA-050"
+    ],
+    "implementation_boundaries": "Preserve canonical architecture; no unrelated scope expansion.",
+    "likely_files": [
+      "See feature-specific audit and repository inventory"
+    ],
+    "dependency_ids": [],
+    "prerequisite_decisions": [
+      "Closed beta"
+    ],
+    "acceptance_criteria": [
+      "Independent launch gates pass"
+    ],
+    "tests_required": [
+      "Relevant unit/contract tests",
+      "Integration or environment evidence required by definition of complete"
+    ],
+    "documentation_required": [
+      "Update tracker evidence and affected runbook/architecture document"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Feature flag or staged rollout when behavior changes",
+    "rollback_requirement": "Document rollback before deployment",
+    "priority": "P4",
+    "severity": "S1",
+    "effort": "XL",
+    "confidence": "Medium",
+    "status": "Deferred",
+    "release_stage": "Closed beta",
+    "sprint_id": "SPRINT-12",
+    "milestone_id": "M6",
+    "blocked_by_external": true,
+    "owner_type": "Product or Operations Lead",
+    "completion_evidence": [],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  },
+  {
+    "task_id": "AVA-0051",
+    "title": "Repair orchestration pgTAP plan contract",
+    "epic_id": "AVA-EPIC-012",
+    "feature_id": "AVA-FEAT-051",
+    "story_id": "AVA-STORY-051",
+    "subsystem": "Tests",
+    "description": "Make the existing orchestration database integration assertions emit a valid pgTAP plan without weakening their behavior.",
+    "reason": "Sprint 02 local database validation failed because orchestration_integration.sql produced no TAP plan.",
+    "source_finding_ids": [
+      "SPRINT-02-DISC-001"
+    ],
+    "implementation_boundaries": "Preserve orchestration behavior and assertions; fix only canonical database test-runner compatibility.",
+    "likely_files": [
+      "supabase/tests/orchestration_integration.sql"
+    ],
+    "dependency_ids": [
+      "AVA-0030"
+    ],
+    "prerequisite_decisions": [],
+    "acceptance_criteria": [
+      "npx supabase test db passes with planned orchestration assertions"
+    ],
+    "tests_required": [
+      "npx supabase test db",
+      "node project-tracker/validate_tracker.mjs"
+    ],
+    "documentation_required": [
+      "Update database test evidence and tracker"
+    ],
+    "security_impact": "Review",
+    "scientific_impact": "None",
+    "data_migration_impact": "None",
+    "rollout_requirement": "Test-only change; no runtime rollout",
+    "rollback_requirement": "Revert only the test harness change if it alters assertion semantics",
+    "priority": "P1",
+    "severity": "S2",
+    "effort": "S",
+    "confidence": "High",
+    "status": "Blocked",
+    "release_stage": "Foundation",
+    "sprint_id": "SPRINT-11",
+    "milestone_id": "M0",
+    "blocked_by_external": false,
+    "owner_type": "QA Engineer",
+    "completion_evidence": [
+      "2026-07-18: npx supabase test db ran 12 mobile tests successfully but failed because orchestration_integration.sql emitted no TAP plan"
+    ],
+    "created_date": "2026-07-18",
+    "updated_date": "2026-07-18"
+  }
+]

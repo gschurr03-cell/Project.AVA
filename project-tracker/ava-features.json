@@ -1,0 +1,920 @@
+[
+  {
+    "feature_id": "AVA-FEAT-001",
+    "parent_epic": "AVA-EPIC-001",
+    "title": "Commit and review reproducible baseline",
+    "outcome": "Clean intentional commits reproduce gates",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-001"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "Clean intentional commits reproduce gates",
+    "release_stage": "Foundation",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-002",
+    "parent_epic": "AVA-EPIC-011",
+    "title": "Provision isolated staging Supabase/web/worker",
+    "outcome": "IaC/repeatable deploy and health",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-002"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "IaC/repeatable deploy and health",
+    "release_stage": "Staging",
+    "status": "Blocked",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-003",
+    "parent_epic": "AVA-EPIC-011",
+    "title": "Managed secrets and rotation",
+    "outcome": "No local secrets; rotation rehearsed",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-003"
+    ],
+    "dependencies": [
+      "AVA-0002"
+    ],
+    "acceptance_summary": "No local secrets; rotation rehearsed",
+    "release_stage": "Staging",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-004",
+    "parent_epic": "AVA-EPIC-011",
+    "title": "Apply/verify 52 migrations in staging",
+    "outcome": "Checksums, smoke and rollback pass",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-004"
+    ],
+    "dependencies": [
+      "AVA-0002"
+    ],
+    "acceptance_summary": "Checksums, smoke and rollback pass",
+    "release_stage": "Staging",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-005",
+    "parent_epic": "AVA-EPIC-003",
+    "title": "Complete authorization operation matrix",
+    "outcome": "Cross-athlete negative suite passes",
+    "current_state": "In Progress",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-005"
+    ],
+    "dependencies": [
+      "AVA-0004"
+    ],
+    "acceptance_summary": "Cross-athlete negative suite passes",
+    "release_stage": "Staging",
+    "status": "In Progress",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-006",
+    "parent_epic": "AVA-EPIC-008",
+    "title": "Implement `/api/mobile/v1` provider",
+    "outcome": "Versioned contract tests pass",
+    "current_state": "In Progress",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-006"
+    ],
+    "dependencies": [
+      "AVA-0004",
+      "AVA-0005"
+    ],
+    "acceptance_summary": "Versioned contract tests pass",
+    "release_stage": "Native vertical slice",
+    "status": "In Progress",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-007",
+    "parent_epic": "AVA-EPIC-008",
+    "title": "Connect native auth/capture/upload/result",
+    "outcome": "Real device E2E passes",
+    "current_state": "In Progress",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-007"
+    ],
+    "dependencies": [
+      "AVA-0006"
+    ],
+    "acceptance_summary": "Real device E2E passes",
+    "release_stage": "Native vertical slice",
+    "status": "In Progress",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-008",
+    "parent_epic": "AVA-EPIC-008",
+    "title": "Replace placeholder app identity/signing",
+    "outcome": "Archive succeeds",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-008"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "Archive succeeds",
+    "release_stage": "Native vertical slice",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-009",
+    "parent_epic": "AVA-EPIC-005",
+    "title": "Hosted worker golden-video execution",
+    "outcome": "60/120/240 jobs complete with provenance",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-009"
+    ],
+    "dependencies": [
+      "AVA-0002",
+      "AVA-0004"
+    ],
+    "acceptance_summary": "60/120/240 jobs complete with provenance",
+    "release_stage": "Native vertical slice",
+    "status": "Blocked",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-010",
+    "parent_epic": "AVA-EPIC-011",
+    "title": "Deploy telemetry/dashboards/alerts",
+    "outcome": "Queue/upload/activation alerts rehearsed",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-010"
+    ],
+    "dependencies": [
+      "AVA-0002"
+    ],
+    "acceptance_summary": "Queue/upload/activation alerts rehearsed",
+    "release_stage": "Staging",
+    "status": "Blocked",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-011",
+    "parent_epic": "AVA-EPIC-011",
+    "title": "Backup restore and rollback rehearsal",
+    "outcome": "Timed restore/RPO/RTO evidence",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-011"
+    ],
+    "dependencies": [
+      "AVA-0002",
+      "AVA-0004"
+    ],
+    "acceptance_summary": "Timed restore/RPO/RTO evidence",
+    "release_stage": "Staging",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-012",
+    "parent_epic": "AVA-EPIC-010",
+    "title": "End-to-end deletion/export",
+    "outcome": "DB/storage/derived erasure proven",
+    "current_state": "In Progress",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-012"
+    ],
+    "dependencies": [
+      "AVA-0004",
+      "AVA-0006"
+    ],
+    "acceptance_summary": "DB/storage/derived erasure proven",
+    "release_stage": "Closed beta",
+    "status": "In Progress",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-013",
+    "parent_epic": "AVA-EPIC-011",
+    "title": "Distributed rate/upload admission",
+    "outcome": "Abuse/load tests pass",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-013"
+    ],
+    "dependencies": [
+      "AVA-0002"
+    ],
+    "acceptance_summary": "Abuse/load tests pass",
+    "release_stage": "Staging",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-014",
+    "parent_epic": "AVA-EPIC-006",
+    "title": "Consent/reference dataset collection",
+    "outcome": "Eligible locked 60/120/240 cohort",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-014"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "Eligible locked 60/120/240 cohort",
+    "release_stage": "Scientific beta",
+    "status": "Blocked",
+    "estimated_effort_range": "XL"
+  },
+  {
+    "feature_id": "AVA-FEAT-015",
+    "parent_epic": "AVA-EPIC-006",
+    "title": "Metric reference validation",
+    "outcome": "Error/CI targets satisfied",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-015"
+    ],
+    "dependencies": [
+      "AVA-0014"
+    ],
+    "acceptance_summary": "Error/CI targets satisfied",
+    "release_stage": "Scientific beta",
+    "status": "Blocked",
+    "estimated_effort_range": "XL"
+  },
+  {
+    "feature_id": "AVA-FEAT-016",
+    "parent_epic": "AVA-EPIC-006",
+    "title": "Enforce claims registry in presentation",
+    "outcome": "Unvalidated outputs withheld",
+    "current_state": "In Progress",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-016"
+    ],
+    "dependencies": [
+      "AVA-0015"
+    ],
+    "acceptance_summary": "Unvalidated outputs withheld",
+    "release_stage": "Scientific beta",
+    "status": "In Progress",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-017",
+    "parent_epic": "AVA-EPIC-002",
+    "title": "Immutable report read path",
+    "outcome": "Web/native use same activated version",
+    "current_state": "In Progress",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-017"
+    ],
+    "dependencies": [
+      "AVA-0009"
+    ],
+    "acceptance_summary": "Web/native use same activated version",
+    "release_stage": "Native vertical slice",
+    "status": "In Progress",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-018",
+    "parent_epic": "AVA-EPIC-002",
+    "title": "Resolve legacy/manifest equivalence",
+    "outcome": "Shadow thresholds and rollback pass",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-018"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "acceptance_summary": "Shadow thresholds and rollback pass",
+    "release_stage": "Native vertical slice",
+    "status": "Ready",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-019",
+    "parent_epic": "AVA-EPIC-007",
+    "title": "Consolidate legacy coaching thresholds",
+    "outcome": "One versioned definition per rule",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-019"
+    ],
+    "dependencies": [
+      "AVA-0018"
+    ],
+    "acceptance_summary": "One versioned definition per rule",
+    "release_stage": "Scientific beta",
+    "status": "Ready",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-020",
+    "parent_epic": "AVA-EPIC-009",
+    "title": "Persist training plans/revisions/events",
+    "outcome": "Append-only RLS store passes",
+    "current_state": "Deferred",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-020"
+    ],
+    "dependencies": [
+      "AVA-0005"
+    ],
+    "acceptance_summary": "Append-only RLS store passes",
+    "release_stage": "Training beta",
+    "status": "Deferred",
+    "estimated_effort_range": "XL"
+  },
+  {
+    "feature_id": "AVA-FEAT-021",
+    "parent_epic": "AVA-EPIC-009",
+    "title": "Authorized coach training approval",
+    "outcome": "No athlete activation without approval",
+    "current_state": "Deferred",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-021"
+    ],
+    "dependencies": [
+      "AVA-0020"
+    ],
+    "acceptance_summary": "No athlete activation without approval",
+    "release_stage": "Training beta",
+    "status": "Deferred",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-022",
+    "parent_epic": "AVA-EPIC-008",
+    "title": "Native training execution/offline sync",
+    "outcome": "Stale/pain/retry device tests pass",
+    "current_state": "Deferred",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-022"
+    ],
+    "dependencies": [
+      "AVA-0006",
+      "AVA-0020",
+      "AVA-0021"
+    ],
+    "acceptance_summary": "Stale/pain/retry device tests pass",
+    "release_stage": "Native vertical slice",
+    "status": "Deferred",
+    "estimated_effort_range": "XL"
+  },
+  {
+    "feature_id": "AVA-FEAT-023",
+    "parent_epic": "AVA-EPIC-009",
+    "title": "Safety-event ingestion/escalation",
+    "outcome": "Loss/duplicate tests and paging pass",
+    "current_state": "Deferred",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-023"
+    ],
+    "dependencies": [
+      "AVA-0010",
+      "AVA-0020"
+    ],
+    "acceptance_summary": "Loss/duplicate tests and paging pass",
+    "release_stage": "Training beta",
+    "status": "Deferred",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-024",
+    "parent_epic": "AVA-EPIC-006",
+    "title": "Coach/report comprehension studies",
+    "outcome": "Prespecified thresholds pass",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-024"
+    ],
+    "dependencies": [
+      "AVA-0014",
+      "AVA-0017"
+    ],
+    "acceptance_summary": "Prespecified thresholds pass",
+    "release_stage": "Scientific beta",
+    "status": "Blocked",
+    "estimated_effort_range": "XL"
+  },
+  {
+    "feature_id": "AVA-FEAT-025",
+    "parent_epic": "AVA-EPIC-008",
+    "title": "Device/accessibility matrix",
+    "outcome": "Supported devices, VoiceOver, Dynamic Type",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-025"
+    ],
+    "dependencies": [
+      "AVA-0007"
+    ],
+    "acceptance_summary": "Supported devices, VoiceOver, Dynamic Type",
+    "release_stage": "Native vertical slice",
+    "status": "Blocked",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-026",
+    "parent_epic": "AVA-EPIC-004",
+    "title": "Resumable/idempotent uploads",
+    "outcome": "Kill/relaunch/network-loss recovery",
+    "current_state": "In Progress",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-026"
+    ],
+    "dependencies": [
+      "AVA-0006"
+    ],
+    "acceptance_summary": "Kill/relaunch/network-loss recovery",
+    "release_stage": "Native vertical slice",
+    "status": "In Progress",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-027",
+    "parent_epic": "AVA-EPIC-004",
+    "title": "Storage lifecycle/orphan reconciliation",
+    "outcome": "Zero unexplained orphan classes",
+    "current_state": "In Progress",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-027"
+    ],
+    "dependencies": [
+      "AVA-0012",
+      "AVA-0026"
+    ],
+    "acceptance_summary": "Zero unexplained orphan classes",
+    "release_stage": "Native vertical slice",
+    "status": "In Progress",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-028",
+    "parent_epic": "AVA-EPIC-005",
+    "title": "Worker termination/concurrency/load tests",
+    "outcome": "Lease/retry/SLO targets pass",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-028"
+    ],
+    "dependencies": [
+      "AVA-0009",
+      "AVA-0010"
+    ],
+    "acceptance_summary": "Lease/retry/SLO targets pass",
+    "release_stage": "Native vertical slice",
+    "status": "Blocked",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-029",
+    "parent_epic": "AVA-EPIC-005",
+    "title": "Operational dead-letter console/runbook",
+    "outcome": "Authorized replay/audit proven",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-029"
+    ],
+    "dependencies": [
+      "AVA-0010",
+      "AVA-0028"
+    ],
+    "acceptance_summary": "Authorized replay/audit proven",
+    "release_stage": "Native vertical slice",
+    "status": "Ready",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-030",
+    "parent_epic": "AVA-EPIC-012",
+    "title": "CI protected branch and required gates",
+    "outcome": "Remote required checks observed",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-030"
+    ],
+    "dependencies": [
+      "AVA-0001"
+    ],
+    "acceptance_summary": "Remote required checks observed",
+    "release_stage": "Foundation",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-031",
+    "parent_epic": "AVA-EPIC-012",
+    "title": "Container/SBOM/vulnerability provenance",
+    "outcome": "Signed immutable artifact",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-031"
+    ],
+    "dependencies": [
+      "AVA-0030"
+    ],
+    "acceptance_summary": "Signed immutable artifact",
+    "release_stage": "Foundation",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-032",
+    "parent_epic": "AVA-EPIC-012",
+    "title": "Database type/schema drift gate",
+    "outcome": "Generated types clean in CI",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-032"
+    ],
+    "dependencies": [
+      "AVA-0004",
+      "AVA-0030"
+    ],
+    "acceptance_summary": "Generated types clean in CI",
+    "release_stage": "Foundation",
+    "status": "Blocked",
+    "estimated_effort_range": "S"
+  },
+  {
+    "feature_id": "AVA-FEAT-033",
+    "parent_epic": "AVA-EPIC-012",
+    "title": "Unified test runner/coverage taxonomy",
+    "outcome": "Aliases no longer inflate evidence",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-033"
+    ],
+    "dependencies": [
+      "AVA-0030"
+    ],
+    "acceptance_summary": "Aliases no longer inflate evidence",
+    "release_stage": "Foundation",
+    "status": "Ready",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-034",
+    "parent_epic": "AVA-EPIC-012",
+    "title": "Worker golden regression CI",
+    "outcome": "Locked output tolerance gate",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-034"
+    ],
+    "dependencies": [
+      "AVA-0014",
+      "AVA-0030"
+    ],
+    "acceptance_summary": "Locked output tolerance gate",
+    "release_stage": "Foundation",
+    "status": "Blocked",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-035",
+    "parent_epic": "AVA-EPIC-010",
+    "title": "CSP resource inventory and rollout",
+    "outcome": "Report-only then enforce",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-035"
+    ],
+    "dependencies": [
+      "AVA-0007"
+    ],
+    "acceptance_summary": "Report-only then enforce",
+    "release_stage": "Closed beta",
+    "status": "Ready",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-036",
+    "parent_epic": "AVA-EPIC-008",
+    "title": "Native crash reporting/symbols",
+    "outcome": "Test crash visible",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-036"
+    ],
+    "dependencies": [
+      "AVA-0008",
+      "AVA-0010"
+    ],
+    "acceptance_summary": "Test crash visible",
+    "release_stage": "Native vertical slice",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-037",
+    "parent_epic": "AVA-EPIC-010",
+    "title": "Privacy/legal/health claim review",
+    "outcome": "Signed approval and policy updates",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-037"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "Signed approval and policy updates",
+    "release_stage": "Closed beta",
+    "status": "Blocked",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-038",
+    "parent_epic": "AVA-EPIC-011",
+    "title": "Incident/support ownership rehearsal",
+    "outcome": "Tabletop passes",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-038"
+    ],
+    "dependencies": [
+      "AVA-0010",
+      "AVA-0012"
+    ],
+    "acceptance_summary": "Tabletop passes",
+    "release_stage": "Staging",
+    "status": "Blocked",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-039",
+    "parent_epic": "AVA-EPIC-014",
+    "title": "Hide developer/experimental surfaces",
+    "outcome": "Production route/flag audit passes",
+    "current_state": "Verified Complete",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-039"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "Production route/flag audit passes",
+    "release_stage": "Closed beta",
+    "status": "Verified Complete",
+    "estimated_effort_range": "S"
+  },
+  {
+    "feature_id": "AVA-FEAT-040",
+    "parent_epic": "AVA-EPIC-016",
+    "title": "Replace deprecated lint command/hook warning",
+    "outcome": "ESLint CLI clean",
+    "current_state": "Verified Complete",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-040"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "ESLint CLI clean",
+    "release_stage": "Foundation",
+    "status": "Verified Complete",
+    "estimated_effort_range": "S"
+  },
+  {
+    "feature_id": "AVA-FEAT-041",
+    "parent_epic": "AVA-EPIC-016",
+    "title": "Split session-page derivation",
+    "outcome": "Typed selectors; behavior unchanged",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-041"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "acceptance_summary": "Typed selectors; behavior unchanged",
+    "release_stage": "Foundation",
+    "status": "Ready",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-042",
+    "parent_epic": "AVA-EPIC-011",
+    "title": "Performance/cost capacity validation",
+    "outcome": "Cohort SLO and budget pass",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-042"
+    ],
+    "dependencies": [
+      "AVA-0002",
+      "AVA-0010"
+    ],
+    "acceptance_summary": "Cohort SLO and budget pass",
+    "release_stage": "Staging",
+    "status": "Blocked",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-043",
+    "parent_epic": "AVA-EPIC-015",
+    "title": "Notification provider/deep links",
+    "outcome": "Consent/delivery/fallback tested",
+    "current_state": "Deferred",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-043"
+    ],
+    "dependencies": [
+      "AVA-0007",
+      "AVA-0023"
+    ],
+    "acceptance_summary": "Consent/delivery/fallback tested",
+    "release_stage": "Coach operations",
+    "status": "Deferred",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-044",
+    "parent_epic": "AVA-EPIC-015",
+    "title": "Coach-admin operational tools",
+    "outcome": "Least-privilege actions/audit",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-044"
+    ],
+    "dependencies": [
+      "AVA-0005",
+      "AVA-0010"
+    ],
+    "acceptance_summary": "Least-privilege actions/audit",
+    "release_stage": "Coach operations",
+    "status": "Ready",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-045",
+    "parent_epic": "AVA-EPIC-005",
+    "title": "Retire mock default from generic production path",
+    "outcome": "Production fails closed",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-045"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "Production fails closed",
+    "release_stage": "Native vertical slice",
+    "status": "Ready",
+    "estimated_effort_range": "S"
+  },
+  {
+    "feature_id": "AVA-FEAT-046",
+    "parent_epic": "AVA-EPIC-006",
+    "title": "Resolve zero-placeholder legacy consumers",
+    "outcome": "Null/availability everywhere",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-046"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "acceptance_summary": "Null/availability everywhere",
+    "release_stage": "Scientific beta",
+    "status": "Ready",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-047",
+    "parent_epic": "AVA-EPIC-013",
+    "title": "History compatibility/provenance filtering",
+    "outcome": "Mixed versions not compared",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-047"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "acceptance_summary": "Mixed versions not compared",
+    "release_stage": "Scientific beta",
+    "status": "Ready",
+    "estimated_effort_range": "M"
+  },
+  {
+    "feature_id": "AVA-FEAT-048",
+    "parent_epic": "AVA-EPIC-013",
+    "title": "Benchmark dataset governance/population",
+    "outcome": "Reviewed compatible cohorts",
+    "current_state": "Deferred",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-048"
+    ],
+    "dependencies": [
+      "AVA-0014"
+    ],
+    "acceptance_summary": "Reviewed compatible cohorts",
+    "release_stage": "Scientific beta",
+    "status": "Deferred",
+    "estimated_effort_range": "XL"
+  },
+  {
+    "feature_id": "AVA-FEAT-049",
+    "parent_epic": "AVA-EPIC-006",
+    "title": "Peak-velocity definition/reference decision",
+    "outcome": "One definition or remain hidden",
+    "current_state": "Ready",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-049"
+    ],
+    "dependencies": [
+      "AVA-0014"
+    ],
+    "acceptance_summary": "One definition or remain hidden",
+    "release_stage": "Scientific beta",
+    "status": "Ready",
+    "estimated_effort_range": "L"
+  },
+  {
+    "feature_id": "AVA-FEAT-050",
+    "parent_epic": "AVA-EPIC-014",
+    "title": "Public launch scale/security program",
+    "outcome": "Independent launch gates pass",
+    "current_state": "Deferred",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "AVA-050"
+    ],
+    "dependencies": [],
+    "acceptance_summary": "Independent launch gates pass",
+    "release_stage": "Closed beta",
+    "status": "Deferred",
+    "estimated_effort_range": "XL"
+  },
+  {
+    "feature_id": "AVA-FEAT-051",
+    "parent_epic": "AVA-EPIC-012",
+    "title": "Repair orchestration pgTAP plan contract",
+    "outcome": "Unified database test command recognizes and executes orchestration assertions",
+    "current_state": "Blocked",
+    "desired_state": "Verified Complete",
+    "audit_evidence": [
+      "SPRINT-02-DISC-001"
+    ],
+    "dependencies": [
+      "AVA-0030"
+    ],
+    "acceptance_summary": "npx supabase test db passes with planned orchestration assertions",
+    "release_stage": "Foundation",
+    "status": "Blocked",
+    "estimated_effort_range": "S"
+  }
+]

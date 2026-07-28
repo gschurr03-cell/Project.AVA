@@ -41,6 +41,8 @@ export interface StepMark {
   side: StepSide;
   /** OverlayFrame.frame index of the contact. */
   frame: number;
+  /** Immutable source-video frame carrying the contact evidence. */
+  sourceFrameIndex: number;
   /** Contact time in seconds. */
   time: number;
   /** Normalized foot position at contact (image space, 0..1). */
@@ -288,6 +290,7 @@ export function detectStepMarks(
   return deduped.map((mark, i) => ({
     side: mark.side,
     frame: mark.frame,
+    sourceFrameIndex: frames[mark.frame]?.sourceFrameIndex ?? mark.frame,
     time: mark.time,
     x: mark.x,
     y: mark.y,

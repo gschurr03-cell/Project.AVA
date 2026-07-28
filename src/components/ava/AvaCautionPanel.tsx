@@ -38,33 +38,33 @@ export function AvaCautionPanel({
   return (
     <details
       open={defaultOpen}
-      className={`group overflow-hidden rounded-2xl border border-dashed border-[#D4AF37]/35 bg-[#121214]/95 shadow-[0_24px_80px_rgba(0,0,0,0.45)] ${className}`}
+      className={`group overflow-hidden rounded-2xl border border-dashed border-[#f5c451]/35 bg-[#101827]/95 shadow-[0_24px_80px_rgba(0,0,0,0.45)] ${className}`}
     >
       {/* Caution tape — top */}
       <div className="h-2 w-full ava-caution-tape opacity-70" aria-hidden="true" />
 
       <summary className="flex cursor-pointer list-none flex-wrap items-start justify-between gap-3 p-5 [&::-webkit-details-marker]:hidden">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 text-lg text-[#D4AF37]" aria-hidden="true">
+          <span className="mt-0.5 text-lg text-[#f5c451]" aria-hidden="true">
             ⚠
           </span>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#D4AF37]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#f5c451]">
               {title}
             </p>
-            <h3 className="mt-0.5 text-lg font-semibold tracking-tight text-[#F5F5F7]">{subtitle}</h3>
+            <h3 className="mt-0.5 text-lg font-semibold tracking-tight text-[#f5f7fb]">{subtitle}</h3>
             {description && (
-              <p className="mt-1 max-w-2xl text-xs leading-5 text-[#A0A2A8]">{description}</p>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-[#b3bccb]">{description}</p>
             )}
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="rounded-full border border-[#D4AF37]/45 bg-[#D4AF37]/12 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#E4C25A]">
+          <span className="rounded-full border border-[#f5c451]/45 bg-[#f5c451]/12 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f5c451]">
             {pill}
           </span>
           <svg
-            className="mt-0.5 h-4 w-4 shrink-0 text-[#6B7280] transition-transform duration-150 group-open:rotate-90"
+            className="mt-0.5 h-4 w-4 shrink-0 text-[#7e8797] transition-transform duration-150 group-open:rotate-90"
             viewBox="0 0 20 20"
             fill="currentColor"
             aria-hidden="true"

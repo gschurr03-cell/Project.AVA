@@ -26,7 +26,7 @@ function Submit({ label, className }: { label: string; className: string }) {
 export default function RerunAnalysisButton({
   sessionId,
   label = "Rerun Analysis",
-  className = "ava-red-glow rounded-lg bg-[#D72638] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#e63a4b] disabled:cursor-not-allowed disabled:opacity-50",
+  className = "ava-red-glow rounded-lg bg-[#2f80ed] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3b8eff] disabled:cursor-not-allowed disabled:opacity-50",
 }: {
   sessionId: string;
   label?: string;

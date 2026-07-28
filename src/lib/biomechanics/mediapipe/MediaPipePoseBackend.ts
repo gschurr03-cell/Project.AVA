@@ -7,6 +7,7 @@ import {
   PythonMediaPipePoseService,
   type PythonMediaPipeOptions,
 } from "./PythonMediaPipePoseService";
+import { classifyRecordingMode } from "../../video/recordingMode";
 
 const BACKEND_NAME = "mediapipe" as const;
 const MODEL_VERSION = "mediapipe-pose-0.1";
@@ -46,7 +47,10 @@ export function buildPoseSequence(raw: MediaPipePoseResult): PoseSequence {
   const frames: PoseFrame[] = result.frames.map((frame, index) => ({
     index,
     tMs: frame.timestampMs ?? (index / result.fps) * 1000,
+    sourceFrameIndex: frame.sourceFrameIndex,
+    sourceTimestampMs: frame.sourceTimestampMs,
     keypoints: mapFrameToKeypoints(frame),
+    trackingConfidence: frame.trackingConfidence,
   }));
 
   const sequence: PoseSequence = {
@@ -56,6 +60,37 @@ export function buildPoseSequence(raw: MediaPipePoseResult): PoseSequence {
     fps: result.fps,
     width: result.width,
     height: result.height,
+    coordinateSchemaVersion: result.coordinateSchemaVersion,
+    ...(result.cameraEvidence
+      ? {
+          cameraEvidence: result.cameraEvidence,
+          recordingAssessment: classifyRecordingMode(result.cameraEvidence),
+        }
+      : {}),
+    ...(result.sourceFps != null
+      ? {
+          sourceMetadata: {
+            fps: result.sourceFps,
+            averageFps: result.sourceAverageFps ?? null,
+            nominalFps: result.sourceNominalFps ?? null,
+            realFps: result.sourceRealFps ?? null,
+            timestampFps: result.sourceTimestampFps ?? null,
+            variableFrameRate: result.sourceVariableFrameRate ?? false,
+            fpsTierReason: result.sourceFpsTierReason,
+            fpsTierPolicyVersion: result.sourceFpsTierPolicyVersion,
+            ...(result.sourceFpsClassification === "validated_60_fps_class" ||
+            result.sourceFpsClassification === "high_speed_source_normalized_to_60" ||
+            result.sourceFpsClassification === "experimental_30_fps_class"
+              ? { fpsClassification: result.sourceFpsClassification }
+              : {}),
+            frameCount: result.sourceFrameCount ?? result.frames.length,
+            durationSeconds:
+              result.sourceDurationSeconds ??
+              (result.sourceFrameCount ?? result.frames.length) / result.sourceFps,
+            codec: result.sourceCodec ?? null,
+          },
+        }
+      : {}),
     frames,
   };
   return poseSequenceSchema.parse(sequence) as PoseSequence;

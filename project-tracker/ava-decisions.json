@@ -1,0 +1,98 @@
+[
+  {
+    "decision_id": "DEC-001",
+    "question": "Which provider/account will host isolated staging?",
+    "recommendation": "Use a separate Supabase project plus existing web/worker architecture.",
+    "tasks_blocked": [
+      "AVA-0002",
+      "AVA-0004",
+      "AVA-0009",
+      "AVA-0010",
+      "AVA-0011"
+    ],
+    "deadline_milestone": "M1",
+    "owner_type": "Founder Decision",
+    "status": "Open"
+  },
+  {
+    "decision_id": "DEC-002",
+    "question": "Which activated record is canonical across web and native?",
+    "recommendation": "Versioned immutable activated result; legacy reads remain until equivalence.",
+    "tasks_blocked": [
+      "AVA-0017",
+      "AVA-0018"
+    ],
+    "deadline_milestone": "M2",
+    "owner_type": "Founder Decision",
+    "status": "Recommended"
+  },
+  {
+    "decision_id": "DEC-003",
+    "question": "Which metrics are permitted in coach and athlete beta?",
+    "recommendation": "Only registry-supported metrics; keep peak velocity/contact time hidden.",
+    "tasks_blocked": [
+      "AVA-0015",
+      "AVA-0016",
+      "AVA-0049"
+    ],
+    "deadline_milestone": "M3",
+    "owner_type": "Founder Decision",
+    "status": "Open"
+  },
+  {
+    "decision_id": "DEC-004",
+    "question": "Does training ship in the first coach beta?",
+    "recommendation": "No; enable only after persistence, approval and safety events.",
+    "tasks_blocked": [
+      "AVA-0020",
+      "AVA-0021",
+      "AVA-0022",
+      "AVA-0023"
+    ],
+    "deadline_milestone": "M4",
+    "owner_type": "Founder Decision",
+    "status": "Open"
+  },
+  {
+    "decision_id": "DEC-005",
+    "question": "What are retention and deletion defaults?",
+    "recommendation": "Shortest viable retention with explicit backup limitations.",
+    "tasks_blocked": [
+      "AVA-0012",
+      "AVA-0027",
+      "AVA-0037"
+    ],
+    "deadline_milestone": "M1",
+    "owner_type": "Founder Decision",
+    "status": "Open"
+  },
+  {
+    "decision_id": "DEC-006",
+    "question": "Are minors excluded from initial beta?",
+    "recommendation": "Exclude until consent, safeguarding and legal review exist.",
+    "tasks_blocked": [
+      "AVA-0037"
+    ],
+    "deadline_milestone": "M6",
+    "owner_type": "Founder Decision",
+    "status": "Open"
+  },
+  {
+    "decision_id": "DEC-007",
+    "question": "What is canonical for production developer and experimental exposure?",
+    "recommendation": "Use the versioned production surface manifest enforced by the canonical feature loader.",
+    "tasks_blocked": [],
+    "deadline_milestone": "M0",
+    "owner_type": "Engineering Decision",
+    "status": "Accepted"
+  },
+  {
+    "decision_id": "DEC-008",
+    "question": "What is the canonical web lint entry?",
+    "recommendation": "Use ESLint CLI over maintained application source with a zero-warning budget.",
+    "tasks_blocked": [],
+    "deadline_milestone": "M0",
+    "owner_type": "Engineering Decision",
+    "status": "Accepted"
+  }
+]

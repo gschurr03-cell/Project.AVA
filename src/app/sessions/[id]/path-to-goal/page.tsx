@@ -81,12 +81,12 @@ export default async function PathToGoalPage({ params }: { params: Promise<{ id:
 
   return (
     <main className="ava-carbon mx-auto min-h-screen max-w-5xl p-4 sm:p-8">
-      <Link href={`/sessions/${id}`} className="text-sm text-[#A0A2A8] transition hover:text-[#F5F5F7]">
+      <Link href={`/sessions/${id}`} className="text-sm text-[#b3bccb] transition hover:text-[#f5f7fb]">
         ← Back to analysis
       </Link>
       <div className="mb-6 mt-2">
-        <h1 className="text-3xl font-bold tracking-tight text-[#F5F5F7]">Path To Goal</h1>
-        <p className="mt-1 text-sm text-[#6B7280]">
+        <h1 className="text-3xl font-bold tracking-tight text-[#f5f7fb]">Path To Goal</h1>
+        <p className="mt-1 text-sm text-[#7e8797]">
           {athlete?.full_name ? `${athlete.full_name} — ` : ""}your roadmap from current performance to your target.
         </p>
       </div>
@@ -94,7 +94,7 @@ export default async function PathToGoalPage({ params }: { params: Promise<{ id:
       {inFlight && analysis ? (
         <AnalysisProgressExperience analysisId={analysis.id} initialStatus="processing" startedAtMs={Date.now()} />
       ) : !hasGoal ? (
-        <div className="rounded-2xl border border-white/[0.06] bg-[#141416] p-6 text-sm text-[#A0A2A8]">
+        <div className="rounded-2xl border border-white/[0.06] bg-[#101827] p-6 text-sm text-[#b3bccb]">
           Add a 100 m personal best and goal on the athlete&apos;s profile to generate a Path To Goal. AVA needs a
           current and target time to estimate what must change.
         </div>

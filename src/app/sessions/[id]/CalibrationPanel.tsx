@@ -40,15 +40,15 @@ export default function CalibrationPanel({ report }: { report: CalibrationReport
           <ConfidenceBadge confidence={scale.confidence} />
         </div>
       )}
-      <p className="-mt-3 mb-4 text-xs text-[#6B7280]">
+      <p className="-mt-3 mb-4 text-xs text-[#7e8797]">
         How well this session is calibrated. Performance numbers come from Trusted Sprint Metrics
         above — this is setup quality only.
       </p>
 
       {!report.calibrated || !scale ? (
-        <div className="rounded-lg border border-[#CD7F32]/40 bg-[#CD7F32]/10 p-4">
-          <p className="text-sm font-semibold text-[#E0A063]">Needs calibration</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#A0A2A8]">
+        <div className="rounded-lg border border-[#f5c451]/40 bg-[#f5c451]/10 p-4">
+          <p className="text-sm font-semibold text-[#f5c451]">Needs calibration</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#b3bccb]">
             {report.warnings.length > 0 ? (
               report.warnings.map((w) => <li key={w}>{w}</li>)
             ) : (
@@ -59,28 +59,28 @@ export default function CalibrationPanel({ report }: { report: CalibrationReport
       ) : (
         <>
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-3">
-              <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+            <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-3">
+              <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e8797]">
                 Scale confidence
               </dt>
-              <dd className="mt-1 text-lg font-bold capitalize text-[#F5F5F7]">{scale.confidence}</dd>
+              <dd className="mt-1 text-lg font-bold capitalize text-[#f5f7fb]">{scale.confidence}</dd>
             </div>
-            <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-3">
-              <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+            <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-3">
+              <dt className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e8797]">
                 Method
               </dt>
-              <dd className="mt-1 text-lg font-bold text-[#F5F5F7]">
+              <dd className="mt-1 text-lg font-bold text-[#f5f7fb]">
                 {METHOD_LABEL[scale.method] ?? scale.method}
               </dd>
             </div>
           </dl>
 
-          <p className="mt-3 text-xs text-[#A0A2A8]">
-            <span className="font-medium text-[#F5F5F7]">Source:</span> {scale.reason}
+          <p className="mt-3 text-xs text-[#b3bccb]">
+            <span className="font-medium text-[#f5f7fb]">Source:</span> {scale.reason}
           </p>
 
           {report.warnings.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#E0A063]">
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#f5c451]">
               {report.warnings.map((w) => (
                 <li key={w}>{w}</li>
               ))}

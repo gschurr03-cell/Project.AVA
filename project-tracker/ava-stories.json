@@ -1,0 +1,767 @@
+[
+  {
+    "story_id": "AVA-STORY-001",
+    "parent_feature": "AVA-FEAT-001",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver commit and review reproducible baseline with auditable evidence.",
+    "rationale": "Closes audited finding AVA-001.",
+    "acceptance_criteria": [
+      "Clean intentional commits reproduce gates"
+    ],
+    "dependencies": [],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Foundation"
+  },
+  {
+    "story_id": "AVA-STORY-002",
+    "parent_feature": "AVA-FEAT-002",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver provision isolated staging supabase/web/worker with auditable evidence.",
+    "rationale": "Closes audited finding AVA-002.",
+    "acceptance_criteria": [
+      "IaC/repeatable deploy and health"
+    ],
+    "dependencies": [],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-003",
+    "parent_feature": "AVA-FEAT-003",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver managed secrets and rotation with auditable evidence.",
+    "rationale": "Closes audited finding AVA-003.",
+    "acceptance_criteria": [
+      "No local secrets; rotation rehearsed"
+    ],
+    "dependencies": [
+      "AVA-0002"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-004",
+    "parent_feature": "AVA-FEAT-004",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver apply/verify 52 migrations in staging with auditable evidence.",
+    "rationale": "Closes audited finding AVA-004.",
+    "acceptance_criteria": [
+      "Checksums, smoke and rollback pass"
+    ],
+    "dependencies": [
+      "AVA-0002"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-005",
+    "parent_feature": "AVA-FEAT-005",
+    "actor": "Security Engineer",
+    "outcome": "Deliver complete authorization operation matrix with auditable evidence.",
+    "rationale": "Closes audited finding AVA-005.",
+    "acceptance_criteria": [
+      "Cross-athlete negative suite passes"
+    ],
+    "dependencies": [
+      "AVA-0004"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-006",
+    "parent_feature": "AVA-FEAT-006",
+    "actor": "Native iOS Engineer",
+    "outcome": "Deliver implement `/api/mobile/v1` provider with auditable evidence.",
+    "rationale": "Closes audited finding AVA-006.",
+    "acceptance_criteria": [
+      "Versioned contract tests pass"
+    ],
+    "dependencies": [
+      "AVA-0004",
+      "AVA-0005"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-007",
+    "parent_feature": "AVA-FEAT-007",
+    "actor": "Native iOS Engineer",
+    "outcome": "Deliver connect native auth/capture/upload/result with auditable evidence.",
+    "rationale": "Closes audited finding AVA-007.",
+    "acceptance_criteria": [
+      "Real device E2E passes"
+    ],
+    "dependencies": [
+      "AVA-0006"
+    ],
+    "test_type": "Native/device",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-008",
+    "parent_feature": "AVA-FEAT-008",
+    "actor": "Native iOS Engineer",
+    "outcome": "Deliver replace placeholder app identity/signing with auditable evidence.",
+    "rationale": "Closes audited finding AVA-008.",
+    "acceptance_criteria": [
+      "Archive succeeds"
+    ],
+    "dependencies": [],
+    "test_type": "Native/device",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-009",
+    "parent_feature": "AVA-FEAT-009",
+    "actor": "Computer Vision Engineer",
+    "outcome": "Deliver hosted worker golden-video execution with auditable evidence.",
+    "rationale": "Closes audited finding AVA-009.",
+    "acceptance_criteria": [
+      "60/120/240 jobs complete with provenance"
+    ],
+    "dependencies": [
+      "AVA-0002",
+      "AVA-0004"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-010",
+    "parent_feature": "AVA-FEAT-010",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver deploy telemetry/dashboards/alerts with auditable evidence.",
+    "rationale": "Closes audited finding AVA-010.",
+    "acceptance_criteria": [
+      "Queue/upload/activation alerts rehearsed"
+    ],
+    "dependencies": [
+      "AVA-0002"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-011",
+    "parent_feature": "AVA-FEAT-011",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver backup restore and rollback rehearsal with auditable evidence.",
+    "rationale": "Closes audited finding AVA-011.",
+    "acceptance_criteria": [
+      "Timed restore/RPO/RTO evidence"
+    ],
+    "dependencies": [
+      "AVA-0002",
+      "AVA-0004"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-012",
+    "parent_feature": "AVA-FEAT-012",
+    "actor": "Security Engineer",
+    "outcome": "Deliver end-to-end deletion/export with auditable evidence.",
+    "rationale": "Closes audited finding AVA-012.",
+    "acceptance_criteria": [
+      "DB/storage/derived erasure proven"
+    ],
+    "dependencies": [
+      "AVA-0004",
+      "AVA-0006"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Closed beta"
+  },
+  {
+    "story_id": "AVA-STORY-013",
+    "parent_feature": "AVA-FEAT-013",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver distributed rate/upload admission with auditable evidence.",
+    "rationale": "Closes audited finding AVA-013.",
+    "acceptance_criteria": [
+      "Abuse/load tests pass"
+    ],
+    "dependencies": [
+      "AVA-0002"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-014",
+    "parent_feature": "AVA-FEAT-014",
+    "actor": "Data or Scientific Engineer",
+    "outcome": "Deliver consent/reference dataset collection with auditable evidence.",
+    "rationale": "Closes audited finding AVA-014.",
+    "acceptance_criteria": [
+      "Eligible locked 60/120/240 cohort"
+    ],
+    "dependencies": [],
+    "test_type": "Scientific/reference",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-015",
+    "parent_feature": "AVA-FEAT-015",
+    "actor": "Data or Scientific Engineer",
+    "outcome": "Deliver metric reference validation with auditable evidence.",
+    "rationale": "Closes audited finding AVA-015.",
+    "acceptance_criteria": [
+      "Error/CI targets satisfied"
+    ],
+    "dependencies": [
+      "AVA-0014"
+    ],
+    "test_type": "Scientific/reference",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-016",
+    "parent_feature": "AVA-FEAT-016",
+    "actor": "Data or Scientific Engineer",
+    "outcome": "Deliver enforce claims registry in presentation with auditable evidence.",
+    "rationale": "Closes audited finding AVA-016.",
+    "acceptance_criteria": [
+      "Unvalidated outputs withheld"
+    ],
+    "dependencies": [
+      "AVA-0015"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-017",
+    "parent_feature": "AVA-FEAT-017",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver immutable report read path with auditable evidence.",
+    "rationale": "Closes audited finding AVA-017.",
+    "acceptance_criteria": [
+      "Web/native use same activated version"
+    ],
+    "dependencies": [
+      "AVA-0009"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-018",
+    "parent_feature": "AVA-FEAT-018",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver resolve legacy/manifest equivalence with auditable evidence.",
+    "rationale": "Closes audited finding AVA-018.",
+    "acceptance_criteria": [
+      "Shadow thresholds and rollback pass"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-019",
+    "parent_feature": "AVA-FEAT-019",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver consolidate legacy coaching thresholds with auditable evidence.",
+    "rationale": "Closes audited finding AVA-019.",
+    "acceptance_criteria": [
+      "One versioned definition per rule"
+    ],
+    "dependencies": [
+      "AVA-0018"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-020",
+    "parent_feature": "AVA-FEAT-020",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver persist training plans/revisions/events with auditable evidence.",
+    "rationale": "Closes audited finding AVA-020.",
+    "acceptance_criteria": [
+      "Append-only RLS store passes"
+    ],
+    "dependencies": [
+      "AVA-0005"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Training beta"
+  },
+  {
+    "story_id": "AVA-STORY-021",
+    "parent_feature": "AVA-FEAT-021",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver authorized coach training approval with auditable evidence.",
+    "rationale": "Closes audited finding AVA-021.",
+    "acceptance_criteria": [
+      "No athlete activation without approval"
+    ],
+    "dependencies": [
+      "AVA-0020"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Training beta"
+  },
+  {
+    "story_id": "AVA-STORY-022",
+    "parent_feature": "AVA-FEAT-022",
+    "actor": "Native iOS Engineer",
+    "outcome": "Deliver native training execution/offline sync with auditable evidence.",
+    "rationale": "Closes audited finding AVA-022.",
+    "acceptance_criteria": [
+      "Stale/pain/retry device tests pass"
+    ],
+    "dependencies": [
+      "AVA-0006",
+      "AVA-0020",
+      "AVA-0021"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-023",
+    "parent_feature": "AVA-FEAT-023",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver safety-event ingestion/escalation with auditable evidence.",
+    "rationale": "Closes audited finding AVA-023.",
+    "acceptance_criteria": [
+      "Loss/duplicate tests and paging pass"
+    ],
+    "dependencies": [
+      "AVA-0010",
+      "AVA-0020"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Training beta"
+  },
+  {
+    "story_id": "AVA-STORY-024",
+    "parent_feature": "AVA-FEAT-024",
+    "actor": "Data or Scientific Engineer",
+    "outcome": "Deliver coach/report comprehension studies with auditable evidence.",
+    "rationale": "Closes audited finding AVA-024.",
+    "acceptance_criteria": [
+      "Prespecified thresholds pass"
+    ],
+    "dependencies": [
+      "AVA-0014",
+      "AVA-0017"
+    ],
+    "test_type": "Scientific/reference",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-025",
+    "parent_feature": "AVA-FEAT-025",
+    "actor": "Native iOS Engineer",
+    "outcome": "Deliver device/accessibility matrix with auditable evidence.",
+    "rationale": "Closes audited finding AVA-025.",
+    "acceptance_criteria": [
+      "Supported devices, VoiceOver, Dynamic Type"
+    ],
+    "dependencies": [
+      "AVA-0007"
+    ],
+    "test_type": "Native/device",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-026",
+    "parent_feature": "AVA-FEAT-026",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver resumable/idempotent uploads with auditable evidence.",
+    "rationale": "Closes audited finding AVA-026.",
+    "acceptance_criteria": [
+      "Kill/relaunch/network-loss recovery"
+    ],
+    "dependencies": [
+      "AVA-0006"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-027",
+    "parent_feature": "AVA-FEAT-027",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver storage lifecycle/orphan reconciliation with auditable evidence.",
+    "rationale": "Closes audited finding AVA-027.",
+    "acceptance_criteria": [
+      "Zero unexplained orphan classes"
+    ],
+    "dependencies": [
+      "AVA-0012",
+      "AVA-0026"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-028",
+    "parent_feature": "AVA-FEAT-028",
+    "actor": "Computer Vision Engineer",
+    "outcome": "Deliver worker termination/concurrency/load tests with auditable evidence.",
+    "rationale": "Closes audited finding AVA-028.",
+    "acceptance_criteria": [
+      "Lease/retry/SLO targets pass"
+    ],
+    "dependencies": [
+      "AVA-0009",
+      "AVA-0010"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-029",
+    "parent_feature": "AVA-FEAT-029",
+    "actor": "Computer Vision Engineer",
+    "outcome": "Deliver operational dead-letter console/runbook with auditable evidence.",
+    "rationale": "Closes audited finding AVA-029.",
+    "acceptance_criteria": [
+      "Authorized replay/audit proven"
+    ],
+    "dependencies": [
+      "AVA-0010",
+      "AVA-0028"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-030",
+    "parent_feature": "AVA-FEAT-030",
+    "actor": "QA Engineer",
+    "outcome": "Deliver ci protected branch and required gates with auditable evidence.",
+    "rationale": "Closes audited finding AVA-030.",
+    "acceptance_criteria": [
+      "Remote required checks observed"
+    ],
+    "dependencies": [
+      "AVA-0001"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Foundation"
+  },
+  {
+    "story_id": "AVA-STORY-031",
+    "parent_feature": "AVA-FEAT-031",
+    "actor": "QA Engineer",
+    "outcome": "Deliver container/sbom/vulnerability provenance with auditable evidence.",
+    "rationale": "Closes audited finding AVA-031.",
+    "acceptance_criteria": [
+      "Signed immutable artifact"
+    ],
+    "dependencies": [
+      "AVA-0030"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Foundation"
+  },
+  {
+    "story_id": "AVA-STORY-032",
+    "parent_feature": "AVA-FEAT-032",
+    "actor": "QA Engineer",
+    "outcome": "Deliver database type/schema drift gate with auditable evidence.",
+    "rationale": "Closes audited finding AVA-032.",
+    "acceptance_criteria": [
+      "Generated types clean in CI"
+    ],
+    "dependencies": [
+      "AVA-0004",
+      "AVA-0030"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Foundation"
+  },
+  {
+    "story_id": "AVA-STORY-033",
+    "parent_feature": "AVA-FEAT-033",
+    "actor": "QA Engineer",
+    "outcome": "Deliver unified test runner/coverage taxonomy with auditable evidence.",
+    "rationale": "Closes audited finding AVA-033.",
+    "acceptance_criteria": [
+      "Aliases no longer inflate evidence"
+    ],
+    "dependencies": [
+      "AVA-0030"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Foundation"
+  },
+  {
+    "story_id": "AVA-STORY-034",
+    "parent_feature": "AVA-FEAT-034",
+    "actor": "QA Engineer",
+    "outcome": "Deliver worker golden regression ci with auditable evidence.",
+    "rationale": "Closes audited finding AVA-034.",
+    "acceptance_criteria": [
+      "Locked output tolerance gate"
+    ],
+    "dependencies": [
+      "AVA-0014",
+      "AVA-0030"
+    ],
+    "test_type": "Scientific/reference",
+    "release_stage": "Foundation"
+  },
+  {
+    "story_id": "AVA-STORY-035",
+    "parent_feature": "AVA-FEAT-035",
+    "actor": "Security Engineer",
+    "outcome": "Deliver csp resource inventory and rollout with auditable evidence.",
+    "rationale": "Closes audited finding AVA-035.",
+    "acceptance_criteria": [
+      "Report-only then enforce"
+    ],
+    "dependencies": [
+      "AVA-0007"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Closed beta"
+  },
+  {
+    "story_id": "AVA-STORY-036",
+    "parent_feature": "AVA-FEAT-036",
+    "actor": "Native iOS Engineer",
+    "outcome": "Deliver native crash reporting/symbols with auditable evidence.",
+    "rationale": "Closes audited finding AVA-036.",
+    "acceptance_criteria": [
+      "Test crash visible"
+    ],
+    "dependencies": [
+      "AVA-0008",
+      "AVA-0010"
+    ],
+    "test_type": "Native/device",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-037",
+    "parent_feature": "AVA-FEAT-037",
+    "actor": "Security Engineer",
+    "outcome": "Deliver privacy/legal/health claim review with auditable evidence.",
+    "rationale": "Closes audited finding AVA-037.",
+    "acceptance_criteria": [
+      "Signed approval and policy updates"
+    ],
+    "dependencies": [],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Closed beta"
+  },
+  {
+    "story_id": "AVA-STORY-038",
+    "parent_feature": "AVA-FEAT-038",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver incident/support ownership rehearsal with auditable evidence.",
+    "rationale": "Closes audited finding AVA-038.",
+    "acceptance_criteria": [
+      "Tabletop passes"
+    ],
+    "dependencies": [
+      "AVA-0010",
+      "AVA-0012"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-039",
+    "parent_feature": "AVA-FEAT-039",
+    "actor": "Product or Operations Lead",
+    "outcome": "Deliver hide developer/experimental surfaces with auditable evidence.",
+    "rationale": "Closes audited finding AVA-039.",
+    "acceptance_criteria": [
+      "Production route/flag audit passes"
+    ],
+    "dependencies": [],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Closed beta"
+  },
+  {
+    "story_id": "AVA-STORY-040",
+    "parent_feature": "AVA-FEAT-040",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver replace deprecated lint command/hook warning with auditable evidence.",
+    "rationale": "Closes audited finding AVA-040.",
+    "acceptance_criteria": [
+      "ESLint CLI clean"
+    ],
+    "dependencies": [],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Foundation"
+  },
+  {
+    "story_id": "AVA-STORY-041",
+    "parent_feature": "AVA-FEAT-041",
+    "actor": "Backend Engineer",
+    "outcome": "Deliver split session-page derivation with auditable evidence.",
+    "rationale": "Closes audited finding AVA-041.",
+    "acceptance_criteria": [
+      "Typed selectors; behavior unchanged"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Foundation"
+  },
+  {
+    "story_id": "AVA-STORY-042",
+    "parent_feature": "AVA-FEAT-042",
+    "actor": "DevOps or Platform Engineer",
+    "outcome": "Deliver performance/cost capacity validation with auditable evidence.",
+    "rationale": "Closes audited finding AVA-042.",
+    "acceptance_criteria": [
+      "Cohort SLO and budget pass"
+    ],
+    "dependencies": [
+      "AVA-0002",
+      "AVA-0010"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Staging"
+  },
+  {
+    "story_id": "AVA-STORY-043",
+    "parent_feature": "AVA-FEAT-043",
+    "actor": "Product or Operations Lead",
+    "outcome": "Deliver notification provider/deep links with auditable evidence.",
+    "rationale": "Closes audited finding AVA-043.",
+    "acceptance_criteria": [
+      "Consent/delivery/fallback tested"
+    ],
+    "dependencies": [
+      "AVA-0007",
+      "AVA-0023"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Coach operations"
+  },
+  {
+    "story_id": "AVA-STORY-044",
+    "parent_feature": "AVA-FEAT-044",
+    "actor": "Product or Operations Lead",
+    "outcome": "Deliver coach-admin operational tools with auditable evidence.",
+    "rationale": "Closes audited finding AVA-044.",
+    "acceptance_criteria": [
+      "Least-privilege actions/audit"
+    ],
+    "dependencies": [
+      "AVA-0005",
+      "AVA-0010"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Coach operations"
+  },
+  {
+    "story_id": "AVA-STORY-045",
+    "parent_feature": "AVA-FEAT-045",
+    "actor": "Computer Vision Engineer",
+    "outcome": "Deliver retire mock default from generic production path with auditable evidence.",
+    "rationale": "Closes audited finding AVA-045.",
+    "acceptance_criteria": [
+      "Production fails closed"
+    ],
+    "dependencies": [],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Native vertical slice"
+  },
+  {
+    "story_id": "AVA-STORY-046",
+    "parent_feature": "AVA-FEAT-046",
+    "actor": "Data or Scientific Engineer",
+    "outcome": "Deliver resolve zero-placeholder legacy consumers with auditable evidence.",
+    "rationale": "Closes audited finding AVA-046.",
+    "acceptance_criteria": [
+      "Null/availability everywhere"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-047",
+    "parent_feature": "AVA-FEAT-047",
+    "actor": "Data or Scientific Engineer",
+    "outcome": "Deliver history compatibility/provenance filtering with auditable evidence.",
+    "rationale": "Closes audited finding AVA-047.",
+    "acceptance_criteria": [
+      "Mixed versions not compared"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-048",
+    "parent_feature": "AVA-FEAT-048",
+    "actor": "Data or Scientific Engineer",
+    "outcome": "Deliver benchmark dataset governance/population with auditable evidence.",
+    "rationale": "Closes audited finding AVA-048.",
+    "acceptance_criteria": [
+      "Reviewed compatible cohorts"
+    ],
+    "dependencies": [
+      "AVA-0014"
+    ],
+    "test_type": "Scientific/reference",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-049",
+    "parent_feature": "AVA-FEAT-049",
+    "actor": "Data or Scientific Engineer",
+    "outcome": "Deliver peak-velocity definition/reference decision with auditable evidence.",
+    "rationale": "Closes audited finding AVA-049.",
+    "acceptance_criteria": [
+      "One definition or remain hidden"
+    ],
+    "dependencies": [
+      "AVA-0014"
+    ],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Scientific beta"
+  },
+  {
+    "story_id": "AVA-STORY-050",
+    "parent_feature": "AVA-FEAT-050",
+    "actor": "Product or Operations Lead",
+    "outcome": "Deliver public launch scale/security program with auditable evidence.",
+    "rationale": "Closes audited finding AVA-050.",
+    "acceptance_criteria": [
+      "Independent launch gates pass"
+    ],
+    "dependencies": [],
+    "test_type": "Unit, integration and release gate",
+    "release_stage": "Closed beta"
+  },
+  {
+    "story_id": "AVA-STORY-051",
+    "parent_feature": "AVA-FEAT-051",
+    "actor": "QA Engineer",
+    "outcome": "Run orchestration database assertions through the canonical pgTAP suite.",
+    "rationale": "Sprint 02 discovered that orchestration_integration.sql emits no TAP plan.",
+    "acceptance_criteria": [
+      "npx supabase test db passes with planned orchestration assertions"
+    ],
+    "dependencies": [
+      "AVA-0030"
+    ],
+    "test_type": "Database integration",
+    "release_stage": "Foundation"
+  }
+]

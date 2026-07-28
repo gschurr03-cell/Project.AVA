@@ -36,6 +36,11 @@ export interface AsymmetryInsight {
   fixes: string[];
   /** Honest confidence caveat. */
   confidenceNote: string;
+  leftSampleCount: number;
+  rightSampleCount: number;
+  confidence: "high" | "moderate" | "low";
+  metricSource: "zoneMetrics";
+  sampleWindow: string;
 }
 
 /** Below this the two sides are treated as balanced (within the noise floor). */
@@ -48,7 +53,7 @@ function pctDiff(a: number, b: number): number {
   return hi > 0 ? (Math.abs(a - b) / hi) * 100 : 0;
 }
 
-function stepLengthInsight(left: number, right: number): AsymmetryInsight {
+function stepLengthInsight(left: number, right: number, leftSamples: number, rightSamples: number): AsymmetryInsight {
   const weakerSide: Side = left < right ? "left" : "right";
   const diff = pctDiff(left, right);
   return {
@@ -68,10 +73,15 @@ function stepLengthInsight(left: number, right: number): AsymmetryInsight {
       `Wicket runs / acceleration ladders cueing complete extension on each ${weakerSide} contact.`,
     ],
     confidenceNote: "Step length is spatial and calibrated — reliable at any frame rate.",
+    leftSampleCount: leftSamples,
+    rightSampleCount: rightSamples,
+    confidence: leftSamples >= 3 && rightSamples >= 3 ? "high" : "moderate",
+    metricSource: "zoneMetrics",
+    sampleWindow: "first in-zone contact through first post-zone endpoint",
   };
 }
 
-function stepFrequencyInsight(left: number, right: number, reliable: boolean): AsymmetryInsight {
+function stepFrequencyInsight(left: number, right: number, reliable: boolean, leftSamples: number, rightSamples: number): AsymmetryInsight {
   const weakerSide: Side = left < right ? "left" : "right";
   const diff = pctDiff(left, right);
   return {
@@ -93,6 +103,11 @@ function stepFrequencyInsight(left: number, right: number, reliable: boolean): A
     confidenceNote: reliable
       ? "Captured at ≥120 fps — per-side timing is trustworthy."
       : "At this frame rate per-side timing is directional, not exact — confirm the pattern across sessions or with 120–240 fps footage before over-correcting.",
+    leftSampleCount: leftSamples,
+    rightSampleCount: rightSamples,
+    confidence: reliable && leftSamples >= 3 && rightSamples >= 3 ? "high" : "moderate",
+    metricSource: "zoneMetrics",
+    sampleWindow: "valid contact intervals from first in-zone contact through first post-zone endpoint",
   };
 }
 
@@ -107,21 +122,36 @@ export function analyzeAsymmetry(
 ): AsymmetryInsight[] {
   const timingReliable = opts.timingReliable !== false;
   const insights: AsymmetryInsight[] = [];
+  const summary = m.zoneStepSummary;
+  const leftLengthSamples = summary?.summaries.leftStepSampleCount ?? 0;
+  const rightLengthSamples = summary?.summaries.rightStepSampleCount ?? 0;
 
   if (
+    leftLengthSamples >= 2 &&
+    rightLengthSamples >= 2 &&
     m.leftStepLengthM != null &&
     m.rightStepLengthM != null &&
     pctDiff(m.leftStepLengthM, m.rightStepLengthM) >= ASYMMETRY_MIN_PCT
   ) {
-    insights.push(stepLengthInsight(m.leftStepLengthM, m.rightStepLengthM));
+    insights.push(stepLengthInsight(m.leftStepLengthM, m.rightStepLengthM, leftLengthSamples, rightLengthSamples));
   }
 
+  const leftFrequencySamples = summary?.intervals.filter((interval) => interval.valid && interval.toSide === "left").length ?? 0;
+  const rightFrequencySamples = summary?.intervals.filter((interval) => interval.valid && interval.toSide === "right").length ?? 0;
   if (
+    leftFrequencySamples >= 2 &&
+    rightFrequencySamples >= 2 &&
     m.leftStepFrequencyHz != null &&
     m.rightStepFrequencyHz != null &&
     pctDiff(m.leftStepFrequencyHz, m.rightStepFrequencyHz) >= ASYMMETRY_MIN_PCT
   ) {
-    insights.push(stepFrequencyInsight(m.leftStepFrequencyHz, m.rightStepFrequencyHz, timingReliable));
+    insights.push(stepFrequencyInsight(
+      m.leftStepFrequencyHz,
+      m.rightStepFrequencyHz,
+      timingReliable,
+      leftFrequencySamples,
+      rightFrequencySamples,
+    ));
   }
 
   return insights.sort((a, b) => b.differencePct - a.differencePct);

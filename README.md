@@ -4,6 +4,12 @@ AI-powered sprint biomechanics web platform. Coaches upload a sprint video; AVA
 runs pose estimation and returns coach-ready biomechanics — stride length and
 frequency, ground contact / flight time, joint angles, and top speed.
 
+## Canonical engineering standard
+
+All product and engineering work is governed by the
+[AVA Accuracy Manifesto](./docs/accuracy-manifesto.md). Read it before changing analysis,
+models, metrics, persistence, benchmarks, recommendations, or presentation behavior.
+
 ## Stack
 
 - **Next.js 15** (App Router) + **React 19** + **TypeScript**

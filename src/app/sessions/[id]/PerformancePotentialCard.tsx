@@ -23,38 +23,38 @@ export default function PerformancePotentialCard({
       {potential.available ? (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+            <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e8797]">
                 Practice top speed
               </p>
-              <p className="mt-1 text-3xl font-extrabold tracking-tight text-[#F5F5F7]">
+              <p className="mt-1 text-3xl font-extrabold tracking-tight text-[#f5f7fb]">
                 {n(potential.practiceTopSpeedMps)}
-                <span className="ml-1 text-base font-medium text-[#A0A2A8]">m/s</span>
+                <span className="ml-1 text-base font-medium text-[#b3bccb]">m/s</span>
               </p>
-              <p className="mt-0.5 text-xs text-[#6B7280]">trusted practice peak velocity</p>
+              <p className="mt-0.5 text-xs text-[#7e8797]">trusted practice peak velocity</p>
             </div>
 
-            <div className="rounded-xl border border-[#D4AF37]/25 bg-[#D4AF37]/[0.07] p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+            <div className="rounded-xl border border-[#f5c451]/25 bg-[#f5c451]/[0.07] p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e8797]">
                 Estimated meet velocity range
               </p>
-              <p className="mt-1 text-3xl font-extrabold tracking-tight text-[#E4C25A]">
+              <p className="mt-1 text-3xl font-extrabold tracking-tight text-[#f5c451]">
                 {n(potential.meetLowMps)}–{n(potential.meetHighMps)}
-                <span className="ml-1 text-base font-medium text-[#A0A2A8]">m/s</span>
+                <span className="ml-1 text-base font-medium text-[#b3bccb]">m/s</span>
               </p>
-              <p className="mt-0.5 text-xs text-[#6B7280]">+2% to +3% meet uplift</p>
+              <p className="mt-0.5 text-xs text-[#7e8797]">+2% to +3% meet uplift</p>
             </div>
           </div>
 
-          <p className="mt-4 text-xs leading-5 text-[#6B7280]">{potential.basis}</p>
-          <p className="mt-2 text-xs leading-5 text-[#6B7280]">
+          <p className="mt-4 text-xs leading-5 text-[#7e8797]">{potential.basis}</p>
+          <p className="mt-2 text-xs leading-5 text-[#7e8797]">
             Full race-time prediction requires acceleration modeling from 0–20 m and
             speed-maintenance modeling. Coming soon.
           </p>
         </>
       ) : (
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
-          <p className="text-sm text-[#A0A2A8]">{potential.basis}</p>
+          <p className="text-sm text-[#b3bccb]">{potential.basis}</p>
         </div>
       )}
     </AvaPanel>

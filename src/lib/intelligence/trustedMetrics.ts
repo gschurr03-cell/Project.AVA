@@ -14,6 +14,7 @@
 
 import type { SprintMeasurements } from "@/lib/benchmark/measurements";
 import { computeStrideRetentionPct } from "@/lib/benchmark/strideMetrics";
+import { metricTrustForRecording, type RecordingAssessment } from "@/lib/video/recordingMode";
 
 export type TrustedConfidence = "high" | "medium" | "low";
 
@@ -59,16 +60,22 @@ export interface TrustedMetrics {
  */
 export function buildTrustedMetrics(
   measurements: SprintMeasurements | null,
+  recordingAssessment?: RecordingAssessment,
 ): TrustedMetrics | null {
   if (!measurements || !measurements.calibrated) return null;
   const m = measurements;
+  const spatialAvailable = recordingAssessment
+    ? metricTrustForRecording("spatial", recordingAssessment, true).status === "available"
+    : true;
 
-  // Trusted zone AVERAGE stride length: individual mean when reliable, else the zone
-  // average (distance ÷ steps). This is the ONE place that choice is made.
+  // MVP Average Step Length (Phase 6) = mean of every valid opposite-foot step
+  // interval in the authoritative window — NOT zone-distance ÷ step-count. Prefer the
+  // summary mean, then the individual-step mean; the zone D÷N figure (which over-reads
+  // when the athlete straddles the boundary) is only a last-resort fallback.
   const avgStrideLengthM =
-    m.stepLengthConfidence === "high" && m.avgIndividualStepLengthM != null
-      ? m.avgIndividualStepLengthM
-      : (m.avgZoneStepLengthM ?? m.avgIndividualStepLengthM);
+    m.zoneStepSummary?.summaries.averageStepLengthM ??
+    m.avgIndividualStepLengthM ??
+    m.avgZoneStepLengthM;
 
   const peakStrideLengthM = m.peakStrideLengthM;
   // The DIAGNOSIS value prefers peak; UI can still show the average separately.
@@ -76,12 +83,12 @@ export function buildTrustedMetrics(
   const strideRetentionPct = computeStrideRetentionPct(avgStrideLengthM, peakStrideLengthM);
 
   return {
-    topSpeedMps: m.maxVelocityMps,
-    avgVelocityMps: m.zoneVelocityMps,
-    avgStrideLengthM,
-    peakStrideLengthM,
-    strideRetentionPct,
-    strideLengthM,
+    topSpeedMps: spatialAvailable ? m.maxVelocityMps : null,
+    avgVelocityMps: spatialAvailable ? m.zoneVelocityMps : null,
+    avgStrideLengthM: spatialAvailable ? avgStrideLengthM : null,
+    peakStrideLengthM: spatialAvailable ? peakStrideLengthM : null,
+    strideRetentionPct: spatialAvailable ? strideRetentionPct : null,
+    strideLengthM: spatialAvailable ? strideLengthM : null,
     frequencyHz: m.combinedStepFrequencyHz,
     zoneDistanceM: m.zone?.distanceM ?? null,
     zoneTimeS: m.zoneTimeS,

@@ -142,6 +142,31 @@ try {
   check("grinder → performance context frames the goal gap", /0\.35s short/.test(grinder.performanceContext ?? ""));
   check("grinder → primary reasoning folds in the goal gap", grinder.primaryLimiter?.reasoning.some((r) => /goal/i.test(r) && /0\.35s/.test(r)));
   check("grinder → persistent-limiter note from training focus", grinder.primaryLimiter?.reasoning.some((r) => /recurs across 3 of 4/i.test(r)));
+  check("elite report → every issue has priority, impact, numeric confidence, and supporting metrics",
+    [grinder.primaryLimiter, ...grinder.secondaryLimiters].every((l) =>
+      l.priorityScore >= 0 && l.priorityScore <= 100 &&
+      l.impactScore >= 0 && l.impactScore <= 100 &&
+      l.confidenceScore >= 0 && l.confidenceScore <= 100 &&
+      l.affectedMetrics.length > 0));
+  check("elite report → every issue has measured evidence and expected range",
+    [grinder.primaryLimiter, ...grinder.secondaryLimiters].every((l) =>
+      l.supportingEvidence.length > 0 &&
+      l.supportingEvidence.every((e) => e.measured && e.expected && e.difference)));
+  check("elite report → root-cause language separates observed/likely/possible/testing",
+    [grinder.primaryLimiter, ...grinder.secondaryLimiters].every((l) =>
+      l.rootCause.observed.length && l.rootCause.likelyTechnicalCauses.length &&
+      l.rootCause.possiblePhysicalContributors.length && l.rootCause.additionalTesting.length));
+  check("elite report → recommendations reference an observed issue and remain concise themes",
+    [grinder.primaryLimiter, ...grinder.secondaryLimiters].every((l) =>
+      l.supportingEvidence.length && l.recommendationPlan.primaryFocus &&
+      l.recommendationPlan.drillThemes.length && l.recommendationPlan.cueExamples.length));
+  check("elite report → deterministic cost ranges are ordered and caveated",
+    [grinder.primaryLimiter, ...grinder.secondaryLimiters].every((l) =>
+      l.estimatedPerformanceCost.range100mSeconds[0] <= l.estimatedPerformanceCost.range100mSeconds[1] &&
+      /not a race-time prediction/i.test(l.estimatedPerformanceCost.caveat)));
+  check("elite report → no duplicate issue keys",
+    new Set([grinder.primaryLimiter, ...grinder.secondaryLimiters].map((l) => l.key)).size ===
+      [grinder.primaryLimiter, ...grinder.secondaryLimiters].length);
 
   // Day 69 precision mode: with timingReliable=false (≤60 fps), the frame-quantized
   // contact/flight limiters must NOT be evaluated — a bad ground-contact number can't

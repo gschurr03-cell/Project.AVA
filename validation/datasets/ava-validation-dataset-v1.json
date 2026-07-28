@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "ava-scientific-validation-v1",
+  "datasetId": "ava-sprint-internal-validation",
+  "datasetVersion": "1.0.0",
+  "createdAt": "2026-07-18T00:00:00.000Z",
+  "locked": false,
+  "items": [
+    {
+      "itemId": "real-side-pan-fly-001",
+      "split": "unsupported",
+      "sourceArtifact": "validation/fixtures/panning/real-side-pan-fly-001.json",
+      "sourceCommitted": false,
+      "checksumSha256": "453d200440e8cf996f07076eafbc594df57d92b65ebbd40a1232382dfef40bf2",
+      "consentStatus": "unknown",
+      "anonymizedAthleteId": "validation-athlete-001",
+      "device": null,
+      "nativeFps": 30,
+      "resolution": { "width": 1280, "height": 720 },
+      "recordingContext": ["outdoor", "smooth_pan", "multiple_people_visible", "experimental_30_fps"],
+      "referenceSystem": null,
+      "referenceResult": {
+        "reported30mSeconds": 2.77,
+        "comparability": "partial",
+        "startAndFinishDefinitions": "unknown"
+      },
+      "inclusionStatus": "quarantined",
+      "exclusionReason": "Unknown validation consent and incomplete timing-reference definition; retained only as an unsupported engineering fixture.",
+      "holdoutLabelsRestricted": false
+    }
+  ],
+  "leakageEvents": []
+}

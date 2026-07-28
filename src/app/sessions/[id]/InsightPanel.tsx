@@ -68,7 +68,7 @@ const formatDelta = (n: number): string => `${n > 0 ? "+" : ""}${formatNum(n)}`;
 function EvidenceList({ evidence }: { evidence: string[] }) {
   if (evidence.length === 0) return null;
   return (
-    <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#6B7280]">
+    <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[#7e8797]">
       {evidence.map((item) => (
         <li key={item}>{item}</li>
       ))}
@@ -87,36 +87,36 @@ export default function InsightPanel({
     <AvaPanel eyebrow="AVA Coaching" title="Coaching Report">
       <div className="space-y-6">
         {/* Technique score */}
-        <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-5 text-center">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+        <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-5 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e8797]">
             Technique Score
           </p>
-          <p className="mt-2 text-5xl font-bold text-[#F5F5F7]">
+          <p className="mt-2 text-5xl font-bold text-[#f5f7fb]">
             {report.techniqueScore}
-            <span className="text-2xl font-semibold text-[#6B7280]"> / 100</span>
+            <span className="text-2xl font-semibold text-[#7e8797]"> / 100</span>
           </p>
-          <p className="mt-1 text-sm font-semibold text-[#A0A2A8]">{report.techniqueLabel}</p>
+          <p className="mt-1 text-sm font-semibold text-[#b3bccb]">{report.techniqueLabel}</p>
         </div>
 
         {/* Score breakdown */}
         {report.techniqueBreakdown.length > 0 && (
-          <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-            <h3 className="mb-2 text-base font-semibold text-[#F5F5F7]">Score Breakdown</h3>
+          <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
+            <h3 className="mb-2 text-base font-semibold text-[#f5f7fb]">Score Breakdown</h3>
             <div className="space-y-2">
               {report.techniqueBreakdown.map((item: TechniqueScoreBreakdownItem) => (
                 <div key={item.metricId} className="rounded-lg border border-white/[0.06] p-3">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-medium text-[#F5F5F7]">{item.label}</p>
+                    <p className="font-medium text-[#f5f7fb]">{item.label}</p>
                     <div className="flex items-center gap-2">
                       <span className={`${BADGE_BASE} ${badge(STATUS_TONE[item.status])}`}>
                         {item.status}
                       </span>
-                      <span className="text-sm font-semibold text-[#A0A2A8]">
+                      <span className="text-sm font-semibold text-[#b3bccb]">
                         {item.points} / {item.maxPoints}
                       </span>
                     </div>
                   </div>
-                  <p className="mt-1 text-xs text-[#6B7280]">{item.explanation}</p>
+                  <p className="mt-1 text-xs text-[#7e8797]">{item.explanation}</p>
                 </div>
               ))}
             </div>
@@ -125,18 +125,18 @@ export default function InsightPanel({
 
         {/* Progress since last session */}
         {comparison && (
-          <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-            <h3 className="mb-3 text-base font-semibold text-[#F5F5F7]">
+          <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
+            <h3 className="mb-3 text-base font-semibold text-[#f5f7fb]">
               Progress Since Last Session
             </h3>
 
             <div className="rounded-lg border border-white/[0.06] p-3">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-[#A0A2A8]">
-                  <span className="font-medium text-[#F5F5F7]">Technique Score:</span>{" "}
+                <p className="text-sm text-[#b3bccb]">
+                  <span className="font-medium text-[#f5f7fb]">Technique Score:</span>{" "}
                   {comparison.techniqueScore.previousScore} →{" "}
                   {comparison.techniqueScore.currentScore}{" "}
-                  <span className="text-[#6B7280]">
+                  <span className="text-[#7e8797]">
                     ({formatDelta(comparison.techniqueScore.delta)})
                   </span>
                 </p>
@@ -152,11 +152,11 @@ export default function InsightPanel({
                 {comparison.metrics.map((metric: MetricComparison) => (
                   <div key={metric.metricId} className="rounded-lg border border-white/[0.06] p-3">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm text-[#A0A2A8]">
-                        <span className="font-medium text-[#F5F5F7]">{metric.label}:</span>{" "}
+                      <p className="text-sm text-[#b3bccb]">
+                        <span className="font-medium text-[#f5f7fb]">{metric.label}:</span>{" "}
                         {formatNum(metric.previousValue)} → {formatNum(metric.currentValue)}{" "}
                         {metric.unit}{" "}
-                        <span className="text-[#6B7280]">
+                        <span className="text-[#7e8797]">
                           ({formatDelta(metric.delta)} {metric.unit})
                         </span>
                       </p>
@@ -172,34 +172,34 @@ export default function InsightPanel({
         )}
 
         {/* Coach summary */}
-        <div className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4">
-          <h3 className="mb-2 text-base font-semibold text-[#F5F5F7]">Coach Summary</h3>
-          <p className="text-sm leading-relaxed text-[#A0A2A8]">{report.summary}</p>
+        <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
+          <h3 className="mb-2 text-base font-semibold text-[#f5f7fb]">Coach Summary</h3>
+          <p className="text-sm leading-relaxed text-[#b3bccb]">{report.summary}</p>
         </div>
 
         {/* Top priorities */}
         <div>
-          <h3 className="mb-2 text-base font-semibold text-[#F5F5F7]">Top Priorities</h3>
+          <h3 className="mb-2 text-base font-semibold text-[#f5f7fb]">Top Priorities</h3>
           {report.priorities.length === 0 ? (
-            <p className="text-sm text-[#6B7280]">No urgent priorities found.</p>
+            <p className="text-sm text-[#7e8797]">No urgent priorities found.</p>
           ) : (
             <div className="space-y-3">
               {report.priorities.map((priority: CoachingPriority) => (
                 <div
                   key={priority.id}
-                  className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4"
+                  className="rounded-xl border border-white/[0.06] bg-[#182233] p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-semibold text-[#F5F5F7]">
-                      <span className="mr-2 text-[#6B7280]">#{priority.priority}</span>
+                    <p className="font-semibold text-[#f5f7fb]">
+                      <span className="mr-2 text-[#7e8797]">#{priority.priority}</span>
                       {priority.title}
                     </p>
                     <span className={`${BADGE_BASE} ${badge(IMPACT_TONE[priority.impact])}`}>
                       {priority.impact} impact
                     </span>
                   </div>
-                  <p className="mt-2 text-sm text-[#A0A2A8]">
-                    <span className="font-medium text-[#F5F5F7]">Recommendation:</span>{" "}
+                  <p className="mt-2 text-sm text-[#b3bccb]">
+                    <span className="font-medium text-[#f5f7fb]">Recommendation:</span>{" "}
                     {priority.recommendation}
                   </p>
                   <EvidenceList evidence={priority.evidence} />
@@ -211,18 +211,18 @@ export default function InsightPanel({
 
         {/* Detailed coaching */}
         <div>
-          <h3 className="mb-2 text-base font-semibold text-[#F5F5F7]">Detailed Coaching</h3>
+          <h3 className="mb-2 text-base font-semibold text-[#f5f7fb]">Detailed Coaching</h3>
           {report.insights.length === 0 ? (
-            <p className="text-sm text-[#6B7280]">No detailed insights were generated.</p>
+            <p className="text-sm text-[#7e8797]">No detailed insights were generated.</p>
           ) : (
             <div className="space-y-3">
               {report.insights.map((insight: CoachingInsight) => (
                 <div
                   key={insight.id}
-                  className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4"
+                  className="rounded-xl border border-white/[0.06] bg-[#182233] p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-semibold text-[#F5F5F7]">{insight.title}</p>
+                    <p className="font-semibold text-[#f5f7fb]">{insight.title}</p>
                     <span className={`${BADGE_BASE} ${badge(SEVERITY_TONE[insight.severity])}`}>
                       {insight.severity}
                     </span>
@@ -230,9 +230,9 @@ export default function InsightPanel({
                   <span className={`${BADGE_BASE} mt-2 inline-block ${NEUTRAL_BADGE}`}>
                     {insight.category}
                   </span>
-                  <p className="mt-2 text-sm text-[#A0A2A8]">{insight.explanation}</p>
-                  <p className="mt-2 text-sm text-[#A0A2A8]">
-                    <span className="font-medium text-[#F5F5F7]">Recommendation:</span>{" "}
+                  <p className="mt-2 text-sm text-[#b3bccb]">{insight.explanation}</p>
+                  <p className="mt-2 text-sm text-[#b3bccb]">
+                    <span className="font-medium text-[#f5f7fb]">Recommendation:</span>{" "}
                     {insight.recommendation}
                   </p>
                   <EvidenceList evidence={insight.evidence} />
@@ -244,30 +244,30 @@ export default function InsightPanel({
 
         {/* Raw metric evaluations */}
         <div>
-          <h3 className="mb-2 text-base font-semibold text-[#F5F5F7]">Raw Metric Evaluations</h3>
+          <h3 className="mb-2 text-base font-semibold text-[#f5f7fb]">Raw Metric Evaluations</h3>
           {report.metricEvaluations.length === 0 ? (
-            <p className="text-sm text-[#6B7280]">No metric evaluations available.</p>
+            <p className="text-sm text-[#7e8797]">No metric evaluations available.</p>
           ) : (
             <div className="space-y-3">
               {report.metricEvaluations.map((metric: MetricEvaluation) => (
                 <div
                   key={metric.id}
-                  className="rounded-xl border border-white/[0.06] bg-[#19191C] p-4"
+                  className="rounded-xl border border-white/[0.06] bg-[#182233] p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-semibold text-[#F5F5F7]">{metric.label}</p>
+                    <p className="font-semibold text-[#f5f7fb]">{metric.label}</p>
                     <span className={`${BADGE_BASE} ${badge(STATUS_TONE[metric.status])}`}>
                       {metric.status}
                     </span>
                   </div>
-                  <p className="mt-1 text-2xl font-bold text-[#F5F5F7]">
+                  <p className="mt-1 text-2xl font-bold text-[#f5f7fb]">
                     {metric.value}
-                    <span className="ml-1 text-sm font-medium text-[#6B7280]">{metric.unit}</span>
+                    <span className="ml-1 text-sm font-medium text-[#7e8797]">{metric.unit}</span>
                   </p>
-                  <p className="mt-1 text-xs text-[#6B7280]">
-                    <span className="font-medium text-[#A0A2A8]">Target:</span> {metric.targetRange}
+                  <p className="mt-1 text-xs text-[#7e8797]">
+                    <span className="font-medium text-[#b3bccb]">Target:</span> {metric.targetRange}
                   </p>
-                  <p className="mt-2 text-sm text-[#A0A2A8]">{metric.meaning}</p>
+                  <p className="mt-2 text-sm text-[#b3bccb]">{metric.meaning}</p>
                   {metric.usedIn.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {metric.usedIn.map((use) => (

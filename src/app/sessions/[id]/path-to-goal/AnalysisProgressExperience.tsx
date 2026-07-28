@@ -69,28 +69,28 @@ export default function AnalysisProgressExperience({
   const progress: AnalysisProgress = computeAnalysisProgress({ status: modelStatus, workerStage: status, elapsedSeconds });
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141416] p-6">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#101827] p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#D72638]">Analysing sprint</p>
-        <p className="text-sm font-semibold text-[#F5F5F7]">{progress.percent}%</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#2f80ed]">Analysing sprint</p>
+        <p className="text-sm font-semibold text-[#f5f7fb]">{progress.percent}%</p>
       </div>
 
       <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/[0.06]">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${progress.failed ? "bg-[#ff8079]" : "bg-[#D72638]"}`}
+          className={`h-full rounded-full transition-all duration-500 ${progress.failed ? "bg-[#e46464]" : "bg-[#2f80ed]"}`}
           style={{ width: `${progress.percent}%` }}
         />
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className={`font-semibold ${progress.failed ? "text-[#ff8079]" : "text-[#F5F5F7]"}`}>
+        <span className={`font-semibold ${progress.failed ? "text-[#e46464]" : "text-[#f5f7fb]"}`}>
           {progress.failed ? `Failed during: ${progress.activeStageLabel}` : progress.activeStageLabel}
           {progress.stalled && !progress.failed && (
-            <span className="ml-2 text-[#E4C25A]">still running…</span>
+            <span className="ml-2 text-[#f5c451]">still running…</span>
           )}
         </span>
         {!TERMINAL.has(status) && progress.estimatedRemainingSeconds != null && (
-          <span className="text-[#6B7280]">~{progress.estimatedRemainingSeconds}s remaining (estimated)</span>
+          <span className="text-[#7e8797]">~{progress.estimatedRemainingSeconds}s remaining (estimated)</span>
         )}
       </div>
 
@@ -99,16 +99,16 @@ export default function AnalysisProgressExperience({
           <li key={s.id} className="flex items-center gap-2 text-xs">
             <span
               className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-                s.state === "complete" ? "bg-[#7ee08a]" : s.state === "active" ? "bg-[#D72638]" : "bg-white/15"
+                s.state === "complete" ? "bg-[#89d46a]" : s.state === "active" ? "bg-[#2f80ed]" : "bg-white/15"
               }`}
             />
             <span
               className={
                 s.state === "complete"
-                  ? "text-[#7ee08a]"
+                  ? "text-[#89d46a]"
                   : s.state === "active"
-                    ? "font-semibold text-[#F5F5F7]"
-                    : "text-[#6B7280]"
+                    ? "font-semibold text-[#f5f7fb]"
+                    : "text-[#7e8797]"
               }
             >
               {s.label}

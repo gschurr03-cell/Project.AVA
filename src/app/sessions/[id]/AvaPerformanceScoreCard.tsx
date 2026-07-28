@@ -8,11 +8,11 @@ import type { AvaPerformanceScoreResult } from "@/lib/intelligence/performanceSc
  */
 
 const LABEL_TONE: Record<string, string> = {
-  Elite: "text-[#E4C25A]",
-  High: "text-[#D8D8DC]",
-  Solid: "text-[#E0A063]",
-  Developing: "text-[#A0A2A8]",
-  "Needs Work": "text-[#FF7A70]",
+  Elite: "text-[#f5c451]",
+  High: "text-[#b3bccb]",
+  Solid: "text-[#f5c451]",
+  Developing: "text-[#b3bccb]",
+  "Needs Work": "text-[#e46464]",
 };
 
 export default function AvaPerformanceScoreCard({
@@ -23,7 +23,7 @@ export default function AvaPerformanceScoreCard({
   if (!result.available || result.score == null) {
     return (
       <AvaPanel eyebrow="AVA Performance Score" title="Not enough trusted data">
-        <p className="text-sm text-[#A0A2A8]">
+        <p className="text-sm text-[#b3bccb]">
           {result.note ??
             "The AVA Performance Score needs a calibrated run with trusted top speed, velocity, frequency, and peak stride length."}
         </p>
@@ -31,7 +31,7 @@ export default function AvaPerformanceScoreCard({
     );
   }
 
-  const tone = LABEL_TONE[result.label ?? ""] ?? "text-[#F5F5F7]";
+  const tone = LABEL_TONE[result.label ?? ""] ?? "text-[#f5f7fb]";
 
   return (
     <AvaPanel eyebrow="AVA Performance Score" title="Trusted Sprint Score">
@@ -39,13 +39,13 @@ export default function AvaPerformanceScoreCard({
         <div>
           <p className={`text-6xl font-extrabold tracking-tight ${tone}`}>
             {result.score}
-            <span className="ml-1 text-2xl font-semibold text-[#6B7280]">/ 100</span>
+            <span className="ml-1 text-2xl font-semibold text-[#7e8797]">/ 100</span>
           </p>
           <p className={`mt-1 text-sm font-bold uppercase tracking-[0.18em] ${tone}`}>
             {result.label}
           </p>
         </div>
-        <p className="mb-1 max-w-md text-xs leading-5 text-[#6B7280]">
+        <p className="mb-1 max-w-md text-xs leading-5 text-[#7e8797]">
           Weighted from trusted metrics only — top speed, average velocity, frequency, peak stride /
           trochanter ratio, stride retention, and recording quality. No ground contact or flight time.
         </p>
@@ -53,12 +53,12 @@ export default function AvaPerformanceScoreCard({
 
       <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {result.components.map((c) => (
-          <div key={c.name} className="rounded-lg border border-white/[0.06] bg-[#19191C] p-3">
+          <div key={c.name} className="rounded-lg border border-white/[0.06] bg-[#182233] p-3">
             <div className="flex items-baseline justify-between gap-2">
-              <p className="text-xs font-semibold text-[#F5F5F7]">{c.name}</p>
-              <p className="text-xs font-bold text-[#E4C25A]">{c.score}</p>
+              <p className="text-xs font-semibold text-[#f5f7fb]">{c.name}</p>
+              <p className="text-xs font-bold text-[#f5c451]">{c.score}</p>
             </div>
-            <p className="mt-0.5 text-[11px] text-[#6B7280]">
+            <p className="mt-0.5 text-[11px] text-[#7e8797]">
               {c.value != null ? c.value : "—"} · {Math.round(c.weight * 100)}% weight
             </p>
           </div>

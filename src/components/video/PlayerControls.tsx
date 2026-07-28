@@ -12,6 +12,8 @@ type Props = {
   lastTime: number;
   currentFrameTime: number;
   speed: number;
+  sourceFps?: number | null;
+  analysisFps?: number | null;
   speeds: readonly number[];
   onTogglePlay: () => void;
   onSeek: (time: number) => void;
@@ -38,6 +40,8 @@ export default function PlayerControls({
   lastTime,
   currentFrameTime,
   speed,
+  sourceFps = null,
+  analysisFps = null,
   speeds,
   onTogglePlay,
   onSeek,
@@ -49,7 +53,7 @@ export default function PlayerControls({
   return (
     <div className="space-y-2">
       {/* Single compact transport toolbar: scrubber + play/step + speed + readout. */}
-      <div className="rounded-xl border border-white/[0.06] bg-[#121214] p-3">
+      <div className="rounded-xl border border-white/[0.06] bg-[#101827] p-3">
         <input
           type="range"
           min={firstTime}
@@ -59,7 +63,7 @@ export default function PlayerControls({
           onChange={(event) => onSeek(Number(event.target.value))}
           disabled={!hasFrames}
           aria-label="Seek timeline"
-          className="w-full accent-[#D72638] disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full accent-[#2f80ed] disabled:cursor-not-allowed disabled:opacity-40"
         />
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -67,7 +71,7 @@ export default function PlayerControls({
             type="button"
             onClick={onStepPrev}
             disabled={!hasFrames || currentIndex <= 0}
-            className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-[#A0A2A8] transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-[#b3bccb] transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Previous frame"
           >
             ◀
@@ -76,7 +80,7 @@ export default function PlayerControls({
             type="button"
             onClick={onTogglePlay}
             disabled={!hasFrames}
-            className="rounded-lg bg-[#D72638] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[#e63a4b] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg bg-[#2f80ed] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[#3b8eff] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isPlaying ? "❚❚ Pause" : "▶ Play"}
           </button>
@@ -84,7 +88,7 @@ export default function PlayerControls({
             type="button"
             onClick={onStepNext}
             disabled={!hasFrames || currentIndex >= frameCount - 1}
-            className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-[#A0A2A8] transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-[#b3bccb] transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Next frame"
           >
             ▶
@@ -100,8 +104,8 @@ export default function PlayerControls({
                 aria-pressed={speed === rate}
                 className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                   speed === rate
-                    ? "bg-[#D72638] text-white"
-                    : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
+                    ? "bg-[#2f80ed] text-white"
+                    : "border border-white/[0.1] bg-white/[0.04] text-[#b3bccb] hover:bg-white/[0.08]"
                 }`}
               >
                 {rate}x
@@ -109,14 +113,20 @@ export default function PlayerControls({
             ))}
           </div>
 
-          <div className="ml-auto flex items-center gap-4 font-mono text-xs text-[#6B7280]">
+          <div className="ml-auto flex items-center gap-4 font-mono text-xs text-[#7e8797]">
+            <span>
+              Source <span className="font-semibold text-[#f5f7fb]">{sourceFps ?? "—"}</span> FPS
+            </span>
+            <span>
+              Analysis <span className="font-semibold text-[#f5f7fb]">{analysisFps ?? "—"}</span> FPS
+            </span>
             <span>
               Frame{" "}
-              <span className="font-semibold text-[#F5F5F7]">{hasFrames ? currentIndex + 1 : 0}</span>{" "}
+              <span className="font-semibold text-[#f5f7fb]">{hasFrames ? currentIndex + 1 : 0}</span>{" "}
               / {frameCount}
             </span>
             <span>
-              <span className="font-semibold text-[#F5F5F7]">{currentFrameTime.toFixed(2)}</span>s
+              <span className="font-semibold text-[#f5f7fb]">{currentFrameTime.toFixed(2)}</span>s
             </span>
           </div>
         </div>

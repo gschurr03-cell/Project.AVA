@@ -4,6 +4,8 @@ export type OverlayPoint = { x: number; y: number; visibility?: number };
 
 export type OverlayFrame = {
   frame: number;
+  /** Index in the immutable source video (differs from analysis index for >60 FPS). */
+  sourceFrameIndex?: number;
   time: number;
   landmarks: Record<string, OverlayPoint>;
   angles: Record<string, number | null>;
@@ -28,6 +30,7 @@ export type OverlayFrame = {
 type RawLandmark = { x: number; y: number; visibility?: number; score?: number };
 type RawPoseFrame = {
   frame?: number;
+  sourceFrameIndex?: number;
   time?: number;
   landmarks?: RawLandmark[];
   keypoints?: RawLandmark[];
@@ -144,6 +147,7 @@ export function buildOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
 
     return {
       frame: poseFrame.frame ?? index,
+      sourceFrameIndex: poseFrame.sourceFrameIndex,
       time: poseFrame.time ?? index / fps,
       landmarks,
       backend: poseFrame.backend ?? sequence.backend,

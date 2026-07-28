@@ -15,6 +15,7 @@
  */
 
 import type { OverlayFrame, OverlayPoint } from "@/lib/video/overlay";
+import type { RecordingMode } from "@/lib/video/recordingMode";
 
 export type QualityRating = "excellent" | "good" | "fair" | "poor";
 export type FactorStatus = "pass" | "warn" | "fail";
@@ -54,10 +55,12 @@ export interface RecordingQualityReport {
   unavailable: MetricJudgement[];
   /** One-line, coach-facing summary of what this recording supports. */
   summary: string;
+  recordingAssessmentLabel: string | null;
 }
 
 /** Everything the engine inspects. Nullable — unknown inputs degrade gracefully. */
 export interface RecordingQualityInputs {
+  recordingMode?: RecordingMode;
   fps: number | null;
   width: number | null;
   height: number | null;
@@ -433,6 +436,18 @@ export function buildRecordingQuality(inputs: RecordingQualityInputs): Recording
     estimated,
     unavailable,
     summary: buildSummary(rating, certified.length, inputs.calibrationPresent),
+    recordingAssessmentLabel: inputs.recordingMode
+      ? ({
+          static_precision: "Precision static recording",
+          static_usable: "Usable static recording",
+          smooth_pan: "Smooth panning recording",
+          unstable_pan: "Panning analysis with reduced spatial confidence",
+          pan_with_zoom: "Technique-only analysis — zoom detected",
+          excessive_camera_motion: "Recording cannot support reliable spatial analysis",
+          athlete_tracking_lost: "Recording cannot support reliable athlete tracking",
+          unsupported_recording: "Recording cannot support reliable camera analysis",
+        } satisfies Record<RecordingMode, string>)[inputs.recordingMode]
+      : null,
   };
 }
 

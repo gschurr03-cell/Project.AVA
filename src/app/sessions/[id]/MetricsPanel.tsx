@@ -1,5 +1,11 @@
 import { AvaMetricCard } from "@/components/ava/AvaMetricCard";
 import { AvaCautionPanel } from "@/components/ava/AvaCautionPanel";
+import { ConfidenceBadge, ConfidenceDetails } from "@/components/confidence/MetricConfidence";
+import {
+  calculateMetricConfidence,
+  type ConfidenceEvidence,
+  type ConfidenceMetricId,
+} from "@/lib/confidence";
 import { type AvaMetricStatus } from "@/lib/design/ava";
 import { type AnalysisMetrics, formatMetricValue, metricsDisplay } from "@/lib/biomechanics/types";
 import {
@@ -81,6 +87,7 @@ function MetricCard({
   metrics,
   activeFps,
   poseConfidence,
+  confidenceEvidence,
 }: {
   metricKey: keyof AnalysisMetrics;
   label: string;
@@ -89,12 +96,29 @@ function MetricCard({
   metrics: AnalysisMetrics;
   activeFps: number | null;
   poseConfidence: number | null;
+  confidenceEvidence: ConfidenceEvidence;
 }) {
   const value = metrics[metricKey];
+  const confidenceMetric: Record<keyof AnalysisMetrics, ConfidenceMetricId> = {
+    topSpeedMps: "peak_velocity",
+    avgStrideLengthM: "stride_length",
+    strideFrequencyHz: "step_frequency",
+    groundContactTimeMs: "contact_time",
+    flightTimeMs: "flight_time",
+    peakKneeFlexionDeg: "knee_flexion",
+    avgTrunkLeanDeg: "trunk_lean",
+  };
+  const confidence = calculateMetricConfidence(confidenceMetric[metricKey], confidenceEvidence);
+  const confidenceUi = (
+    <div className="mt-2">
+      <ConfidenceBadge confidence={confidence} />
+      <ConfidenceDetails confidence={confidence} />
+    </div>
+  );
 
   // Calibration-dependent zeros keep their precise, existing message.
   if (CALIBRATION_DEPENDENT.includes(metricKey) && value === 0) {
-    return <AvaMetricCard label={label} value="—" status="missing" note="Calibration Required" />;
+    return <div><AvaMetricCard label={label} value="—" status="missing" note="Calibration Required" />{confidenceUi}</div>;
   }
 
   // Otherwise decide trust for THIS recording. Anything not "available" is shown as an
@@ -102,7 +126,7 @@ function MetricCard({
   // soon") — never a muted number and never a fake 0.
   const trust = metricTrust({ key: metricKey, activeFps, poseConfidence, value });
   if (trust.state !== "available") {
-    return (
+    return <div>
       <AvaMetricCard
         label={label}
         value={trust.message}
@@ -110,17 +134,19 @@ function MetricCard({
         muted
         note={noteForTrust(trust)}
       />
-    );
+      {confidenceUi}
+    </div>;
   }
 
-  return (
+  return <div>
     <AvaMetricCard
       label={label}
       value={formatMetricValue(value, decimals)}
       unit={unit}
       status={statusForMetric({ metricKey, value })}
     />
-  );
+    {confidenceUi}
+  </div>;
 }
 
 /**
@@ -139,10 +165,12 @@ export default function MetricsPanel({
   metrics,
   activeFps = null,
   poseConfidence = null,
+  confidenceEvidence,
 }: {
   metrics: AnalysisMetrics;
   activeFps?: number | null;
   poseConfidence?: number | null;
+  confidenceEvidence: ConfidenceEvidence;
 }) {
   const precisionLimited = isPrecisionLimited(activeFps);
   const pill = precisionLimited
@@ -167,6 +195,7 @@ export default function MetricsPanel({
             metrics={metrics}
             activeFps={activeFps}
             poseConfidence={poseConfidence}
+            confidenceEvidence={confidenceEvidence}
           />
         ))}
       </dl>

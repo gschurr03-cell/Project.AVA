@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useActionState,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -26,8 +27,17 @@ import VideoOverlay, {
   type PendingCone,
 } from "./VideoOverlay";
 import type { StepDistanceScale } from "@/lib/video/steps";
+import { useRouter } from "next/navigation";
 import type { CalibrationGates } from "@/lib/calibration/gates";
+import type { SaveGateResult } from "@/app/sessions/actions";
 import type { TrochanterMarker } from "@/lib/video/overlayAlignment";
+import type { RawCameraEvidence } from "@/lib/video/recordingMode";
+import {
+  MAX_SAFE_ANCHOR_RESIDUAL_PX,
+  MIN_SAFE_ANCHOR_FEATURES,
+  MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE,
+  sourcePointToCompensated,
+} from "@/lib/calibration/zoneAnchors";
 
 /**
  * Optional timing-gate calibration wiring for the single-player surface (Day 66):
@@ -42,6 +52,8 @@ export type SurfaceCalibration = {
   /** Legacy two-point calibration (pre-Day-66), still rendered for old sessions. */
   saved: OverlayCalibrationPoints | null;
   onSave: (formData: FormData) => void | Promise<void>;
+  /** Structured save (Part 1 §1) enabling inline Saving / Confirmed / Failed / Conflict states. */
+  onSaveAction?: (prev: SaveGateResult | null, formData: FormData) => Promise<SaveGateResult>;
   onClear: (formData: FormData) => void | Promise<void>;
   /** Recompute the zone-derived metrics from the saved gates (no worker rerun). */
   onRecompute: (formData: FormData) => void | Promise<void>;
@@ -76,8 +88,9 @@ const TOGGLE_ITEMS: { key: keyof OverlayToggles; label: string }[] = [
   { key: "footLabels", label: "Foot labels" },
   { key: "stepMarks", label: "Step marks" },
   { key: "compare", label: "Compare RTMPose (dashed purple)" },
-  // "Alignment debug" is intentionally not exposed in the customer UI — the
-  // capability still exists (DEFAULT_TOGGLES.debug stays false) but is dev-only.
+  ...(process.env.NODE_ENV !== "production"
+    ? [{ key: "debug" as const, label: "Engineering: camera / crop / anchors" }]
+    : []),
 ];
 
 /** Pointer-to-joint hit radius, in CSS pixels. */
@@ -146,6 +159,9 @@ type Props = {
   stepContactCount?: number;
   /** Enables click-to-set manual ground calibration on this surface. */
   calibration?: SurfaceCalibration;
+  cameraEvidence?: RawCameraEvidence;
+  sourceWidth?: number | null;
+  sourceHeight?: number | null;
 };
 
 /** Clamp to the normalized [0,1] range landmarks/calibration points live in. */
@@ -169,6 +185,9 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     stepCadenceHz = null,
     stepContactCount = 0,
     calibration,
+    cameraEvidence,
+    sourceWidth,
+    sourceHeight,
   },
   ref,
 ) {
@@ -186,6 +205,28 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   // frame; each carries its clip time `t` for world-coordinate anchoring under pan.
   const [calibrationMode, setCalibrationMode] = useState(false);
   const [pendingCones, setPendingCones] = useState<PendingCone[]>([]);
+
+  // Structured gate save (Part 1 §1/§2): drives inline Saving / Manual zone
+  // confirmed / Save failed / Revision conflict states without relying on redirects.
+  const router = useRouter();
+  const [saveResult, saveDispatch, savePending] = useActionState<SaveGateResult | null, FormData>(
+    calibration?.onSaveAction ?? (async () => null),
+    null,
+  );
+  useEffect(() => {
+    if (!saveResult) return;
+    if (saveResult.ok) {
+      // Confirmed: clear the local draft and hydrate the persisted canonical zone.
+      setPendingCones([]);
+      router.refresh();
+    } else if (saveResult.status === "conflict") {
+      // Load the latest canonical calibration; keep the draft cleared so the stale
+      // edit is not re-submitted. The user edits again from the latest revision.
+      setPendingCones([]);
+      router.refresh();
+    }
+    // validation_error / error: keep the draft cones visible for retry.
+  }, [saveResult, router]);
   const [trochanterMode, setTrochanterMode] = useState(false);
   const [pendingTrochanter, setPendingTrochanter] = useState<TrochanterMarker | null>(null);
 
@@ -256,7 +297,10 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
         }
         // Broadcast-style stabilization: dead-zone + damped vertical + separate,
         // deadbanded zoom so the viewport doesn't bounce or pulse each stride.
-        const next = smoothFollowStable(followRef.current, target);
+        // Playback uses broadcast-style easing. A paused/seeked frame is exact and
+        // history-free so forward/back seeking always reproduces the same viewport;
+        // canonical overlay geometry never depends on this display transform.
+        const next = video.paused ? target : smoothFollowStable(followRef.current, target);
         followStateRef.current = { current: next, target };
         if (followsDiffer(followRef.current, next)) {
           followRef.current = next;
@@ -321,6 +365,14 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   const hasFrames = frames.length > 0;
   const currentIndex = hasFrames ? frameIndexForTime(frames, currentTime) : 0;
   const currentFrame = frames[currentIndex];
+  const currentSourceFrame = currentFrame?.sourceFrameIndex ?? currentFrame?.frame ?? currentIndex;
+  const currentCameraTransform = cameraEvidence?.transforms.find((item) => item.frame === currentSourceFrame);
+  const currentAnchorUnsafe = !!cameraEvidence && !!currentCameraTransform && (
+    currentCameraTransform.confidence < MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE
+    || currentCameraTransform.supportingFeatureCount < MIN_SAFE_ANCHOR_FEATURES
+    || currentCameraTransform.residualPx == null
+    || currentCameraTransform.residualPx > MAX_SAFE_ANCHOR_RESIDUAL_PX
+  );
 
   // Nearest joint within HIT_RADIUS of the pointer. Uses the same picture-rect
   // projection as the overlay renderer so hovering and drawing stay in lockstep,
@@ -390,7 +442,11 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     if (!calibrationMode) return;
     const point = groundPointAtPointer(event.clientX, event.clientY);
     if (!point) return;
-    const cone: PendingCone = { ...point, t: videoRef.current?.currentTime ?? 0 };
+    const cone: PendingCone = {
+      ...point,
+      t: videoRef.current?.currentTime ?? 0,
+      sourceFrameIndex: currentFrame?.sourceFrameIndex ?? currentFrame?.frame ?? currentIndex,
+    };
     // Four cones make the two bars; a fifth click starts a fresh set.
     setPendingCones((prev) => (prev.length >= 4 ? [cone] : [...prev, cone]));
   };
@@ -402,10 +458,15 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   const savedDistanceM =
     calibration?.savedGates?.distanceM ?? calibration?.saved?.distanceM ?? null;
   const hasCalibration = !!(calibration?.savedGates || calibration?.saved);
+  const compensatedPending = pendingCones.map((cone) =>
+    cameraEvidence && sourceWidth && sourceHeight
+      ? sourcePointToCompensated(cone, cone.sourceFrameIndex, cameraEvidence, sourceWidth, sourceHeight)
+      : null,
+  );
 
   return (
     <div className="space-y-3">
-      {label && <h3 className="text-sm font-semibold text-[#A0A2A8]">{label}</h3>}
+      {label && <h3 className="text-sm font-semibold text-[#b3bccb]">{label}</h3>}
 
       <div
         ref={containerRef}
@@ -445,6 +506,9 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             athleteHeightCm={calibration?.athleteHeightCm ?? null}
             autoFollow={autoFollow}
             followStateRef={followStateRef}
+            cameraEvidence={cameraEvidence}
+            sourceWidth={sourceWidth}
+            sourceHeight={sourceHeight}
           />
           {overlaySlot}
         </div>
@@ -452,8 +516,19 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
 
       {controlsSlot}
 
+      {currentAnchorUnsafe && (
+        <div className="rounded-lg border border-[#e46464]/35 bg-[#e46464]/10 px-3 py-2 text-xs text-[#e46464]">
+          Boundary propagation is unsafe on source frame {currentSourceFrame}. Timing is withheld here; refine the anchor or review another frame.
+        </div>
+      )}
+      {calibration?.saved && !calibration.savedGates && (
+        <div className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
+          This legacy calibration has no reference-frame geometry. Rerun the analysis and confirm the timing gates before displaying a world-locked zone.
+        </div>
+      )}
+
       {/* Single compact toolbar: camera behaviour + calibration entry (dark). */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-[#121214] p-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.06] bg-[#101827] p-2">
         <button
           type="button"
           onClick={() => setAutoFollow((prev) => !prev)}
@@ -461,8 +536,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           title="Keep the athlete centered and zoomed during playback"
           className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
             autoFollow
-              ? "bg-[#D72638] text-white"
-              : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
+              ? "bg-[#2f80ed] text-white"
+              : "border border-white/[0.1] bg-white/[0.04] text-[#b3bccb] hover:bg-white/[0.08]"
           }`}
         >
           {autoFollow ? "◉" : "○"} Auto Follow
@@ -480,8 +555,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             title="Mark two timing-gate bars (cone to cone) a known distance apart"
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
               calibrationMode
-                ? "bg-[#D72638] text-white"
-                : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
+                ? "bg-[#2f80ed] text-white"
+                : "border border-white/[0.1] bg-white/[0.04] text-[#b3bccb] hover:bg-white/[0.08]"
             }`}
           >
             {calibrationMode ? "◉" : "○"} Calibrate gates
@@ -500,8 +575,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             title="Set an optional display-only anatomical alignment anchor"
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
               trochanterMode
-                ? "bg-[#D72638] text-white"
-                : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
+                ? "bg-[#2f80ed] text-white"
+                : "border border-white/[0.1] bg-white/[0.04] text-[#b3bccb] hover:bg-white/[0.08]"
             }`}
           >
             {trochanterMode ? "◉" : "○"} Trochanter anchor
@@ -512,14 +587,14 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           type="button"
           onClick={() => setLayersOpen((prev) => !prev)}
           aria-pressed={layersOpen}
-          className="ml-auto rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-[#A0A2A8] transition-colors hover:bg-white/[0.08]"
+          className="ml-auto rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-[#b3bccb] transition-colors hover:bg-white/[0.08]"
         >
           {layersOpen ? "▾" : "▸"} Layers
         </button>
       </div>
 
       {calibration?.onSaveTrochanter && (trochanterMode || calibration.trochanter) && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.06] bg-[#121214] p-3 text-xs text-[#A0A2A8]">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.06] bg-[#101827] p-3 text-xs text-[#b3bccb]">
           <span>
             {pendingTrochanter
               ? `Anchor x ${pendingTrochanter.x.toFixed(3)}, y ${pendingTrochanter.y.toFixed(3)} at ${pendingTrochanter.timeS.toFixed(2)}s`
@@ -533,7 +608,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
               <input type="hidden" name="trochanter_x" value={pendingTrochanter.x} />
               <input type="hidden" name="trochanter_y" value={pendingTrochanter.y} />
               <input type="hidden" name="trochanter_time_s" value={pendingTrochanter.timeS} />
-              <button type="submit" className="rounded-lg bg-[#D72638] px-3 py-1.5 font-semibold text-white">Save anchor</button>
+              <button type="submit" className="rounded-lg bg-[#2f80ed] px-3 py-1.5 font-semibold text-white">Save anchor</button>
             </form>
           )}
           {calibration.trochanter && calibration.onClearTrochanter && (
@@ -547,8 +622,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
 
       {/* Layers panel: a vertical, scrollable list of toggles (checkbox style). */}
       {layersOpen && (
-        <div className="rounded-xl border border-white/[0.06] bg-[#121214] p-3">
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B7280]">
+        <div className="rounded-xl border border-white/[0.06] bg-[#101827] p-3">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7e8797]">
             Overlay layers
           </p>
           <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
@@ -557,25 +632,25 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
               return (
                 <label
                   key={key}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-[#F5F5F7] transition-colors hover:bg-white/[0.04]"
+                  className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-[#f5f7fb] transition-colors hover:bg-white/[0.04]"
                 >
                   <input
                     type="checkbox"
                     checked={on}
                     onChange={() => toggleLayer(key)}
-                    className="h-4 w-4 shrink-0 accent-[#D72638]"
+                    className="h-4 w-4 shrink-0 accent-[#2f80ed]"
                   />
-                  <span className={on ? "text-[#F5F5F7]" : "text-[#A0A2A8]"}>{toggleLabel}</span>
+                  <span className={on ? "text-[#f5f7fb]" : "text-[#b3bccb]"}>{toggleLabel}</span>
                 </label>
               );
             })}
           </div>
-          <p className="mt-2 border-t border-white/[0.06] pt-2 text-[11px] text-[#6B7280]">
-            Skeleton is drawn only at <span className="font-medium text-[#A0A2A8]">0.25×</span> or
+          <p className="mt-2 border-t border-white/[0.06] pt-2 text-[11px] text-[#7e8797]">
+            Skeleton is drawn only at <span className="font-medium text-[#b3bccb]">0.25×</span> or
             paused for maximum visual accuracy.
           </p>
           {toggles.stepMarks && (
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[#6B7280]">
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[#7e8797]">
               <span className="inline-flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded-full bg-red-500" /> Left
               </span>
@@ -595,13 +670,13 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
       {/* Calibration — collapsed by default (dark). */}
       {calibration && (
         <details
-          className="group rounded-xl border border-white/[0.06] bg-[#121214]"
+          className="group rounded-xl border border-white/[0.06] bg-[#101827]"
           open={calibrationMode}
         >
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[#A0A2A8] [&::-webkit-details-marker]:hidden">
-            <span className="inline-block text-[#6B7280] transition group-open:rotate-90">▸</span>
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[#b3bccb] [&::-webkit-details-marker]:hidden">
+            <span className="inline-block text-[#7e8797] transition group-open:rotate-90">▸</span>
             Calibration
-            <span className="font-normal normal-case text-[#6B7280]">
+            <span className="font-normal normal-case text-[#7e8797]">
               {savedDistanceM != null
                 ? `· ${savedDistanceM} m timing zone set`
                 : "· distances are relative until set"}
@@ -620,8 +695,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                 aria-pressed={calibrationMode}
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                   calibrationMode
-                    ? "bg-[#D72638] text-white"
-                    : "border border-white/[0.1] bg-white/[0.04] text-[#A0A2A8] hover:bg-white/[0.08]"
+                    ? "bg-[#2f80ed] text-white"
+                    : "border border-white/[0.1] bg-white/[0.04] text-[#b3bccb] hover:bg-white/[0.08]"
                 }`}
               >
                 {calibrationMode ? "◉" : "○"} Timing gates
@@ -633,7 +708,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                     <button
                       type="submit"
                       title="Recalculate the zone metrics from the saved gates using the existing pose — no re-upload"
-                      className="rounded-lg bg-[#D72638] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#e63a4b]"
+                      className="rounded-lg bg-[#2f80ed] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3b8eff]"
                     >
                       ↻ Recompute
                     </button>
@@ -648,7 +723,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                     <input type="hidden" name="id" value={calibration.sessionId} />
                     <button
                       type="submit"
-                      className="rounded-lg border border-[#FF3B30]/40 px-3 py-1.5 text-xs font-semibold text-[#FF7A70] transition hover:bg-[#FF3B30]/10"
+                      className="rounded-lg border border-[#e46464]/40 px-3 py-1.5 text-xs font-semibold text-[#e46464] transition hover:bg-[#e46464]/10"
                     >
                       ✕ Remove
                     </button>
@@ -658,15 +733,15 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             </div>
 
             {calibrationMode && (
-              <div className="rounded-lg border border-white/[0.06] bg-[#19191C] p-3">
-                <p className="text-xs text-[#A0A2A8]">
-                  Mark the <span className="font-semibold text-[#F5F5F7]">start gate</span>: click{" "}
-                  <span className="font-semibold text-[#F5F5F7]">cone 1</span> then{" "}
-                  <span className="font-semibold text-[#F5F5F7]">cone 2</span>. Scrub to the finish,
-                  then mark the <span className="font-semibold text-[#F5F5F7]">finish gate</span>{" "}
+              <div className="rounded-lg border border-white/[0.06] bg-[#182233] p-3">
+                <p className="text-xs text-[#b3bccb]">
+                  Mark the <span className="font-semibold text-[#f5f7fb]">start gate</span>: click{" "}
+                  <span className="font-semibold text-[#f5f7fb]">cone 1</span> then{" "}
+                  <span className="font-semibold text-[#f5f7fb]">cone 2</span>. Scrub to the finish,
+                  then mark the <span className="font-semibold text-[#f5f7fb]">finish gate</span>{" "}
                   the same way. Enter the known distance and save.
                 </p>
-                <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-[#6B7280]">
+                <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-[#7e8797]">
                   {(
                     [
                       ["Start · cone 1", 0],
@@ -677,7 +752,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                   ).map(([coneLabel, i]) => (
                     <span key={coneLabel}>
                       {coneLabel}:{" "}
-                      <span className="font-mono text-[#A0A2A8]">
+                      <span className="font-mono text-[#b3bccb]">
                         {pendingCones[i]
                           ? `x ${pendingCones[i].x.toFixed(3)} @ ${pendingCones[i].t.toFixed(2)}s`
                           : "— click to set"}
@@ -686,8 +761,33 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                   ))}
                 </div>
 
-                <form action={calibration.onSave} className="mt-3 flex flex-wrap items-end gap-3">
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setPendingCones([])}
+                    className="rounded-lg border border-white/[0.1] px-3 py-1.5 text-xs font-semibold text-[#b3bccb]">
+                    {pendingCones.length >= 2 ? "Edit start" : "Set start"}
+                  </button>
+                  <button type="button" disabled={pendingCones.length < 2}
+                    onClick={() => setPendingCones((previous) => previous.slice(0, 2))}
+                    className="rounded-lg border border-white/[0.1] px-3 py-1.5 text-xs font-semibold text-[#b3bccb] disabled:opacity-40">
+                    {pendingCones.length >= 4 ? "Edit finish" : "Set finish"}
+                  </button>
+                  <span className="self-center text-[11px] text-[#7e8797]">
+                    Preview is propagated with the production camera model; red dashed lines are unsafe.
+                  </span>
+                </div>
+
+                <form
+                  action={calibration.onSaveAction ? saveDispatch : calibration.onSave}
+                  className="mt-3 flex flex-wrap items-end gap-3"
+                >
                   <input type="hidden" name="id" value={calibration.sessionId} />
+                  {/* Optimistic-concurrency token: the revision this edit was based
+                      on, so the server can reject a stale save (Part 1 §3). */}
+                  <input
+                    type="hidden"
+                    name="expected_revision"
+                    value={calibration.savedGates?.revision ?? calibration.savedGates?.version ?? 0}
+                  />
                   <input type="hidden" name="gate_start_c1x" value={pendingCones[0]?.x ?? ""} />
                   <input type="hidden" name="gate_start_c1y" value={pendingCones[0]?.y ?? ""} />
                   <input type="hidden" name="gate_start_c2x" value={pendingCones[1]?.x ?? ""} />
@@ -698,12 +798,22 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                   <input type="hidden" name="gate_finish_c2y" value={pendingCones[3]?.y ?? ""} />
                   <input type="hidden" name="gate_start_time_s" value={pendingCones[0]?.t ?? ""} />
                   <input type="hidden" name="gate_finish_time_s" value={pendingCones[2]?.t ?? ""} />
+                  <input type="hidden" name="gate_start_frame" value={pendingCones[0]?.sourceFrameIndex ?? ""} />
+                  <input type="hidden" name="gate_finish_frame" value={pendingCones[2]?.sourceFrameIndex ?? ""} />
+                  <input type="hidden" name="gate_source_width" value={sourceWidth ?? ""} />
+                  <input type="hidden" name="gate_source_height" value={sourceHeight ?? ""} />
+                  {compensatedPending.map((point, index) => (
+                    <span key={`compensated-${index}`}>
+                      <input type="hidden" name={`gate_comp_${index}_x`} value={point?.x ?? ""} />
+                      <input type="hidden" name={`gate_comp_${index}_y`} value={point?.y ?? ""} />
+                    </span>
+                  ))}
                   <div>
                     <label
                       htmlFor="calibration_known_distance_m"
-                      className="block text-xs font-medium text-[#A0A2A8]"
+                      className="block text-xs font-medium text-[#b3bccb]"
                     >
-                      Known distance <span className="text-[#6B7280]">(m)</span>
+                      Known distance <span className="text-[#7e8797]">(m)</span>
                     </label>
                     <input
                       id="calibration_known_distance_m"
@@ -713,24 +823,54 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
                       step="0.01"
                       min={0}
                       placeholder="e.g. 20"
-                      className="mt-1 w-32 rounded-lg border border-white/[0.08] bg-[#0d0d0f] px-3 py-2 text-sm text-[#F5F5F7] placeholder:text-[#6B7280] focus:border-[#D72638]/50 focus:outline-none"
+                      className="mt-1 w-32 rounded-lg border border-white/[0.08] bg-[#081019] px-3 py-2 text-sm text-[#f5f7fb] placeholder:text-[#7e8797] focus:border-[#2f80ed]/50 focus:outline-none"
                     />
                   </div>
                   <button
                     type="submit"
-                    disabled={pendingCones.length < 4}
-                    className="rounded-lg bg-[#D72638] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#e63a4b] disabled:opacity-50"
+                    data-testid="save-gates"
+                    disabled={
+                      pendingCones.length < 4 || !cameraEvidence || !sourceWidth || !sourceHeight || savePending
+                    }
+                    className="rounded-lg bg-[#2f80ed] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3b8eff] disabled:opacity-50"
                   >
-                    Save
+                    {savePending ? "Saving…" : "Save"}
                   </button>
+                  {/* Inline save status (Part 1 §2). Draft cones stay visible on
+                      failure; success/conflict re-hydrate the canonical zone. */}
+                  {saveResult && (
+                    <span
+                      role="status"
+                      data-testid="save-status"
+                      data-save-status={saveResult.status}
+                      className={`self-center text-[11px] font-semibold ${
+                        saveResult.ok
+                          ? "text-[#89d46a]"
+                          : saveResult.status === "conflict"
+                            ? "text-[#f5c451]"
+                            : "text-[#e46464]"
+                      }`}
+                    >
+                      {saveResult.ok
+                        ? "Manual zone confirmed"
+                        : saveResult.status === "conflict"
+                          ? "This zone was updated elsewhere. AVA loaded the latest version."
+                          : `Save failed${saveResult.message ? ` — ${saveResult.message}` : ""}`}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPendingCones([])}
-                    className="text-xs text-[#6B7280] hover:text-[#F5F5F7]"
+                    className="text-xs text-[#7e8797] hover:text-[#f5f7fb]"
                   >
                     Reset cones
                   </button>
                 </form>
+                {(!cameraEvidence || !sourceWidth || !sourceHeight) && (
+                  <p className="mt-2 text-xs text-[#e46464]">
+                    This artifact has no production camera-transform evidence. Rerun pose processing before saving physical timing boundaries.
+                  </p>
+                )}
               </div>
             )}
           </div>

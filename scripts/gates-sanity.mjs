@@ -52,7 +52,10 @@ try {
         baseUrl: root,
         paths: { "@/*": ["src/*"] },
       },
-      files: [path.join(root, "src/lib/calibration/gates.ts")],
+      files: [
+        path.join(root, "src/lib/calibration/gates.ts"),
+        path.join(root, "src/lib/measurement/timingPolicy.ts"),
+      ],
     }),
   );
   execFileSync("npx", ["tsc", "-p", tsconfigPath], { cwd: root, stdio: ["ignore", "inherit", "inherit"] });
@@ -60,6 +63,29 @@ try {
   const { gateMidpoint, gatesToManualPoints, calibrationGatesSchema } = require(
     path.join(out, "lib/calibration/gates.js"),
   );
+  const {
+    CONSERVATIVE_TIMING_POLICY_V1,
+    reportStrideWindows,
+    reportTimeSeconds,
+    timedMetric,
+    velocityFromReportedTime,
+  } = require(path.join(out, "lib/measurement/timingPolicy.js"));
+
+  check("timing policy is versioned", CONSERVATIVE_TIMING_POLICY_V1 === "CONSERVATIVE_TIMING_POLICY_V1");
+  check("exact hundredths remain exact", reportTimeSeconds(1.92) === 1.92);
+  check("floating noise does not add a hundredth", reportTimeSeconds(1.9200000000000002) === 1.92);
+  check("times conservatively ceil", [1.9201, 1.9299, 1.9305, 0.9341].map(reportTimeSeconds).join(",") === "1.93,1.93,1.94,0.94");
+  const officialTime = timedMetric(1.9305);
+  const officialVelocity = velocityFromReportedTime(20, officialTime.rawSeconds);
+  check("raw time remains unchanged", officialTime.rawSeconds === 1.9305);
+  check("display is formatting only", officialTime.displaySeconds === officialTime.reportedSeconds.toFixed(2));
+  check("average velocity uses reported time", approx(officialVelocity, 20 / 1.94));
+  const top = reportStrideWindows([
+    { startContactIndex: 0, endContactIndex: 2, distanceM: 2.1, rawDurationS: 0.1901 },
+    { startContactIndex: 1, endContactIndex: 3, distanceM: 2.2, rawDurationS: 0.2001 },
+  ]);
+  check("each stride velocity uses its reported duration", top.windows.every((w) => approx(w.reportedVelocityMps, w.distanceM / w.reportedDurationS)));
+  check("top speed selects the highest reported stride velocity", top.reportedTopVelocityMps === Math.max(...top.windows.map((w) => w.reportedVelocityMps)));
 
   // A start bar (cones at x 0.20/0.30, y 0.80/0.78 @ t=1.0) and a finish bar
   // (cones at x 0.70/0.80, y 0.60/0.58 @ t=2.5), 20 m apart.

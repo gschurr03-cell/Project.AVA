@@ -97,7 +97,7 @@ try {
   writeFileSync(
     path.join(out, "tsconfig.json"),
     JSON.stringify({
-      compilerOptions: { outDir: out, rootDir: path.join(root, "src"), module: "commonjs", target: "es2022", skipLibCheck: true, esModuleInterop: true, strict: false, moduleResolution: "node", baseUrl: root, paths: { "@/*": ["src/*"] } },
+      compilerOptions: { outDir: out, rootDir: path.join(root, "src"), module: "commonjs", target: "es2022", skipLibCheck: true, esModuleInterop: true, resolveJsonModule: true, strict: false, moduleResolution: "node", baseUrl: root, paths: { "@/*": ["src/*"] } },
       files: [
         path.join(root, "src/lib/video/overlay.ts"),
         path.join(root, "src/lib/video/fps.ts"),

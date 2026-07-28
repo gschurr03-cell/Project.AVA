@@ -13,6 +13,7 @@
  */
 
 import type { OverlayFrame } from "./overlay";
+import { classifySourceFps } from "./analysisFps";
 
 /** Accepted FPS bounds (mirrors the DB CHECK on sessions.fps_override). */
 export const MIN_FPS = 1;
@@ -27,23 +28,19 @@ export function isValidFps(fps: number | null | undefined): fps is number {
 export const SUPPORTED_FPS = [60, 120, 240] as const;
 
 /**
- * Fractional tolerance for snapping a detected rate to a canonical one. 60 fps clips
- * are commonly reported as 59.94 (NTSC) or drift to e.g. 59.16 from a VFR container;
- * within ±2.5% of a supported rate the canonical value is the honest capture rate, so
- * we snap to it. Values outside every band are left exactly as detected (never blindly
- * rounded) — a genuine 50 fps or 30 fps clip keeps its real rate.
+ * Fractional tolerance used only for high-speed canonical display rates. The minimum
+ * 60 FPS capture class is governed by the centralized evidence policy instead.
  */
 export const FPS_SNAP_TOLERANCE = 0.025;
 
 /**
- * Normalize a detected frame rate to the nearest supported canonical rate
- * (60/120/240) when it is within {@link FPS_SNAP_TOLERANCE}, else return it
- * unchanged. Prevents small FPS-metadata drift (e.g. 59.16 → 60) from adding timing
- * error to every derived metric, without inventing a rate for unusual footage.
+ * Normalize a detected frame rate for UI/trust classification. This does not rewrite
+ * worker artifact timestamps; nominal-60 footage retains its real source clock.
  */
 export function normalizeFps(fps: number | null | undefined): number | null {
   if (!isValidFps(fps)) return fps ?? null;
-  for (const canonical of SUPPORTED_FPS) {
+  if (classifySourceFps({ detectedFps: fps }) === "validated_60_fps_class") return 60;
+  for (const canonical of SUPPORTED_FPS.filter((value) => value > 60)) {
     if (Math.abs(fps - canonical) <= FPS_SNAP_TOLERANCE * canonical) return canonical;
   }
   return fps;
