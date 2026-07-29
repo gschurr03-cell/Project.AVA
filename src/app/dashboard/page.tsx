@@ -58,7 +58,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       .select("id, name, original_filename, status, created_at, analysis_type, calibration_known_distance_m, distance_m, athlete_id, athletes(full_name)")
       .order("created_at", { ascending: false })
       .limit(30),
-    supabase.from("analyses").select("id, created_at, sessions!inner(athlete_id)").eq("status", "complete").order("created_at", { ascending: false }),
+    supabase.from("analyses").select("id, created_at, sessions!analyses_session_id_fkey!inner(athlete_id)").eq("status", "complete").order("created_at", { ascending: false }),
     supabase.from("onboarding_states").select("state,onboarding_version").eq("user_id", user.id).maybeSingle(),
   ]);
 

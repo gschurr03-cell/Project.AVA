@@ -46,7 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // accepts acceleration, and acceleration never accepts the legacy fly object.
   const { data: target } = await supabase
     .from("analyses")
-    .select("session_id, input_snapshot, sessions!inner(analysis_type, athlete_id)")
+    .select("session_id, input_snapshot, sessions!analyses_session_id_fkey!inner(analysis_type, athlete_id)")
     .eq("id", id)
     .single();
   if (!target) return NextResponse.json({ error: "not found" }, { status: 404 });

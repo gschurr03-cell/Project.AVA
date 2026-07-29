@@ -552,7 +552,7 @@ export default async function SessionPage({
   const { data: athleteAnalyses } = parsedMetrics?.success
     ? await supabase
         .from("analyses")
-        .select("id, metrics, created_at, sessions!inner(athlete_id)")
+        .select("id, metrics, created_at, sessions!analyses_session_id_fkey!inner(athlete_id)")
         .eq("sessions.athlete_id", session.athlete_id)
         .eq("status", "complete")
         .order("created_at", { ascending: false })

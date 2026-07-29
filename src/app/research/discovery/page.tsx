@@ -28,7 +28,7 @@ export default async function DiscoveryPage() {
   const { data: rows, error } = await supabase
     .from("analyses")
     .select(
-      "id,session_id,completed_at,result_payload,experimental,validation_status,compatibility_group,timing_compatibility_group,analysis_pipeline_version,metric_schema_version,model_version,sessions!inner(athlete_id)",
+      "id,session_id,completed_at,result_payload,experimental,validation_status,compatibility_group,timing_compatibility_group,analysis_pipeline_version,metric_schema_version,model_version,sessions!analyses_session_id_fkey!inner(athlete_id)",
     )
     .eq("status", "complete")
     .eq("excluded_from_history_trends", false)

@@ -25,7 +25,7 @@ export default async function AthletesPage({
 
   const [{ data: athletes }, { data: analyses }] = await Promise.all([
     supabase.from("athletes").select("id, full_name, created_at").order("full_name", { ascending: true }),
-    supabase.from("analyses").select("id, created_at, sessions!inner(athlete_id)").eq("status", "complete"),
+    supabase.from("analyses").select("id, created_at, sessions!analyses_session_id_fkey!inner(athlete_id)").eq("status", "complete"),
   ]);
 
   const byAthlete = new Map<string, number>();
