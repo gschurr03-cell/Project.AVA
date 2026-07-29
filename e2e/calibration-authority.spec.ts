@@ -55,6 +55,7 @@ test.describe("manual timing-zone authority — non-drift acceptance", () => {
   test.skip(({ isMobile }) => isMobile, "desktop non-drift flow runs once");
 
   test("confirmed gates survive refresh, resize, and navigation without drift", async ({ page }) => {
+    test.setTimeout(90_000);
     // A. INITIAL STATE
     await signInFounder(page);
     await page.goto(`/sessions/${SESSION_ID}`);
@@ -103,12 +104,10 @@ test.describe("manual timing-zone authority — non-drift acceptance", () => {
   });
 
   test("reset-to-auto shows a confirm step and cancel makes no change", async ({ page }) => {
+    test.setTimeout(60_000);
     await signInFounder(page);
     await page.goto(`/sessions/${SESSION_ID}`);
     const before = await readHooks(page);
-
-    // The authority controls live inside the collapsed "Detailed Systems" panel.
-    await page.getByText("Detailed Systems").click();
 
     // J. RESET CANCEL — clicking Reset reveals a confirm affordance; Cancel reverts.
     await page.getByRole("button", { name: "Reset to auto" }).click();

@@ -4,13 +4,12 @@ export default function HomePage() {
   return (
     <main className="ava-carbon mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 p-8">
       <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#2f80ed]">
-        AVA · Sprint Diagnosis
+        AVA · Sprint Performance Analysis
       </p>
       <h1 className="text-4xl font-bold tracking-tight text-[#f5f7fb]">Project AVA</h1>
       <p className="text-lg text-[#b3bccb]">
-        Upload a sprint, get an AI performance diagnosis: your ranked limiting factors,
-        achievable top speed, and the trusted metrics behind them — derived automatically
-        from video.
+        Upload a sprint video, confirm the measured zone, and review five trusted performance
+        metrics with evidence-linked limiting factors and focused coaching directions.
       </p>
       <div className="flex gap-4">
         <Link

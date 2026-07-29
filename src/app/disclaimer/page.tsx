@@ -1,0 +1,3 @@
+import LegalPage from "@/components/LegalPage";
+export default function DisclaimerPage(){return <LegalPage title="Scientific and medical disclaimer" draft={false}><p>AVA Sprint analyzes movement and performance patterns from video. It does not diagnose injury, medical conditions, muscular weakness, or tissue capacity.</p><p>Technical and physical associations require professional interpretation and may require additional testing. AVA results are not medical advice, treatment, rehabilitation guidance, injury clearance, or a substitute for a qualified professional.</p><p>Measurement quality depends on recording quality, calibration, timing-zone setup, and the number of valid observations. AVA may withhold unsupported results.</p></LegalPage>}
+

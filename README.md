@@ -1,8 +1,9 @@
 # Project AVA
 
-AI-powered sprint biomechanics web platform. Coaches upload a sprint video; AVA
-runs pose estimation and returns coach-ready biomechanics — stride length and
-frequency, ground contact / flight time, joint angles, and top speed.
+Video-based sprint performance analysis for coaches and athletes. AVA’s web MVP reports
+five authoritative metrics: Average Step Length, Peak Step Length, Step Frequency,
+Average Velocity, and Peak Velocity. Structured intelligence explains supported limiting
+factors and focused training directions without medical diagnosis or full programming.
 
 ## Canonical engineering standard
 
@@ -41,11 +42,8 @@ account with a complete, analyzed demo session:
 npm run dev:seed     # idempotent — safe to re-run any time
 ```
 
-This creates (or updates) a coach, one athlete with a full profile, and one
-`complete` session, and uploads the bundled sample video plus its aligned
-MediaPipe pose artifact — so the interactive overlay, calibration, PB
-prediction, sprint phases, and sprint intelligence panels all populate from
-real, aligned pose data.
+This creates (or updates) a local coach, athlete profile, and development session.
+Seeded content is for local workflow testing and is never production evidence.
 
 Sign in at [`/login`](http://localhost:3000/login):
 
@@ -64,7 +62,7 @@ Two workers poll for queued analyses and POST results to the secured callback.
 Both read `.env.local` for the Supabase service-role key and
 `ANALYSIS_WORKER_SECRET`, and are dev-only (never deployed).
 
-**Mock worker** — fabricates realistic metrics, no Python needed:
+**Mock worker** — local UI/lifecycle testing only; its output is not valid analysis:
 
 ```bash
 npm run dev          # terminal 1 — http://localhost:3000
@@ -83,11 +81,11 @@ source .venv/bin/activate && npm run worker:analysis  # terminal 2
 
 Click **Run analysis** on a session and the real worker claims the job
 (session → *analyzing*), mints a signed URL for the video, runs MediaPipe pose
-estimation, computes gait events / steps / strides / angles / sprint metrics,
-maps them onto the existing metric shape, and completes the analysis. Debug
-artifacts are written to `artifacts/` (git-ignored). **Top speed and stride
-length are `0` placeholders** until camera calibration exists — surfaced as a
-warning in the worker log and the analysis artifact. Cap frames during
-development with `WORKER_MAX_FRAMES=60`.
+estimation and computes the authoritative measured-zone metrics. Spatial metrics are
+withheld—not shown as zero—until the required calibration is available. Debug artifacts
+are written to `artifacts/` (git-ignored).
 
 See [CLAUDE.md](./CLAUDE.md) for architecture and conventions.
+See [Web MVP launch readiness](./docs/web-mvp-launch-readiness.md) for the current launch
+decision and [Production deployment architecture](./docs/production-deployment-architecture.md)
+for external infrastructure requirements.

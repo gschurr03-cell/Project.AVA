@@ -159,6 +159,10 @@ type Props = {
   stepContactCount?: number;
   /** Enables click-to-set manual ground calibration on this surface. */
   calibration?: SurfaceCalibration;
+  /** Whether in-overlay gate/trochanter EDITING is offered. The MVP calibration authority
+   *  is the Timing Workspace, so the Analysis-page overlay is read-only (default false):
+   *  gates/contacts still render, but no placement controls appear here. */
+  allowCalibrationEditing?: boolean;
   cameraEvidence?: RawCameraEvidence;
   sourceWidth?: number | null;
   sourceHeight?: number | null;
@@ -185,6 +189,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     stepCadenceHz = null,
     stepContactCount = 0,
     calibration,
+    allowCalibrationEditing = false,
     cameraEvidence,
     sourceWidth,
     sourceHeight,
@@ -543,7 +548,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           {autoFollow ? "◉" : "○"} Auto Follow
         </button>
 
-        {calibration && (
+        {allowCalibrationEditing && calibration && (
           <button
             type="button"
             onClick={() => {
@@ -563,7 +568,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
           </button>
         )}
 
-        {calibration?.onSaveTrochanter && (
+        {allowCalibrationEditing && calibration?.onSaveTrochanter && (
           <button
             type="button"
             onClick={() => {
@@ -667,8 +672,8 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
         </div>
       )}
 
-      {/* Calibration — collapsed by default (dark). */}
-      {calibration && (
+      {/* Calibration editing (Recompute / Remove / zone status) — Timing Workspace only. */}
+      {allowCalibrationEditing && calibration && (
         <details
           className="group rounded-xl border border-white/[0.06] bg-[#101827]"
           open={calibrationMode}

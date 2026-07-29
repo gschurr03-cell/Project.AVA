@@ -6,9 +6,8 @@
  * reasonable ranges that double as unit validation. Both the edit form and the
  * server action import from here so the UI and the DB agree on every bound.
  *
- * These values are storage/display only for now — nothing here is consumed by
- * metric calculation. Calibration (Day 57) and the PB predictor (Day 58) will
- * be the first readers.
+ * These values never change the authoritative measurement math. Available body
+ * measurements and goals may improve interpretation context and profile completeness.
  */
 
 import { z } from "zod";

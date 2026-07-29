@@ -28,8 +28,6 @@ const IconDashboard = icon(<><rect x="3" y="3" width="7" height="9" rx="1.5" /><
 const IconAthletes = icon(<><circle cx="9" cy="8" r="3.2" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0" /><path d="M16 5.2a3 3 0 0 1 0 5.6" /><path d="M17.5 20a5.4 5.4 0 0 0-3-4.8" /></>);
 const IconSessions = icon(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18" /><path d="m10 13 4 2.5-4 2.5z" /></>);
 const IconProgress = icon(<><path d="M3 3v18h18" /><path d="m7 15 3.5-4 3 2.5L21 7" /></>);
-const IconIntelligence = icon(<><path d="M12 3a4.5 4.5 0 0 0-4.5 4.5c0 1.2-.7 2-1.3 2.7A4 4 0 0 0 8 17.2V19a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1.8a4 4 0 0 0 1.8-7c-.6-.7-1.3-1.5-1.3-2.7A4.5 4.5 0 0 0 12 3Z" /><path d="M9.5 21h5" /></>);
-const IconCompare = icon(<><path d="M7 3v18M17 3v18" /><path d="M7 8H3l2-2M17 16h4l-2 2" /></>);
 const IconSettings = icon(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.5 1.5 0 0 0 .3 1.6l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.5 1.5 0 0 0-2.6 1V21a2 2 0 1 1-4 0v-.2a1.5 1.5 0 0 0-2.6-1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.5 1.5 0 0 0 4.6 15H4.4a2 2 0 1 1 0-4h.2a1.5 1.5 0 0 0 1-2.6l-.1-.1A2 2 0 1 1 8.3 5.5l.1.1a1.5 1.5 0 0 0 1.6.3H10a1.5 1.5 0 0 0 1-1.4V4a2 2 0 1 1 4 0v.2a1.5 1.5 0 0 0 2.6 1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.5 1.5 0 0 0-.3 1.6V10a1.5 1.5 0 0 0 1.4 1h.2a2 2 0 1 1 0 4h-.2a1.5 1.5 0 0 0-1.4 1Z" /></>);
 const IconPlus = icon(<><path d="M12 5v14M5 12h14" /></>);
 const IconUpload = icon(<><path d="M12 15V4" /><path d="m7 9 5-5 5 5" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></>);
@@ -41,11 +39,10 @@ const PRIMARY: Item[] = [
   { label: "Athletes", href: "/athletes", Icon: IconAthletes },
   { label: "Sessions", href: "/sessions", Icon: IconSessions },
   { label: "Progress", href: "/coach", Icon: IconProgress },
-  { label: "Intelligence", href: "/athlete/intelligence", Icon: IconIntelligence },
 ];
 const TOOLS: Item[] = [
-  { label: "Compare", href: "/comparisons", Icon: IconCompare },
   { label: "Settings", href: "/account", Icon: IconSettings },
+  { label: "Help", href: "/help", Icon: IconSettings },
 ];
 const QUICK: Item[] = [
   { label: "New Athlete", href: "/athletes?new=1", Icon: IconPlus },
@@ -111,6 +108,12 @@ function SidebarBody({ userEmail, onNavigate }: { userEmail: string; onNavigate?
 
       <div className="mt-2 border-t border-white/[0.08] p-3">
         <p className="mb-2 truncate text-xs text-[#7e8797]" title={userEmail}>{userEmail}</p>
+        <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[#7e8797]">
+          <Link href="/privacy" onClick={onNavigate} className="hover:text-[#b3bccb]">Privacy</Link>
+          <Link href="/terms" onClick={onNavigate} className="hover:text-[#b3bccb]">Terms</Link>
+          <Link href="/data-retention" onClick={onNavigate} className="hover:text-[#b3bccb]">Retention</Link>
+          <Link href="/support" onClick={onNavigate} className="hover:text-[#b3bccb]">Support</Link>
+        </div>
         <form action={logout}>
           <button
             type="submit"

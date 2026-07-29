@@ -10,6 +10,6 @@ export async function requestAccountDeletion(formData:FormData){
   const {data:{user}}=await supabase.auth.getUser();
   if(!user)redirect("/login");
   const {error}=await supabase.from("account_deletion_requests").insert({user_id:user.id});
-  if(error&&error.code!=="23505")redirect(`/account?error=${encodeURIComponent(error.message)}`);
+  if(error&&error.code!=="23505")redirect(`/account?error=${encodeURIComponent("The deletion request could not be saved. Try again or contact support.")}`);
   redirect("/account?requested=1");
 }

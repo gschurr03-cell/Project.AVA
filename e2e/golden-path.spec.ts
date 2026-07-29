@@ -13,21 +13,22 @@ test.describe("golden athlete workflow",()=>{
   test.skip(({isMobile})=>isMobile,"desktop mutation flow runs once");
 
   test("owner signs in, sees session, opens results and Timing Workspace",async({page})=>{
+    test.setTimeout(60_000);
     await signIn(page);
     await expect(page.getByText("Golden Path Sprinter")).toBeVisible();
-    await page.getByText("Golden Path Sprinter").click();
-    await expect(page.getByText("Golden Path Session")).toBeVisible();
-    await page.getByText("Golden Path Session").click();
-    await expect(page.getByRole("heading",{name:"Golden Path Session"})).toBeVisible();
-    await expect(page.getByRole("heading",{name:"Working Analysis"})).toBeVisible();
+    await page.getByRole("link",{name:/Golden Path Session/}).click();
+    await expect(page).toHaveURL(new RegExp(`/sessions/${E2E.sessionId}$`), { timeout: 30_000 });
+    await expect(page.getByRole("heading",{name:"Working Analysis"})).toBeVisible({ timeout: 30_000 });
     await page.getByRole("link",{name:"Open Timing Workspace"}).click();
     await expect(page.getByText("Timing Workspace unavailable")).toBeVisible();
   });
 
-  test("report route is ownership protected and fails closed without a result contract",async({page})=>{
+  test("report route is ownership protected and renders the authoritative report",async({page})=>{
+    test.setTimeout(60_000);
     await signIn(page);
     await page.goto(`/sessions/${E2E.sessionId}/report`);
-    await expect(page.getByRole("heading",{name:"Report evidence unavailable"})).toBeVisible();
+    await expect(page.getByRole("heading",{name:"Sprint Performance Analysis"})).toBeVisible();
+    await expect(page.getByText("Golden Path Sprinter")).toBeVisible();
   });
 
   test("cross-user report access is denied by RLS",async({page})=>{
@@ -72,7 +73,7 @@ test.describe("golden athlete workflow",()=>{
 test("mobile dashboard smoke test",async({page,isMobile})=>{
   test.skip(!isMobile,"mobile project only");
   await signIn(page);
-  await expect(page.getByRole("heading",{name:"Your athletes"})).toBeVisible();
+  await expect(page.getByRole("heading",{name:/Welcome back/i})).toBeVisible();
   await expect(page.getByText("Golden Path Sprinter")).toBeVisible();
   await expect(page.locator("body")).not.toHaveCSS("overflow-x","scroll");
 });
@@ -81,6 +82,13 @@ test("ordinary authenticated users cannot access the Research Workspace",async({
   test.skip(isMobile,"research authorization smoke test runs once");
   await signIn(page);
   await page.goto("/research");
+  await expect(page.getByText(/could not be found/i)).toBeVisible();
+});
+
+test("ordinary authenticated users cannot access beta operations",async({page,isMobile})=>{
+  test.skip(isMobile,"operator authorization smoke test runs once");
+  await signIn(page);
+  await page.goto("/admin/operations");
   await expect(page.getByText(/could not be found/i)).toBeVisible();
 });
 

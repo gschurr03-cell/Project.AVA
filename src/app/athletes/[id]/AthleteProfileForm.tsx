@@ -13,7 +13,7 @@ import { updateAthleteProfile } from "./actions";
  */
 
 const GROUPS: { id: ProfileFieldDef["group"]; title: string; hint: string }[] = [
-  { id: "physical", title: "Physical", hint: "Body measurements used for future calibration." },
+  { id: "physical", title: "Physical", hint: "Optional measurements that can improve individualized interpretation; they do not change the measured video results." },
   {
     id: "personalBest",
     title: "Personal Bests",
@@ -85,7 +85,7 @@ export default function AthleteProfileForm({
           Save profile
         </button>
         <p className="text-xs text-[#7e8797]">
-          Leave a field blank to clear it. Values are stored for reference only.
+          All fields are optional. Leave a field blank to clear it.
         </p>
       </div>
     </form>

@@ -17,6 +17,10 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
   running: { label: "Processing", color: "#f5c451" },
   processing: { label: "Processing", color: "#f5c451" },
   uploaded: { label: "Uploaded", color: "#7e8797" },
+  uploading: { label: "Uploading", color: "#f5c451" },
+  retry_scheduled: { label: "Retry scheduled", color: "#f5c451" },
+  dead_lettered: { label: "Needs support", color: "#e46464" },
+  cancelled: { label: "Cancelled", color: "#7e8797" },
 };
 
 /** Sessions index — recent runs across all athletes with status, athlete, date, type, distance. */
@@ -25,13 +29,20 @@ export default async function SessionsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: sessions } = await supabase
-    .from("sessions")
-    .select("id, name, original_filename, status, created_at, analysis_type, calibration_known_distance_m, distance_m, athletes(full_name)")
-    .order("created_at", { ascending: false })
-    .limit(60);
+  const [{ data: sessions }, { data: analyses }] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("id, name, original_filename, status, created_at, analysis_type, calibration_known_distance_m, distance_m, athletes(full_name)")
+      .order("created_at", { ascending: false })
+      .limit(60),
+    supabase
+      .from("analyses")
+      .select("id,session_id,status,completed_at")
+      .eq("is_current_working", true),
+  ]);
 
   const rows = sessions ?? [];
+  const analysisBySession = new Map((analyses ?? []).map((analysis) => [analysis.session_id, analysis]));
 
   return (
     <AppShell userEmail={user.email ?? ""}>
@@ -49,12 +60,17 @@ export default async function SessionsPage() {
             {rows.map((s) => {
               const meta = STATUS_META[s.status] ?? { label: s.status, color: "#7e8797" };
               const dist = s.calibration_known_distance_m ?? s.distance_m;
+              const analysis = analysisBySession.get(s.id);
               return (
                 <li key={s.id} className="border-b border-white/[0.05] last:border-0">
                   <Link href={`/sessions/${s.id}`} className="grid grid-cols-1 gap-1 px-5 py-3 transition hover:bg-white/[0.04] sm:grid-cols-[1fr_140px_120px_110px_110px] sm:items-center sm:gap-4">
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-[#f5f7fb]">{s.name ?? s.original_filename ?? "Session"}</span>
-                      <span className="block text-xs text-[#7e8797] sm:hidden">{athleteName(s)} · {new Date(s.created_at).toLocaleDateString()}</span>
+                      <span className="block text-xs text-[#7e8797]">
+                        <span className="sm:hidden">{athleteName(s)} · </span>
+                        {analysis?.completed_at ? `Analyzed ${new Date(analysis.completed_at).toLocaleDateString()}` : `Created ${new Date(s.created_at).toLocaleDateString()}`}
+                        {analysis?.status === "complete" ? " · Report ready" : ""}
+                      </span>
                     </span>
                     <span className="hidden truncate text-sm text-[#b3bccb] sm:block">{athleteName(s)}</span>
                     <span className="hidden text-sm text-[#b3bccb] sm:block">{s.analysis_type ?? "—"}</span>

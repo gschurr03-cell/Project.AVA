@@ -40,7 +40,7 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
   // Prefix-matched public sections plus the exact-match landing page. `/` must
   // be exact — a "/" prefix would make every route public.
-  const publicPrefixes = ["/login", "/signup", "/auth", "/privacy", "/terms", "/api/health"];
+  const publicPrefixes = ["/login", "/signup", "/auth", "/privacy", "/terms", "/disclaimer", "/data-retention", "/support", "/api/health"];
 
   // The analysis worker callback authenticates itself with a shared secret
   // (ANALYSIS_WORKER_SECRET), not a user session, so it must skip the login

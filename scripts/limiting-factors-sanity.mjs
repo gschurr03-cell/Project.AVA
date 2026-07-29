@@ -1,132 +1,91 @@
-// Runtime sanity for Day 79 — trusted-source limiting-factor diagnosis
-// (intelligence/limitingFactors.ts).
-//
+// Deterministic unit tests for the Limiting Factors engine.
 //   node scripts/limiting-factors-sanity.mjs
-//
-// Compiles the pure module and asserts:
-//   • ranking reads ONLY the four trusted metrics (Frequency, Step Length, Top Speed,
-//     Average Velocity), never a conflicting source;
-//   • AVA ALWAYS returns ranked #1/#2/#3 — "limiting" mode when any deficit exists,
-//     "unlocks" mode (ranked by closest margin) when all are elite;
-//   • Frequency shows once, labelled "Frequency" in Hz, sourced from trusted frequencyHz;
-//   • velocity gain is a v=L·f estimate for LEVERS only (outcomes carry no gain);
-//   • Performance Potential is based on trusted top speed with diminishing returns.
-
 import { execFileSync } from "node:child_process";
-import { rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { rmSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import Module, { createRequire } from "node:module";
+import { createRequire } from "node:module";
 import path from "node:path";
-
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const out = path.join(root, ".limiting-factors-sanity-tmp");
-const originalResolve = Module._resolveFilename;
-Module._resolveFilename = function (request, ...rest) {
-  return originalResolve.call(this, request.startsWith("@/") ? path.join(out, request.slice(2)) : request, ...rest);
-};
+const out = path.join(root, ".lf-tmp");
+rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
+execFileSync("npx", ["tsc",
+  "src/lib/limitingFactors/engine.ts","src/lib/limitingFactors/types.ts","src/lib/limitingFactors/thresholds.ts","src/lib/limitingFactors/scoring.ts","src/lib/limitingFactors/recommendations.ts",
+  "--outDir", out, "--rootDir","src/lib/limitingFactors","--module","commonjs","--target","es2022","--skipLibCheck"], { cwd: root, stdio: ["ignore","ignore","inherit"] });
+const { buildLimitingFactors } = require(path.join(out, "engine.js"));
 
 let ok = true;
-const check = (label, cond) => {
-  console.log(`${cond ? "PASS" : "FAIL"}  ${label}`);
-  if (!cond) ok = false;
-};
-const near = (a, b, eps = 0.02) => a != null && b != null && Math.abs(a - b) <= eps;
+const chk = (l, c) => { console.log(`${c ? "PASS" : "FAIL"}  ${l}`); if (!c) ok = false; };
+const input = (over = {}) => ({
+  sessionId: "s", sessionDate: null, analysisType: "fly", zoneDistanceM: 20,
+  calibrationConfirmed: true, spatialAvailable: true, measurementConfidence: "high",
+  athlete: { heightCm: 180, legLengthCm: 98, trochanterHeightM: 0.98, weightKg: 80 },
+  metrics: {
+    avgStepLengthM: 2.1, peakStepLengthM: 2.2, stepFrequencyHz: 4.8, avgVelocityMps: 10.1, peakVelocityMps: 10.6, validStepCount: 9,
+    leftStepLengthM: 2.1, rightStepLengthM: 2.1, leftStepSampleCount: 4, rightStepSampleCount: 4,
+    leftStepFrequencyHz: 4.8, rightStepFrequencyHz: 4.8, ...(over.metrics || {}),
+  },
+  ...Object.fromEntries(Object.entries(over).filter(([k]) => k !== "metrics")),
+});
+const byType = (r, t) => r.limiters.find((l) => l.type === t);
+
+// (1) Step-length asymmetry — left longer.
+let r = buildLimitingFactors(input({ metrics: { leftStepLengthM: 2.20, rightStepLengthM: 2.02, leftStepSampleCount: 4, rightStepSampleCount: 4 } }));
+let sl = byType(r, "step_length_asymmetry");
+chk("step-length asymmetry detected when left>right", !!sl && sl.status === "detected" && sl.deviation.direction === "left_higher");
+chk("asymmetry % computed (~8.5%)", sl && Math.abs(sl.deviation.percentage - 8.5) < 0.6);
+chk("title names the reduced (right) side", sl && /right-side/i.test(sl.title));
+
+// (2) Right longer → direction flips.
+r = buildLimitingFactors(input({ metrics: { leftStepLengthM: 2.0, rightStepLengthM: 2.2, leftStepSampleCount: 4, rightStepSampleCount: 4 } }));
+chk("direction flips to right_higher", byType(r, "step_length_asymmetry")?.deviation.direction === "right_higher");
+
+// (3) Balanced → not shown as a limiter card.
+r = buildLimitingFactors(input({ metrics: { leftStepLengthM: 2.10, rightStepLengthM: 2.11, leftStepFrequencyHz: 4.8, rightStepFrequencyHz: 4.81 } }));
+chk("balanced sides produce no ranked limiter", r.limiters.length === 0 && r.meaningfulCount === 0);
+
+// (4) Insufficient side samples → insufficient (not a card).
+r = buildLimitingFactors(input({ metrics: { leftStepLengthM: 2.3, rightStepLengthM: 2.0, leftStepSampleCount: 1, rightStepSampleCount: 4 } }));
+chk("insufficient side samples → no step-length card", !byType(r, "step_length_asymmetry"));
+
+// (5) Step-frequency asymmetry — left higher.
+r = buildLimitingFactors(input({ metrics: { leftStepFrequencyHz: 5.2, rightStepFrequencyHz: 4.5, leftStepSampleCount: 4, rightStepSampleCount: 4 } }));
+chk("frequency asymmetry detected (left higher)", byType(r, "step_frequency_asymmetry")?.deviation.direction === "left_higher");
+
+// (6) Frequency source unavailable → no card, but architecture returns cleanly.
+r = buildLimitingFactors(input({ metrics: { leftStepFrequencyHz: null, rightStepFrequencyHz: null } }));
+chk("null side frequency → no frequency card, no crash", !byType(r, "step_frequency_asymmetry") && r.status === "ok");
+
+// (7) Ranking — higher-impact (length 12%) ranks above lower (freq 5%).
+r = buildLimitingFactors(input({ metrics: {
+  leftStepLengthM: 2.30, rightStepLengthM: 2.03, leftStepFrequencyHz: 4.9, rightStepFrequencyHz: 4.66, leftStepSampleCount: 5, rightStepSampleCount: 5 } }));
+chk("higher-impact limiter ranks #1", r.limiters[0]?.rank === 1 && r.limiters[0]?.impact.score >= (r.limiters[1]?.impact.score ?? 0));
+chk("ranks are 1..n contiguous", r.limiters.every((l, i) => l.rank === i + 1));
+
+// (8) Confidence is conservative: overall never exceeds min(measurement, reasoning).
+sl = byType(buildLimitingFactors(input({ metrics: { leftStepLengthM: 2.25, rightStepLengthM: 2.0, leftStepSampleCount: 5, rightStepSampleCount: 5 } })), "step_length_asymmetry");
+chk("overall confidence ≤ min(measurement,reasoning)", sl && sl.confidence.overall <= Math.min(sl.confidence.measurement, sl.confidence.reasoning) + 1e-9);
+
+// (9) Low measurement confidence lowers overall.
+const hi = byType(buildLimitingFactors(input({ measurementConfidence: "high", metrics: { leftStepLengthM: 2.25, rightStepLengthM: 2.0, leftStepSampleCount: 5, rightStepSampleCount: 5 } })), "step_length_asymmetry");
+const lo = byType(buildLimitingFactors(input({ measurementConfidence: "low", metrics: { leftStepLengthM: 2.25, rightStepLengthM: 2.0, leftStepSampleCount: 5, rightStepSampleCount: 5 } })), "step_length_asymmetry");
+chk("low measurement confidence reduces overall confidence", lo.confidence.overall < hi.confidence.overall);
+
+// (10) Guards.
+chk("calibration missing → calibration_missing status, no limiters", (() => { const x = buildLimitingFactors(input({ calibrationConfirmed: false })); return x.status === "calibration_missing" && x.limiters.length === 0; })());
+chk("too few valid steps → insufficient_data", buildLimitingFactors(input({ metrics: { validStepCount: 2 } })).status === "insufficient_data");
+chk("no spatial → insufficient_data", buildLimitingFactors(input({ spatialAvailable: false })).status === "insufficient_data");
+
+// (11) Expectation models reported unavailable (scientific honesty — no invented thresholds).
+r = buildLimitingFactors(input());
+chk("individualized expectation models listed as unavailable", r.unavailableModels.some((n) => /individualized step-length expectation/i.test(n)));
+chk("no expectation limiter appears as a ranked card", !r.limiters.some((l) => /expectation|velocity_limitation/.test(l.type)));
+
+// (12) Determinism — identical inputs → identical output.
+const a = JSON.stringify(buildLimitingFactors(input({ metrics: { leftStepLengthM: 2.2, rightStepLengthM: 2.0, leftStepSampleCount: 5, rightStepSampleCount: 5 } })));
+const b = JSON.stringify(buildLimitingFactors(input({ metrics: { leftStepLengthM: 2.2, rightStepLengthM: 2.0, leftStepSampleCount: 5, rightStepSampleCount: 5 } })));
+chk("engine is deterministic (identical inputs → identical output)", a === b);
 
 rmSync(out, { recursive: true, force: true });
-mkdirSync(out, { recursive: true });
-try {
-  writeFileSync(
-    path.join(out, "tsconfig.json"),
-    JSON.stringify({
-      compilerOptions: { outDir: out, rootDir: path.join(root, "src"), module: "commonjs", target: "es2022", skipLibCheck: true, esModuleInterop: true, strict: true, moduleResolution: "node", baseUrl: root, paths: { "@/*": ["src/*"] } },
-      files: [path.join(root, "src/lib/intelligence/limitingFactors.ts")],
-    }),
-  );
-  execFileSync("npx", ["tsc", "-p", path.join(out, "tsconfig.json")], { cwd: root, stdio: ["ignore", "inherit", "inherit"] });
-
-  const { deriveLimitingFactors } = require(path.join(out, "lib/intelligence/limitingFactors.js"));
-
-  // Trusted metrics matching the reported real session (source of truth). AVA stride
-  // length = opposite-foot contact distance; the DIAGNOSIS uses PEAK (best 4 strides).
-  const trusted = (over = {}) => ({
-    topSpeedMps: 10.78,
-    avgVelocityMps: 10.42,
-    avgStrideLengthM: 2.16,
-    peakStrideLengthM: 2.31,
-    strideRetentionPct: 93.5,
-    strideLengthM: 2.31, // diagnosis value = peak
-    frequencyHz: 4.85,
-    zoneDistanceM: 20,
-    zoneTimeS: 1.92,
-    stepLengthConfidence: "high",
-    ...over,
-  });
-
-  const byKey = (d, k) => d.factors.find((f) => f.key === k);
-
-  // (1) Real session → "limiting" mode, exactly 3 ranked factors; the stride factor is
-  // labelled "Stride Length" and uses the PEAK stride (2.31 m), not the average.
-  const d = deriveLimitingFactors(trusted());
-  check("always returns 3 ranked factors", d.available && d.factors.length === 3 && d.factors.every((f, i) => f.rank === i + 1));
-  check("mode is 'limiting' when deficits exist", d.mode === "limiting");
-  check("stride factor labelled 'Stride Length', sourced from trusted PEAK stride (2.31 m)", byKey(d, "stepLength")?.label === "Stride Length" && byKey(d, "stepLength")?.currentText === "2.31 m" && byKey(d, "stepLength")?.unit === "m");
-  check("elite frequency (4.85) is NOT surfaced as a limiter", !byKey(d, "frequency"));
-  check("stride LEVER gain via v=L·f (kept internal)", near(byKey(d, "stepLength").estimatedVelocityGainMps, 10.78 * ((2.45 - 2.31) / 2.45), 0.03) && byKey(d, "stepLength").isOutcome === false);
-  check("stride shows an IMPACT BAND (High) not an exact m/s", byKey(d, "stepLength").impactBand === "high");
-  check("Top Speed is an OUTCOME with no gain + no impact band", byKey(d, "topSpeed").isOutcome === true && byKey(d, "topSpeed").estimatedVelocityGainMps === null && byKey(d, "topSpeed").impactBand === null);
-
-  // Performance Velocity Estimation: practice top speed × a conservative 2–3% uplift.
-  const p = d.potential;
-  check("velocity estimate base = trusted practice top speed (10.78)", near(p.practiceTopSpeedMps, 10.78));
-  check("meet range = practice × 1.02–1.03 (≈ 11.00–11.10)", near(p.meetLowMps, 10.78 * 1.02, 0.01) && near(p.meetHighMps, 10.78 * 1.03, 0.01));
-  check("meet estimate is realistic (≤ +3%, no impossible jump)", p.meetHighMps <= p.practiceTopSpeedMps * 1.03 + 1e-9 && p.achievableTopSpeedMps === undefined);
-
-  // (2) Frequency deficit → appears once, labelled "Frequency" in Hz, from trusted.
-  const dFreq = deriveLimitingFactors(trusted({ frequencyHz: 4.4 }));
-  const freq = byKey(dFreq, "frequency");
-  check("frequency below elite surfaces as 'Frequency' in Hz", freq && freq.label === "Frequency" && freq.unit === "Hz" && freq.currentText === "4.40 Hz");
-  check("frequency appears exactly once", dFreq.factors.filter((f) => f.key === "frequency").length === 1);
-
-  // Band thresholds: a near-elite lever (tiny deficit) → LOW impact band.
-  const dLow = deriveLimitingFactors(trusted({ strideLengthM: 2.42 }));
-  check("near-elite lever → LOW impact band", byKey(dLow, "stepLength")?.impactBand === "low");
-
-  // Stride length is judged by peak stride / dedicated trochanter height.
-  const dTro = deriveLimitingFactors(trusted(), { trochanterHeightM: 0.99 });
-  const stepTro = byKey(dTro, "stepLength");
-  check("trochanter height present → ratio target is used", stepTro && near(stepTro.eliteTargetValue, 2.475, 0.02));
-  check("stride factor carries PEAK trochanter data (2.33×, next 2.50×)", stepTro?.trochanter?.ratioText === "2.33×" && near(stepTro.trochanter.nextTargetRatio, 2.5));
-  check("stride factor carries avg + retention context", stepTro?.trochanter?.avgStrideText === "2.16 m" && stepTro?.trochanter?.retentionText === "93.5%");
-  check("stride benchmark copy is trochanter-based, not generic metres", /trochanter/.test(stepTro?.eliteBenchmarkText ?? "") && !/2\.45/.test(stepTro?.eliteBenchmarkText ?? ""));
-
-  // Peak strong but average lagging → coaching note.
-  const dLag = deriveLimitingFactors(trusted({ strideRetentionPct: 88 }), { trochanterHeightM: 0.99 });
-  check("strong peak + low retention → 'zone retention is lagging' note", /retention is lagging/i.test(byKey(dLag, "stepLength")?.trochanter?.retentionNote ?? ""));
-
-  // Fallback: no trochanter height → generic metre target, no fabricated ratio.
-  const stepGen = byKey(deriveLimitingFactors(trusted()), "stepLength");
-  check("no trochanter height → generic target + trochanter unavailable", near(stepGen?.eliteTargetValue, 2.45) && stepGen?.trochanter == null);
-
-  // Review: peak ratio > 2.70× is a measurement check, NOT a ranked performance limiter.
-  const dReview = deriveLimitingFactors(trusted({ strideLengthM: 2.8 }), { trochanterHeightM: 1.00 });
-  check(">2.70× → stride length dropped (measurement check, not a limiter)", !byKey(dReview, "stepLength") && dReview.factors.length === 3);
-
-  // (3) All metrics elite → NEVER empty; "unlocks" mode ranked by closest margin.
-  const dElite = deriveLimitingFactors(trusted({ topSpeedMps: 12.0, avgVelocityMps: 11.5, strideLengthM: 2.6, frequencyHz: 5.0 }));
-  check("all-elite → still 3 ranked factors (never 'nothing stands out')", dElite.available && dElite.factors.length === 3);
-  check("all-elite → mode is 'unlocks'", dElite.mode === "unlocks");
-  check("all-elite → every surfaced factor is at/above elite", dElite.factors.every((f) => f.belowElite === false));
-  check("all-elite → ranked by smallest margin first", dElite.factors[0].marginPct <= dElite.factors[1].marginPct && dElite.factors[1].marginPct <= dElite.factors[2].marginPct);
-  check("all-elite → velocity estimate still practice × 1.02–1.03", dElite.potential.available && near(dElite.potential.meetLowMps, 12.0 * 1.02, 0.01) && near(dElite.potential.meetHighMps, 12.0 * 1.03, 0.01));
-
-  // (4) No top speed → potential unavailable but factors still rank.
-  const dNoTop = deriveLimitingFactors(trusted({ topSpeedMps: null, avgVelocityMps: null }));
-  check("no top speed → potential unavailable, factors still present", dNoTop.potential.available === false && dNoTop.factors.length >= 1);
-
-  console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");
-} finally {
-  rmSync(out, { recursive: true, force: true });
-}
-
+console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");
 process.exit(ok ? 0 : 1);

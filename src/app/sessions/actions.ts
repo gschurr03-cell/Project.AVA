@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { ANALYSIS_SUBMISSION_ENABLED, BETA_LIMITS } from "@/lib/beta/config";
 import type { Json } from "@/lib/supabase/database.types";
 import { MIN_FPS, MAX_FPS } from "@/lib/video/fps";
 import { calibrationGatesSchema, gatesToManualPoints } from "@/lib/calibration/gates";
@@ -178,18 +179,25 @@ export async function deleteSession(formData: FormData) {
   // Not found or not owned (RLS) — nothing to do.
   if (!session) redirect("/dashboard");
 
+  const { error: deleteError } = await supabase.from("sessions").delete().eq("id", id);
+  if (deleteError) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Session could not be deleted. Try again or contact support.")}`);
+  }
+
+  // Delete the database record first so a transient Storage error cannot leave a visible
+  // session pointing to a missing source video. A failed object cleanup is private and
+  // recoverable by the orphan-storage maintenance process.
   if (session.video_path) {
     const { error: storageError } = await supabase.storage
       .from("sprint-videos")
       .remove([session.video_path]);
     if (storageError) {
-      redirect(`/sessions/${id}?error=${encodeURIComponent(storageError.message)}`);
+      console.error("[session-delete] orphaned private video requires cleanup", {
+        sessionId: id,
+        athleteId: session.athlete_id,
+        errorCode: storageError.name,
+      });
     }
-  }
-
-  const { error: deleteError } = await supabase.from("sessions").delete().eq("id", id);
-  if (deleteError) {
-    redirect(`/sessions/${id}?error=${encodeURIComponent(deleteError.message)}`);
   }
 
   revalidatePath(`/athletes/${session.athlete_id}`);
@@ -212,11 +220,21 @@ export async function queueAnalysis(formData: FormData) {
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, analysis_type, distance_m, benchmark_id, pose_engine, fps, fps_classification, fps_override, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, timing_mode, timing_direction, timing_body_reference, timing_splits, timing_setup, athletes!inner(id, sex, date_of_birth, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, video_path, analysis_type, distance_m, benchmark_id, pose_engine, fps, fps_classification, fps_override, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, timing_mode, timing_direction, timing_body_reference, timing_splits, timing_setup, athletes!inner(id, sex, date_of_birth, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
   if (!session) redirect("/dashboard");
+  if (!session.video_path) {
+    redirect(
+      `/sessions/${id}?error=${encodeURIComponent("Upload must finish before analysis can begin. Return to the athlete profile and retry the video upload.")}`,
+    );
+  }
+  if (!ANALYSIS_SUBMISSION_ENABLED) {
+    redirect(
+      `/sessions/${id}?error=${encodeURIComponent("New analyses are temporarily paused. Your existing analyses and reports remain available.")}`,
+    );
+  }
   if (!isAnalysisType(session.analysis_type)) {
     redirect(
       `/sessions/${id}?error=${encodeURIComponent("Select an analysis type before running analysis.")}`,
@@ -233,6 +251,21 @@ export async function queueAnalysis(formData: FormData) {
 
   const service = createServiceClient();
   const athlete = Array.isArray(session.athletes) ? session.athletes[0] : session.athletes;
+  const { data: ownedAthletes } = await supabase.from("athletes").select("id");
+  const athleteIds = (ownedAthletes ?? []).map((item) => item.id);
+  if (athleteIds.length) {
+    const activeStatuses = ["queued","claimed","downloading","validating","processing","generating_results","uploading_artifacts","completing","retry_scheduled"] as const;
+    const [{ count: activeCount }, { count: dailyCount }] = await Promise.all([
+      service.from("analysis_jobs").select("id", { count: "exact", head: true })
+        .in("athlete_id", athleteIds).in("status", [...activeStatuses]),
+      service.from("analysis_jobs").select("id", { count: "exact", head: true })
+        .in("athlete_id", athleteIds).gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+    ]);
+    if ((activeCount ?? 0) >= BETA_LIMITS.maxActiveAnalysesPerUser)
+      redirect(`/sessions/${id}?error=${encodeURIComponent(`You already have ${BETA_LIMITS.maxActiveAnalysesPerUser} active analyses. Wait for one to finish before submitting another.`)}`);
+    if ((dailyCount ?? 0) >= BETA_LIMITS.maxDailyAnalysisSubmissionsPerUser)
+      redirect(`/sessions/${id}?error=${encodeURIComponent(`The beta limit of ${BETA_LIMITS.maxDailyAnalysisSubmissionsPerUser} analyses in 24 hours has been reached. Try again later or contact support if this looks incorrect.`)}`);
+  }
   const capturedAt = new Date().toISOString();
   const requestedAnalysisFps = session.fps_classification === "experimental_30_fps_class" ? 30 : 60;
   const parsedTimingSetup = timingSetupSchema.safeParse(session.timing_setup);

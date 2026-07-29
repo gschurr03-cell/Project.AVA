@@ -37,6 +37,9 @@ type Props = {
   stepContactCount?: number;
   /** Session id — enables the manual click-to-calibrate controls when present. */
   sessionId?: string;
+  /** Whether in-overlay gate/trochanter editing is offered (default false). Calibration
+   *  editing now lives exclusively in the Timing Workspace. */
+  allowCalibrationEditing?: boolean;
   /** Saved legacy two-point calibration for this session, if any. */
   manualCalibration?: OverlayCalibrationPoints | null;
   /** Saved timing-gate bars (Day 66) for this session, if any. */
@@ -65,6 +68,7 @@ export default function OverlayVideoPlayer({
   stepCadenceHz = null,
   stepContactCount = 0,
   sessionId,
+  allowCalibrationEditing = false,
   manualCalibration = null,
   calibrationGates = null,
   accelerationMarkers = [],
@@ -161,6 +165,7 @@ export default function OverlayVideoPlayer({
       stepCadenceHz={stepCadenceHz}
       stepContactCount={stepContactCount}
       calibration={calibration}
+      allowCalibrationEditing={allowCalibrationEditing}
       cameraEvidence={cameraEvidence}
       sourceWidth={sourceWidth}
       sourceHeight={sourceHeight}

@@ -10,6 +10,10 @@ import type { OverlayFrame } from "@/lib/video/overlay";
 import { propagateSourcePoint } from "@/lib/calibration/zoneAnchors";
 import type { RawCameraEvidence } from "@/lib/video/recordingMode";
 import {
+  type Viewport, fitViewport, clampTranslation, viewportToCanonical,
+  zoomAtPoint, stepZoom, resizeViewport, MIN_SCALE, MAX_SCALE,
+} from "@/lib/calibration/viewportTransform";
+import {
   DEFAULT_TIMING_WORKSPACE,
   timingWorkspaceSchema,
   type TimingWorkspaceState,
@@ -97,6 +101,29 @@ export default function TimingWorkspace({
   // the stage. Without this guard that click runs addDraftGate and overwrites the gate the
   // user just moved with a fresh horizontal line — the "gates reset to horizontal" bug.
   const suppressStageClick=useRef(false);
+  // Purely-visual zoom/pan of the video stage. `view` is LOCAL UI state only — it never
+  // touches canonical gate coordinates, calibration revision, or analysis. scale 1 = fit.
+  const [view,setView]=useState<Viewport>(()=>fitViewport(1,1));
+  const viewRef=useRef(view); viewRef.current=view;
+  const panRef=useRef<{sx:number;sy:number;tx0:number;ty0:number}|null>(null);
+  // Keep the stage size in the viewport model so conversions/clamps are always current.
+  useEffect(()=>{const el=stageRef.current;if(!el||typeof ResizeObserver==="undefined")return;
+    const ro=new ResizeObserver(()=>{const r=el.getBoundingClientRect();if(r.width>0&&r.height>0)setView(v=>resizeViewport(v,r.width,r.height));});
+    ro.observe(el);return()=>ro.disconnect();},[]);
+  // Mouse-wheel / trackpad-pinch zoom, anchored on the pointer. Non-passive so we can
+  // stop the page from scrolling while zooming the stage.
+  useEffect(()=>{const el=stageRef.current;if(!el)return;
+    const onWheel=(e:WheelEvent)=>{e.preventDefault();const r=el.getBoundingClientRect();
+      setView(v=>zoomAtPoint({...v,width:r.width,height:r.height},v.scale*Math.exp(-e.deltaY*0.0015),e.clientX-r.left,e.clientY-r.top));};
+    el.addEventListener("wheel",onWheel,{passive:false});return()=>el.removeEventListener("wheel",onWheel);},[]);
+  const zoomButton=useCallback((dir:1|-1)=>{const el=stageRef.current;if(!el)return;const r=el.getBoundingClientRect();
+    setView(v=>zoomAtPoint({...v,width:r.width,height:r.height},stepZoom(v.scale,dir),r.width/2,r.height/2));},[]);
+  const fitView=useCallback(()=>{const el=stageRef.current;const r=el?.getBoundingClientRect();setView(fitViewport(r?.width??1,r?.height??1));},[]);
+  useEffect(()=>{const onKey=(e:KeyboardEvent)=>{if((e.target as HTMLElement)?.matches("input,textarea,select"))return;
+    if(e.key==="+"||e.key==="="){e.preventDefault();zoomButton(1);}
+    else if(e.key==="-"||e.key==="_"){e.preventDefault();zoomButton(-1);}
+    else if(e.key==="0"){e.preventDefault();fitView();}};
+    window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[zoomButton,fitView]);
   const frameIndex=useMemo(() => {
     if (!frames.length) return 0;
     let low=0,high=frames.length-1;
@@ -143,7 +170,10 @@ export default function TimingWorkspace({
   };window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey);},[speed,step,togglePlay]);
 
   const dragMove=(event:ReactPointerEvent)=>{if(!drag||!stageRef.current)return;const r=stageRef.current.getBoundingClientRect();
-    const point={x:Math.max(0,Math.min(1,(event.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(event.clientY-r.top)/r.height))};
+    // Viewport pointer → canonical normalized [0,1], removing the zoom/pan transform, so a
+    // gate dragged at any zoom resolves to the correct canonical coordinate (never screen-space).
+    const vc=viewportToCanonical(event.clientX-r.left,event.clientY-r.top,{...viewRef.current,width:r.width,height:r.height});
+    const point={x:Math.max(0,Math.min(1,vc.x)),y:Math.max(0,Math.min(1,vc.y))};
     // Store the moved endpoint in canonical (anchor-frame) space; the other endpoint
     // is already canonical, so the whole line stays anchored to one frame.
     const canonical=pointerToCanonical(point,drag.gate);
@@ -151,7 +181,8 @@ export default function TimingWorkspace({
   };
   const addDraftGate=(event:ReactMouseEvent)=>{if(suppressStageClick.current){suppressStageClick.current=false;return;}
     if(drag||!stageRef.current||state.setupMode==="manual_crossing")return;
-    const r=stageRef.current.getBoundingClientRect(),x=(event.clientX-r.left)/r.width,y=(event.clientY-r.top)/r.height;
+    const r=stageRef.current.getBoundingClientRect();
+    const {x,y}=viewportToCanonical(event.clientX-r.left,event.clientY-r.top,{...viewRef.current,width:r.width,height:r.height});
     // A freshly placed gate is canonical at the frame it is drawn on.
     anchorRef.current[state.selectedGate]=currentSourceFrame;
     const length=.16;dispatch({type:"gate",gate:state.selectedGate,line:{c1:{x:Math.max(0,x-length/2),y},c2:{x:Math.min(1,x+length/2),y}}});
@@ -175,6 +206,29 @@ export default function TimingWorkspace({
     <i key={i} title={`Pose ${percent(item.trackingConfidence??0)}`} style={{background:(item.trackingConfidence??0)>.75?"#89d46a":(item.trackingConfidence??0)>.45?"#f5c451":"#e46464"}} className="h-full min-w-[2px] flex-1 opacity-75"/>
   )),[frames]);
 
+  // ── Zone Type (MVP): the single calibration concept the coach picks. Timing Goal +
+  //    Setup Mode are removed from the UI; `goal`/`setupMode` are kept internally and
+  //    always resolve to the manual marked-zone workflow. Legacy `goal` maps in.
+  const zoneType: "acceleration" | "timed_zone" | "split_timing" =
+    state.zoneType ?? (state.goal === "split" ? "split_timing" : "timed_zone");
+  const setZoneType = (z: "acceleration" | "timed_zone" | "split_timing") =>
+    dispatch({ type: "patch", patch: { zoneType: z, goal: z === "split_timing" ? "split" : z === "acceleration" ? "custom" : "fly", setupMode: "marked_zone" } });
+  const ZONE_TYPES: { id: "acceleration" | "timed_zone" | "split_timing"; label: string; help: string }[] = [
+    { id: "acceleration", label: "Acceleration", help: "Measure from the athlete’s start through a defined distance." },
+    { id: "timed_zone", label: "Timed Zone", help: "Measure performance between a start gate and finish gate." },
+    { id: "split_timing", label: "Split Timing", help: "Measure intermediate times within a larger timed zone." },
+  ];
+  // Which gates this zone type needs (drives labels + status).
+  const requiredGates: GateName[] = ["start", "finish"];
+  const calibrationStatus = (() => {
+    const placed = requiredGates.filter((g) => state.gates[g]).length;
+    const confirmed = requiredGates.every((g) => state.gates[g] && state.gateReview[g].accepted);
+    if (confirmed && state.distanceM) return { label: "Confirmed", tone: "#89d46a" };
+    if (placed === 0) return { label: "Not started", tone: "#7e8797" };
+    if (placed < requiredGates.length || !state.distanceM) return { label: "In progress", tone: "#f5c451" };
+    return { label: "Needs review", tone: "#f5c451" };
+  })();
+
   return <div className="flex h-screen min-h-[760px] flex-col overflow-hidden bg-[#081019] text-[#f5f7fb]">
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/[.07] bg-[#081019] px-5">
       <div className="flex items-center gap-3"><a href={`/sessions/${sessionId}`} className="text-[#7e8797] hover:text-white">←</a><div><b className="text-sm">AVA Timing</b><span className="ml-3 text-[10px] uppercase tracking-[.2em] text-[#7e8797]">Calibration Workspace</span></div></div>
@@ -185,10 +239,19 @@ export default function TimingWorkspace({
 
     <div className="grid min-h-0 flex-1 grid-cols-[230px_minmax(480px,1fr)_270px]">
       <aside className="overflow-y-auto border-r border-white/[.07] bg-[#081019] p-4">
-        <EditorGroup title="Timing goal" values={[["technique","Technique Only"],["fly","Fly Time"],["split","Split"],["custom","Custom Zone"]]} value={state.goal} onChange={value=>dispatch({type:"patch",patch:{goal:value as TimingWorkspaceState["goal"]}})}/>
-        <EditorGroup title="Setup mode" values={[["marked_zone","Marked Zone"],["fixed_landmarks","Fixed Landmark"],["manual_crossing","Manual Crossing"]]} value={state.setupMode} onChange={value=>dispatch({type:"patch",patch:{setupMode:value as TimingWorkspaceState["setupMode"]}})}/>
-        <section className="mt-6"><Label>Distance</Label><div className="grid grid-cols-2 gap-1">{[30,20,10].map(n=><button key={n} onClick={()=>dispatch({type:"patch",patch:{distanceM:n}})} className={chip(state.distanceM===n)}>{n} m</button>)}<input aria-label="Custom distance" type="number" value={state.distanceM??""} onChange={e=>dispatch({type:"patch",patch:{distanceM:Number(e.target.value)||null}})} className="min-w-0 rounded bg-[#182233] px-2 text-xs outline-none"/></div></section>
-        <EditorGroup title="Body reference" values={[["torso","Torso"],["pelvis","Pelvis"],["com","COM"],["front_foot","Front Foot"],["rear_foot","Rear Foot"]]} value={state.bodyReference} onChange={value=>dispatch({type:"patch",patch:{bodyReference:value as TimingWorkspaceState["bodyReference"]}})}/>
+        <section className="first:mt-0"><Label>Zone type</Label><div className="mt-2 space-y-1">
+          {ZONE_TYPES.map(({id,label,help})=><button key={id} onClick={()=>setZoneType(id)} className={`flex w-full flex-col rounded px-2 py-2 text-left ${zoneType===id?"bg-white/10":"hover:bg-white/5"}`}>
+            <span className={`flex items-center gap-2 text-xs font-semibold ${zoneType===id?"text-white":"text-[#b3bccb]"}`}><i className={`h-2 w-2 rounded-full ${zoneType===id?"bg-[#2f80ed]":"border border-[#555]"}`}/>{label}</span>
+            <span className="mt-0.5 pl-4 text-[10px] leading-4 text-[#7e8797]">{help}</span>
+          </button>)}
+        </div></section>
+        <section className="mt-6"><Label>Distance</Label><div className="mt-2 grid grid-cols-4 gap-1">{[10,20,30].map(n=><button key={n} onClick={()=>dispatch({type:"patch",patch:{distanceM:n}})} className={chip(state.distanceM===n)}>{n} m</button>)}<button onClick={()=>{if([10,20,30].includes(state.distanceM??0))dispatch({type:"patch",patch:{distanceM:null}});}} className={chip(state.distanceM==null||![10,20,30].includes(state.distanceM))}>Custom</button></div>
+          {(state.distanceM==null||![10,20,30].includes(state.distanceM))&&<label className="mt-2 flex items-center gap-2 text-[10px] text-[#7e8797]">Distance<input aria-label="Custom distance" type="number" min="1" max="300" step="0.1" value={state.distanceM??""} onChange={e=>{const v=Number(e.target.value);dispatch({type:"patch",patch:{distanceM:Number.isFinite(v)&&v>0?v:null}});}} className="w-20 rounded bg-[#182233] px-2 py-1 text-xs text-white outline-none"/>m</label>}
+        </section>
+        <section className="mt-6"><Label>Body reference</Label><div className="mt-2"><button className={chip(true)}>Torso</button></div><p className="mt-1 text-[10px] text-[#7e8797]">Torso is the validated timing-crossing reference.</p></section>
+        <section className="mt-6"><Label>Calibration status</Label><div className="mt-2 flex items-center gap-2"><span className="inline-block h-2 w-2 rounded-full" style={{background:calibrationStatus.tone}}/><span className="text-sm font-semibold text-[#f5f7fb]">{calibrationStatus.label}</span></div>
+          <ol className="mt-3 space-y-1 text-[10px] leading-4 text-[#7e8797]"><li>1. Select the zone type</li><li>2. Set the distance</li><li>3. Place the gates</li><li>4. Confirm and save</li></ol>
+        </section>
         <section className="mt-6"><Label>Overlay</Label><div className="flex flex-wrap gap-1">{Object.entries(state.overlays).filter(([k])=>k!=="opacity").map(([key,value])=><Toggle key={key} label={key.replace(/([A-Z])/g," $1")} checked={Boolean(value)} onChange={v=>dispatch({type:"overlay",key:key as keyof TimingWorkspaceState["overlays"],value:v})}/>)}</div>
           <label className="mt-3 block text-[10px] text-[#7e8797]">Opacity <input className="mt-1 w-full accent-[#2f80ed]" type="range" min="0" max="1" step=".05" value={state.overlays.opacity} onChange={e=>dispatch({type:"overlay",key:"opacity",value:Number(e.target.value)})}/></label>
         </section>
@@ -204,15 +267,31 @@ export default function TimingWorkspace({
           <span className="ml-auto font-mono text-xs text-[#7e8797]">F {frameIndex} · {currentTime.toFixed(3)}s</span>
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center p-5">
-          <div ref={stageRef} onClick={addDraftGate} onPointerMove={dragMove} onPointerUp={()=>{setDrag(null);setTimeout(()=>{suppressStageClick.current=false;},0);}} className="relative aspect-video w-full max-w-[1100px] overflow-hidden rounded-md bg-black shadow-[0_30px_90px_rgba(0,0,0,.65)]">
-            <video ref={videoRef} src={videoUrl} className="h-full w-full object-contain" onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onTimeUpdate={e=>setCurrentTime(e.currentTarget.currentTime)} onEnded={()=>{if(loop)seek(0)}}/>
-            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1000 562" style={{opacity:state.overlays.opacity}}>
-              {state.overlays.skeleton&&frame&&SKELETON.map(([a,b])=>{const p=frame.landmarks[a],q=frame.landmarks[b];return p&&q?<line key={`${a}-${b}`} x1={p.x*1000} y1={p.y*562} x2={q.x*1000} y2={q.y*562} stroke="#E7E9ED" strokeWidth="2"/>:null;})}
-              {state.overlays.pose&&frame&&Object.entries(frame.landmarks).map(([name,p])=><circle key={name} cx={p.x*1000} cy={p.y*562} r="3" fill="#2f80ed"/>)}
-              {state.overlays.gates&&(["start","finish"] as GateName[]).map(name=>{const l=reprojectGate(state.gates[name],name);if(!l)return null;const color=name===state.selectedGate?"#89d46a":"#f5c451";return <g key={name}><line x1={l.c1.x*1000} y1={l.c1.y*562} x2={l.c2.x*1000} y2={l.c2.y*562} stroke={color} strokeWidth="4"/>{state.overlays.plane&&<line x1={(l.c1.x-(l.c2.x-l.c1.x)*8)*1000} y1={(l.c1.y-(l.c2.y-l.c1.y)*8)*562} x2={(l.c2.x+(l.c2.x-l.c1.x)*8)*1000} y2={(l.c2.y+(l.c2.y-l.c1.y)*8)*562} stroke={color} strokeDasharray="8 8" opacity=".45"/>}</g>;})}
-              {(()=>{const dg=state.overlays.searchWindow?reprojectGate(gate,state.selectedGate):null;return dg?<rect x={(Math.min(dg.c1.x,dg.c2.x)-.05)*1000} y={(Math.min(dg.c1.y,dg.c2.y)-.07)*562} width={(Math.abs(dg.c2.x-dg.c1.x)+.1)*1000} height={(Math.abs(dg.c2.y-dg.c1.y)+.14)*562} fill="none" stroke="#60A5FA" strokeDasharray="6 5"/>:null;})()}
-            </svg>
-            {state.overlays.gates&&(["start","finish"] as GateName[]).flatMap(name=>{const l=reprojectGate(state.gates[name],name);return l?(["c1","c2"] as const).map(end=><button aria-label={`${name} ${end}`} key={`${name}-${end}`} onPointerDown={e=>{e.stopPropagation();suppressStageClick.current=true;if(!state.gateReview[name].locked)setDrag({gate:name,end});}} style={{left:`${l[end].x*100}%`,top:`${l[end].y*100}%`}} className={`absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow ${state.gateReview[name].locked?"cursor-not-allowed bg-[#89d46a]":"cursor-move bg-[#2f80ed]"}`}/>):[]})}
+          <div ref={stageRef} onClick={addDraftGate}
+            onPointerDown={e=>{if(viewRef.current.scale<=MIN_SCALE)return;panRef.current={sx:e.clientX,sy:e.clientY,tx0:viewRef.current.tx,ty0:viewRef.current.ty};suppressStageClick.current=true;e.currentTarget.setPointerCapture?.(e.pointerId);}}
+            onPointerMove={e=>{if(panRef.current){const r=stageRef.current!.getBoundingClientRect();const pan=panRef.current;setView(v=>clampTranslation({...v,width:r.width,height:r.height,tx:pan.tx0+(e.clientX-pan.sx),ty:pan.ty0+(e.clientY-pan.sy)}));return;}dragMove(e);}}
+            onPointerUp={()=>{panRef.current=null;setDrag(null);setTimeout(()=>{suppressStageClick.current=false;},0);}}
+            className={`relative aspect-video w-full max-w-[1100px] select-none overflow-hidden rounded-md bg-black shadow-[0_30px_90px_rgba(0,0,0,.65)] ${view.scale>MIN_SCALE?"cursor-grab active:cursor-grabbing":""}`}>
+            {/* One shared transformed wrapper — video + all overlays + handles move together. */}
+            <div style={{transform:`translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`,transformOrigin:"0 0"}} className="absolute inset-0">
+              <video ref={videoRef} src={videoUrl} draggable={false} className="h-full w-full object-contain" onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onTimeUpdate={e=>setCurrentTime(e.currentTarget.currentTime)} onEnded={()=>{if(loop)seek(0)}}/>
+              <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1000 562" style={{opacity:state.overlays.opacity}}>
+                {state.overlays.skeleton&&frame&&SKELETON.map(([a,b])=>{const p=frame.landmarks[a],q=frame.landmarks[b];return p&&q?<line key={`${a}-${b}`} x1={p.x*1000} y1={p.y*562} x2={q.x*1000} y2={q.y*562} stroke="#E7E9ED" strokeWidth="2" vectorEffect="non-scaling-stroke"/>:null;})}
+                {state.overlays.pose&&frame&&Object.entries(frame.landmarks).map(([name,p])=><circle key={name} cx={p.x*1000} cy={p.y*562} r={3/view.scale} fill="#2f80ed"/>)}
+                {state.overlays.gates&&(["start","finish"] as GateName[]).map(name=>{const l=reprojectGate(state.gates[name],name);if(!l)return null;const color=name===state.selectedGate?"#89d46a":"#f5c451";return <g key={name}><line x1={l.c1.x*1000} y1={l.c1.y*562} x2={l.c2.x*1000} y2={l.c2.y*562} stroke={color} strokeWidth="4" vectorEffect="non-scaling-stroke"/>{state.overlays.plane&&<line x1={(l.c1.x-(l.c2.x-l.c1.x)*8)*1000} y1={(l.c1.y-(l.c2.y-l.c1.y)*8)*562} x2={(l.c2.x+(l.c2.x-l.c1.x)*8)*1000} y2={(l.c2.y+(l.c2.y-l.c1.y)*8)*562} stroke={color} strokeDasharray="8 8" opacity=".45" vectorEffect="non-scaling-stroke"/>}</g>;})}
+                {(()=>{const dg=state.overlays.searchWindow?reprojectGate(gate,state.selectedGate):null;return dg?<rect x={(Math.min(dg.c1.x,dg.c2.x)-.05)*1000} y={(Math.min(dg.c1.y,dg.c2.y)-.07)*562} width={(Math.abs(dg.c2.x-dg.c1.x)+.1)*1000} height={(Math.abs(dg.c2.y-dg.c1.y)+.14)*562} fill="none" stroke="#60A5FA" strokeDasharray="6 5" vectorEffect="non-scaling-stroke"/>:null;})()}
+              </svg>
+              {state.overlays.gates&&(["start","finish"] as GateName[]).flatMap(name=>{const l=reprojectGate(state.gates[name],name);return l?(["c1","c2"] as const).map(end=><button aria-label={`${name} ${end}`} key={`${name}-${end}`} onPointerDown={e=>{e.stopPropagation();suppressStageClick.current=true;if(!state.gateReview[name].locked)setDrag({gate:name,end});}} style={{left:`${l[end].x*100}%`,top:`${l[end].y*100}%`,transform:`translate(-50%,-50%) scale(${1/view.scale})`}} className={`absolute h-4 w-4 rounded-full border-2 border-white shadow ${state.gateReview[name].locked?"cursor-not-allowed bg-[#89d46a]":"cursor-move bg-[#2f80ed]"}`}/>):[]})}
+            </div>
+            {/* Zoom controls (fixed in the viewport, not transformed). Stop propagation so
+                interacting with them never starts a viewport pan or places a gate. */}
+            <div onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()} className="absolute right-3 top-3 flex items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1 text-white backdrop-blur">
+              <button aria-label="Zoom out" disabled={view.scale<=MIN_SCALE} onClick={()=>zoomButton(-1)} className="grid h-6 w-6 place-items-center rounded outline-none hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#2f80ed]/60 disabled:opacity-30">−</button>
+              <span className="min-w-[46px] text-center font-mono text-[11px]" aria-live="polite">{Math.round(view.scale*100)}%</span>
+              <button aria-label="Zoom in" disabled={view.scale>=MAX_SCALE} onClick={()=>zoomButton(1)} className="grid h-6 w-6 place-items-center rounded outline-none hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#2f80ed]/60 disabled:opacity-30">+</button>
+              <button aria-label="Fit video to view" onClick={fitView} className="ml-1 rounded px-2 py-0.5 text-[11px] font-semibold outline-none hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#2f80ed]/60">Fit</button>
+            </div>
+            <div className="pointer-events-none absolute bottom-2 right-3 rounded bg-black/55 px-2 py-0.5 text-[9px] text-white/70">Scroll to zoom · drag empty space to pan</div>
             {state.overlays.confidence&&<div className="absolute left-3 top-3 rounded bg-black/65 px-2 py-1 font-mono text-[10px] text-white">POSE {percent(poseConfidence)} · CAMERA {percent(camera?.confidence??0)}</div>}
           </div>
         </div>
@@ -221,9 +300,10 @@ export default function TimingWorkspace({
       <aside className="overflow-y-auto border-l border-white/[.07] bg-[#081019] p-4">
         <Label>Inspector</Label><div className="mt-3 grid grid-cols-2 gap-2">{(["start","finish"] as GateName[]).map(name=><button key={name} onClick={()=>dispatch({type:"patch",patch:{selectedGate:name}})} className={chip(state.selectedGate===name)}>{name} gate</button>)}</div>
         <InspectorRow label="Tracking status" value={gate?(camera?.confidence??0)>.65?"Locked":"Limited":"Unsupported"} tone={gate?"green":"red"}/>
-        <InspectorRow label="Line source" value={state.gateEvidence[state.selectedGate].source.replaceAll("_"," ")}/>
-        <InspectorRow label="Reference" value={state.gateEvidence[state.selectedGate].referenceType.replaceAll("_"," ")}/>
-        <InspectorRow label="Confidence" value={percent(camera?.confidence??0)}/><InspectorRow label="Line length" value={`${(stats.length*100).toFixed(1)}%`}/><InspectorRow label="Plane angle" value={`${stats.angle.toFixed(1)}°`}/><InspectorRow label="Appearance" value="Awaiting detector"/><InspectorRow label="Search radius" value="5.0%"/><InspectorRow label="Lock stability" value={camera?`${Math.max(0,100-camera.residualPx*12).toFixed(0)}%`:"—"}/>
+        <InspectorRow label="Source" value="Manual"/>
+        <InspectorRow label="Status" value={selectedReview.accepted?"Confirmed":gate?"Awaiting confirmation":"Not placed"} tone={selectedReview.accepted?"green":undefined}/>
+        <InspectorRow label="Reference" value="User placed"/>
+        <InspectorRow label="Line length" value={`${(stats.length*100).toFixed(1)}%`}/><InspectorRow label="Plane angle" value={`${stats.angle.toFixed(1)}°`}/><InspectorRow label="World-lock" value={canProject?"Camera-tracked":"Static camera"}/>
         <div className="mt-4 grid grid-cols-3 gap-1"><button disabled={!gate} onClick={()=>gate&&dispatch({type:"gate_confirm",gate:state.selectedGate,frame:frame?.sourceFrameIndex??frameIndex,line:gate})} className={chip(Boolean(gate&&selectedReview.accepted))}>Confirm manual</button><button disabled={!gate} onClick={()=>dispatch({type:"gate_review",gate:state.selectedGate,patch:{accepted:false,locked:false}})} className={chip(false)}>Reject</button><button disabled={!gate} onClick={()=>dispatch({type:"gate_review",gate:state.selectedGate,patch:{locked:!selectedReview.locked}})} className={chip(selectedReview.locked)}>{selectedReview.locked?"Unlock":"Lock"}</button></div>
         <div className="mt-2 grid grid-cols-4 gap-1">{([["↺","rotate_left"],["↻","rotate_right"],["Extend","extend"],["Shrink","shrink"],["←","left"],["→","right"],["↑","up"],["↓","down"]] as const).map(([label,kind])=><button key={kind} disabled={!gate||selectedReview.locked} onClick={()=>transformGate(kind)} className={chip(false)}>{label}</button>)}</div>
         <div className="mt-2 flex gap-2"><button disabled={!gate} onClick={()=>gate&&dispatch({type:"keyframe_add",gate:state.selectedGate,frame:frameIndex,line:gate})} className="flex-1 rounded bg-white/10 px-3 py-2 text-xs disabled:opacity-30">Add keyframe</button><button disabled={!gate} onClick={()=>{if(!gate)return;const other=state.selectedGate==="start"?"finish":"start";anchorRef.current[other]=anchorRef.current[state.selectedGate];dispatch({type:"gate",gate:other,line:gate});dispatch({type:"patch",patch:{selectedGate:other}});}} className="rounded bg-white/10 px-3 text-xs disabled:opacity-30">Duplicate</button><button disabled={!gate} onClick={()=>{dispatch({type:"gate",gate:state.selectedGate,line:null});dispatch({type:"gate_review",gate:state.selectedGate,patch:{accepted:false,locked:false}});}} className="rounded border border-red-400/20 px-3 text-xs text-red-300 disabled:opacity-30">Delete</button></div>
@@ -251,7 +331,6 @@ export default function TimingWorkspace({
 
 function Label({children}:{children:ReactNode}){return <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#7e8797]">{children}</p>;}
 function chip(active:boolean){return `rounded px-2.5 py-1.5 text-[11px] font-semibold ${active?"bg-[#2f80ed] text-white":"bg-[#182233] text-[#7e8797] hover:bg-white/10"}`;}
-function EditorGroup({title,values,value,onChange}:{title:string;values:string[][];value:string;onChange:(v:string)=>void}){return <section className="mt-6 first:mt-0"><Label>{title}</Label><div className="mt-2 space-y-1">{values.map(([v,l])=><button key={v} onClick={()=>onChange(v)} className={`flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs ${value===v?"bg-white/10 text-white":"text-[#7e8797] hover:bg-white/5"}`}><i className={`h-2 w-2 rounded-full ${value===v?"bg-[#2f80ed]":"border border-[#555]"}`}/>{l}</button>)}</div></section>;}
 function InspectorRow({label,value,tone}:{label:string;value:string;tone?:string}){return <div className="mt-3 flex items-center justify-between border-b border-white/[.05] pb-2 text-xs"><span className="text-[#7e8797]">{label}</span><span className={tone==="green"?"text-emerald-300":tone==="red"?"text-red-300":"font-mono text-[#b3bccb]"}>{value}</span></div>;}
 function TimelineTrack({label,children}:{label:string;children:ReactNode}){return <div className="grid h-7 grid-cols-[100px_1fr] items-center"><span className="text-[9px] uppercase tracking-wide text-[#7e8797]">{label}</span><div className="relative h-6 overflow-hidden rounded bg-[#182233]">{children}</div></div>;}
 function ManualHandles({state,frames,dispatch}:{state:TimingWorkspaceState;frames:number;dispatch:Dispatch<Action>}){return <div className="grid h-full grid-cols-2 gap-2 px-2"><input aria-label="Manual start crossing" type="range" min="0" max={Math.max(1,frames-1)} value={state.manual.startBefore??0} onChange={e=>dispatch({type:"manual",key:"startBefore",value:Number(e.target.value)})} className="accent-emerald-400"/><input aria-label="Manual finish crossing" type="range" min="0" max={Math.max(1,frames-1)} value={state.manual.finishBefore??frames-1} onChange={e=>dispatch({type:"manual",key:"finishBefore",value:Number(e.target.value)})} className="accent-yellow-400"/></div>;}

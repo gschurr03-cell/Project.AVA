@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAthlete } from "./actions";
 import AppShell from "@/components/nav/AppShell";
+import { assessProfileReadiness } from "@/lib/beta/profileReadiness";
+import { ONBOARDING_VERSION } from "@/lib/beta/config";
 
 /** Extract the joined athlete_id whether Supabase returns it as an object or array. */
 function analysisAthleteId(row: { sessions: unknown }): string | null {
@@ -49,14 +51,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: athletes }, { data: sessions }, { data: analyses }] = await Promise.all([
-    supabase.from("athletes").select("id, full_name, created_at").order("created_at", { ascending: false }),
+  const [{ data: athletes }, { data: sessions }, { data: analyses }, { data: onboarding }] = await Promise.all([
+    supabase.from("athletes").select("id, full_name, created_at, height_cm, leg_length_cm, trochanter_height_m, sex, personal_best_60m, personal_best_100m, personal_best_200m").order("created_at", { ascending: false }),
     supabase
       .from("sessions")
       .select("id, name, original_filename, status, created_at, analysis_type, calibration_known_distance_m, distance_m, athlete_id, athletes(full_name)")
       .order("created_at", { ascending: false })
       .limit(30),
     supabase.from("analyses").select("id, created_at, sessions!inner(athlete_id)").eq("status", "complete").order("created_at", { ascending: false }),
+    supabase.from("onboarding_states").select("state,onboarding_version").eq("user_id", user.id).maybeSingle(),
   ]);
 
   const analyzedByAthlete = new Map<string, number>();
@@ -70,6 +73,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const failed = all.filter((s) => s.status === "failed");
   const recent = all.filter((s) => s.status === "complete").slice(0, 6);
   const greeting = (user.email ?? "coach").split("@")[0];
+  const primaryAthlete = athletes?.[0] ?? null;
+  const readiness = primaryAthlete ? assessProfileReadiness(primaryAthlete) : null;
+  const showOnboarding = !onboarding || onboarding.onboarding_version !== ONBOARDING_VERSION ||
+    !["completed","dismissed"].includes(onboarding.state);
 
   const label = (s: (typeof all)[number]) => s.name ?? s.original_filename ?? "Session";
   const dist = (s: (typeof all)[number]) => s.calibration_known_distance_m ?? s.distance_m ?? null;
@@ -89,6 +96,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       {error && (
         <p role="alert" className="mb-6 rounded-xl border border-[#e46464]/40 bg-[#e46464]/10 px-3 py-2 text-sm text-[#e46464]">{error}</p>
       )}
+      {showOnboarding && <section className="mb-6 flex flex-col gap-3 rounded-xl border border-[#3b8eff]/30 bg-[#2f80ed]/10 p-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">Prepare for your first AVA analysis</h2><p className="mt-1 text-sm text-[#b3bccb]">Review what AVA measures, recording setup, and scientific boundaries.</p></div><Link href="/onboarding" className="shrink-0 rounded-lg bg-[#2f80ed] px-4 py-2 text-center text-sm font-semibold text-white">Continue onboarding</Link></section>}
+      {readiness && readiness.status !== "fully_individualized" && <section className="mb-6 flex flex-col gap-3 rounded-xl border border-white/10 bg-[#182233] p-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold text-white">{readiness.status==="analysis_ready"?"Profile supports core analysis":"Profile is partially individualized"} · {readiness.completionPercent}%</h2><p className="mt-1 text-sm text-[#b3bccb]">{readiness.affectedFeatures[0] ?? "Optional context can improve supported comparisons."}</p></div><Link href={`/athletes/${primaryAthlete!.id}`} className="shrink-0 text-sm font-semibold text-[#3b8eff]">Improve profile →</Link></section>}
 
       {/* 2. Quick actions */}
       <div className="mb-6 flex flex-wrap gap-2">

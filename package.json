@@ -211,7 +211,14 @@
     "worker-calibration-contract:sanity": "node scripts/worker-calibration-contract-sanity.mjs",
     "zone-step-counting:sanity": "node scripts/zone-step-counting-sanity.mjs",
     "calibration-concurrency:integration": "node --env-file=.env.local scripts/calibration-concurrency-integration.mjs",
-    "benchmark:stationary:sanity": "node scripts/stationary-benchmark-sanity.mjs"
+    "benchmark:stationary:sanity": "node scripts/stationary-benchmark-sanity.mjs",
+    "viewport-transform:sanity": "node scripts/viewport-transform-sanity.mjs",
+    "analysis-progress:sanity": "node scripts/analysis-progress-sanity.mjs",
+    "sprint-intelligence:sanity": "node scripts/sprint-intelligence-sanity.mjs",
+    "coaching-recommendations:sanity": "node scripts/coaching-recommendations-sanity.mjs",
+    "analysis-report:sanity": "node scripts/analysis-report-sanity.mjs",
+    "web-launch-readiness:sanity": "node scripts/web-launch-readiness-sanity.mjs",
+    "beta-operations:sanity": "node scripts/beta-operations-sanity.mjs"
   },
   "dependencies": {
     "@ffprobe-installer/ffprobe": "^2.1.2",

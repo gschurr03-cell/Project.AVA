@@ -42,6 +42,7 @@ import type { ManualCalibrationPoints } from "@/lib/calibration";
 import { calibrationGatesSchema, type CalibrationGates } from "@/lib/calibration/gates";
 import { calibrationAuthority, mergeCalibrationAuthority, normalizeCalibrationAuthority } from "@/lib/calibration/authority";
 import { calibrationRevisionOf, classifyResultStatus } from "@/lib/calibration/lifecycle";
+import CalibrationStatusCard, { type CalibrationCardStatus } from "./CalibrationStatusCard";
 import CalibrationAuthorityControls from "./CalibrationAuthorityControls";
 import { computeSprintMeasurements } from "@/lib/benchmark/measurements";
 import { isPrecisionLimited } from "@/lib/benchmark/precision";
@@ -64,9 +65,6 @@ import AvaIntelligencePanel from "./AvaIntelligencePanel";
 import AvaPerformanceScoreCard from "./AvaPerformanceScoreCard";
 import PerformancePotentialCard from "./PerformancePotentialCard";
 import UnlockSimulatorCard from "./UnlockSimulatorCard";
-import CalibrationControlsForm from "./CalibrationControlsForm";
-import TimingSetupForm from "./TimingSetupForm";
-import TimingSetupStatusCard from "./TimingSetupStatusCard";
 import AnalysisProgressCard from "./AnalysisProgressCard";
 import RerunAnalysisButton from "./RerunAnalysisButton";
 import CoachNotesForm from "./CoachNotesForm";
@@ -158,7 +156,7 @@ export default async function SessionPage({
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, current_working_analysis_id, analysis_type, pose_engine, distance_m, duration_s, width, height, fps, fps_classification, fps_metadata, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, timing_mode, timing_direction, timing_body_reference, timing_splits, timing_setup, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, current_working_analysis_id, analysis_type, pose_engine, distance_m, duration_s, width, height, fps, fps_classification, fps_metadata, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, timing_mode, timing_direction, timing_body_reference, timing_splits, timing_setup, timing_workspace, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -221,11 +219,6 @@ export default async function SessionPage({
         .maybeSingle()
     : { data: null };
   const selectedWorkspace = jsonRecord(analysis?.workspace_config);
-  const selectedInput = jsonRecord(analysis?.input_snapshot);
-  const selectedInputSession = jsonRecord(selectedInput.session);
-  const selectedTimingSetup = Object.keys(jsonRecord(selectedInputSession.timingSetup)).length
-    ? selectedInputSession.timingSetup
-    : session.timing_setup;
   const selectedTiming = jsonRecord(selectedWorkspace.timingZone);
   const selectedCalibration = jsonRecord(selectedWorkspace.calibrationInputs);
   const [selectedPointAx, selectedPointAy] = pointPair(selectedCalibration.pointA);
@@ -360,6 +353,25 @@ export default async function SessionPage({
     const snap = calibrationGatesSchema.safeParse(selectedCalibration.gates);
     return snap.success ? calibrationRevisionOf(snap.data) : null;
   })();
+
+  // Read-only calibration status for the Analysis page (the Timing Workspace owns editing).
+  // Four user-facing states, derived automatically from the authoritative calibration —
+  // never from a stale technique_only flag. Stale/superseded results surface as Needs Review.
+  const workspaceZoneType =
+    (session.timing_workspace as { zoneType?: string } | null)?.zoneType ?? null;
+  const calibrationSuperseded =
+    resultCalibrationRevision != null && resultCalibrationRevision < currentCalibrationRevision;
+  const calibrationCardStatus: CalibrationCardStatus = !calibrationGates || !calibrationGates.distanceM
+    ? "Not Started"
+    : calibrationSuperseded
+      ? "Needs Review"
+      : calibrationSource === "manual_confirmed"
+        ? "Confirmed"
+        : "In Progress";
+  const calibrationUpdatedAt =
+    (calibrationGates as { confirmedAt?: string; updatedAt?: string } | null)?.confirmedAt ??
+    (calibrationGates as { updatedAt?: string } | null)?.updatedAt ??
+    null;
 
   // Calibration: real-world estimates (with confidence) derived from the pose
   // overlay + athlete profile + optional known-distance zone + manual ground
@@ -880,6 +892,8 @@ export default async function SessionPage({
             sessionId={session.id}
             initialStatus={jobStatus?.status ?? (analysis.status === "running" ? "processing" : "queued")}
             initialMessage={jobStatus?.user_message ?? null}
+            initialUpdatedAt={jobStatus?.updated_at ?? null}
+            initialAttemptCount={jobStatus?.attempt_count ?? 0}
           />
         )}
 
@@ -957,6 +971,30 @@ export default async function SessionPage({
                 >
                   Open Timing Workspace
                 </Link>
+                {session.analysis_type === "fly" && workingVersion.status === "complete" ? (
+                  <Link
+                    href={`/sessions/${session.id}/limiting-factors`}
+                    className="rounded-lg border border-white/[0.12] px-4 py-2 text-sm font-semibold text-[#f5f7fb] transition hover:border-[#2f80ed]/60"
+                  >
+                    Limiting Factors
+                  </Link>
+                ) : null}
+                {session.analysis_type === "fly" && workingVersion.status === "complete" ? (
+                  <Link
+                    href={`/sessions/${session.id}/intelligence`}
+                    className="rounded-lg border border-white/[0.12] px-4 py-2 text-sm font-semibold text-[#f5f7fb] transition hover:border-[#2f80ed]/60"
+                  >
+                    Sprint Intelligence
+                  </Link>
+                ) : null}
+                {session.analysis_type === "fly" && workingVersion.status === "complete" ? (
+                  <Link
+                    href={`/sessions/${session.id}/coaching-recommendations`}
+                    className="rounded-lg border border-white/[0.12] px-4 py-2 text-sm font-semibold text-[#f5f7fb] transition hover:border-[#2f80ed]/60"
+                  >
+                    Coaching Recommendations
+                  </Link>
+                ) : null}
                 {workingVersion.status === "complete" && FEATURES.coachReportEngine ? (
                   <Link
                     href={`/sessions/${session.id}/report`}
@@ -1030,6 +1068,27 @@ export default async function SessionPage({
             Original media · {resolutionLabel ?? "resolution pending"} · source {detectedFps ?? "—"} FPS
           </p>
         </AvaPanel>
+
+        {/* Read-only calibration status. Editing lives ONLY in the Timing Workspace. */}
+        {session.analysis_type === "fly" && (
+          <>
+            <CalibrationStatusCard
+              sessionId={session.id}
+              status={calibrationCardStatus}
+              distanceM={calibrationGates?.distanceM ?? null}
+              zoneType={workspaceZoneType}
+              bodyReference="Torso"
+              revision={currentCalibrationRevision}
+              updatedAt={calibrationUpdatedAt}
+            />
+            <CalibrationAuthorityControls
+              sessionId={session.id}
+              source={calibrationSource}
+              resultStatus={calibrationResultStatus}
+              revision={currentCalibrationRevision}
+            />
+          </>
+        )}
 
         {/* D. The selected immutable analysis overlay; source video remains above. */}
         <AvaPanel
@@ -1170,10 +1229,9 @@ export default async function SessionPage({
           )}
         </AvaPanel>
 
-        <TimingSetupStatusCard
-          setup={selectedTimingSetup}
-          analysisFps={analysis?.analysis_fps === 30 ? 30 : 60}
-        />
+        {/* Superseded by the read-only Calibration status card above (which derives status
+            automatically from the authoritative calibration, not the legacy technique_only
+            timing-setup flag). */}
         {experimentalTiming && <Experimental30TimingCard timing={experimentalTiming} invalidReason={analysis?.performance_result_status === "invalid_gate_propagation" ? analysis.performance_result_invalid_reason : null} />}
 
         {/* E. Analysis content — diagnosis-first: lead with the limiting factors. */}
@@ -1317,25 +1375,10 @@ export default async function SessionPage({
                   />
                 )}
                 {calibrationReport && <CalibrationPanel report={calibrationReport} />}
-                <CalibrationAuthorityControls
-                  sessionId={session.id}
-                  source={calibrationSource}
-                  revision={currentCalibrationRevision}
-                  resultStatus={calibrationResultStatus}
-                />
-                <TimingSetupForm sessionId={session.id} setup={session.timing_setup} />
-                <CalibrationControlsForm
-                  sessionId={session.id}
-                  detectedFps={detectedFps}
-                  fpsOverride={session.fps_override ?? null}
-                  zoneStartS={session.calibration_zone_start_s ?? null}
-                  zoneEndS={session.calibration_zone_end_s ?? null}
-                  zoneDistanceM={session.calibration_zone_distance_m ?? null}
-                  timingMode={session.timing_mode}
-                  timingDirection={session.timing_direction}
-                  timingBodyReference={session.timing_body_reference}
-                  timingSplits={Array.isArray(session.timing_splits) ? session.timing_splits.filter((value): value is number => typeof value === "number") : []}
-                />
+                {/* All editable calibration (gate authority, timing setup, zone/FPS controls)
+                    has moved to the Timing Workspace — the single calibration authority. The
+                    Analysis page shows read-only calibration status only (see the Calibration
+                    card near the top) and never edits gates/anchors/zones here. */}
                 {/* PhaseTimelinePanel (sprint-phase timing: contact/flight phases) is
                     withheld — outside the locked MVP five-metric scope. */}
                 {/* Race-time prediction removed for now — deriving 60/100/200 m from

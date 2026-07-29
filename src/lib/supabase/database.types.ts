@@ -33,6 +33,30 @@ export type Database = {
         }
         Relationships: []
       }
+      beta_audit_events: {
+        Row: { action: string; actor_user_id: string; created_at: string; id: string; metadata: Json; target_id: string | null; target_type: string }
+        Insert: { action: string; actor_user_id: string; created_at?: string; id?: string; metadata?: Json; target_id?: string | null; target_type: string }
+        Update: { action?: string; actor_user_id?: string; created_at?: string; id?: string; metadata?: Json; target_id?: string | null; target_type?: string }
+        Relationships: []
+      }
+      feedback_submissions: {
+        Row: { analysis_id: string | null; category: string; comment: string | null; created_at: string; current_route: string | null; id: string; may_contact: boolean; session_id: string | null; usefulness: string | null; user_id: string }
+        Insert: { analysis_id?: string | null; category: string; comment?: string | null; created_at?: string; current_route?: string | null; id?: string; may_contact?: boolean; session_id?: string | null; usefulness?: string | null; user_id: string }
+        Update: { analysis_id?: string | null; category?: string; comment?: string | null; created_at?: string; current_route?: string | null; id?: string; may_contact?: boolean; session_id?: string | null; usefulness?: string | null; user_id?: string }
+        Relationships: []
+      }
+      onboarding_states: {
+        Row: { completed_at: string | null; current_step: number; onboarding_version: string; scientific_boundary_acknowledged: boolean; state: string; updated_at: string; user_id: string }
+        Insert: { completed_at?: string | null; current_step?: number; onboarding_version: string; scientific_boundary_acknowledged?: boolean; state?: string; updated_at?: string; user_id: string }
+        Update: { completed_at?: string | null; current_step?: number; onboarding_version?: string; scientific_boundary_acknowledged?: boolean; state?: string; updated_at?: string; user_id?: string }
+        Relationships: []
+      }
+      support_requests: {
+        Row: { analysis_id: string | null; category: string; created_at: string; diagnostic_context: Json; id: string; message: string; safe_reference_id: string; session_id: string | null; status: string; subject: string; updated_at: string; user_id: string }
+        Insert: { analysis_id?: string | null; category: string; created_at?: string; diagnostic_context?: Json; id?: string; message: string; safe_reference_id: string; session_id?: string | null; status?: string; subject: string; updated_at?: string; user_id: string }
+        Update: { analysis_id?: string | null; category?: string; created_at?: string; diagnostic_context?: Json; id?: string; message?: string; safe_reference_id?: string; session_id?: string | null; status?: string; subject?: string; updated_at?: string; user_id?: string }
+        Relationships: []
+      }
       analyses: {
         Row: {
           analysis_fps: number | null
