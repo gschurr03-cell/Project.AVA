@@ -41,6 +41,7 @@ try {
       "es2022",
       "--skipLibCheck",
       "--esModuleInterop",
+      "--strict",
     ],
     { cwd: root, stdio: ["ignore", "ignore", "inherit"] },
   );
