@@ -5,6 +5,8 @@
 
 # next.js
 /.next/
+/.next-e2e/
+/.next-*/
 /out/
 next-env.d.ts
 
@@ -62,3 +64,21 @@ yarn-error.log*
 
 # auto-downloaded mediapipe pose model
 /src/lib/biomechanics/mediapipe/runtime/models/
+
+# Local runtime logs
+worker.log
+/playwright-report/
+/test-results/
+
+# Python
+.venv-rtmpose/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+.build/
+ios/AVASprint/Configuration/*.xcconfig
+!ios/AVASprint/Configuration/*.xcconfig.example
+*.xcuserstate
+xcuserdata/

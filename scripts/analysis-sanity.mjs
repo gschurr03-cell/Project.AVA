@@ -66,10 +66,10 @@ try {
   execFileSync(
     "npx",
     // --strict so zod infers required keypoint types (angles module needs it).
-    ["tsc", "src/lib/biomechanics/analysis/index.ts", "--outDir", out, "--module", "commonjs", "--target", "es2022", "--skipLibCheck", "--esModuleInterop", "--strict"],
+    ["tsc", "src/lib/biomechanics/analysis/index.ts", "--outDir", out, "--rootDir", "src/lib", "--module", "commonjs", "--target", "es2022", "--skipLibCheck", "--esModuleInterop", "--strict"],
     { cwd: root, stdio: ["ignore", "ignore", "inherit"] },
   );
-  const { analyzeSprint } = require(path.join(out, "analysis/index.js"));
+  const { analyzeSprint } = require(path.join(out, "biomechanics/analysis/index.js"));
 
   // (1) Synthetic → events, steps, strides, angles, and metrics.
   const r = analyzeSprint(synth());
@@ -82,7 +82,10 @@ try {
     [m.avgStepTimeMs, m.avgStrideTimeMs, m.avgGroundContactMs, m.avgFlightTimeMs, m.stepFrequencyHz, m.strideFrequencyHz].every((v) => typeof v === "number"));
   check(`knee flexion + trunk lean present (peakL=${m.peakLeftKneeFlexionDeg}, peakR=${m.peakRightKneeFlexionDeg}, trunk=${m.avgTrunkLeanDeg})`,
     typeof m.peakLeftKneeFlexionDeg === "number" && typeof m.peakRightKneeFlexionDeg === "number" && typeof m.avgTrunkLeanDeg === "number");
-  check(`stepFrequencyHz consistent with avgStepTimeMs`, Math.abs(m.stepFrequencyHz - 1000 / m.avgStepTimeMs) < 0.01);
+  check(
+    `frequency retains raw analytical precision (timing reporting does not alter Hz)`,
+    Math.abs(m.stepFrequencyHz - 1000 / r.rawMetrics.avgStepTimeMs) < 0.01,
+  );
   check(`result is typed (source, warnings array)`, r.source === "pose_sequence" && Array.isArray(r.warnings));
 
   // includeRawArrays: false → arrays empty, metrics still present.

@@ -27,7 +27,7 @@ export interface VideoRef {
 }
 
 export interface PoseEstimateOptions {
-  /** Override the frame rate used to synthesize timestamps. */
+  /** Target analysis rate. Production callers must use the validated 60 FPS clock. */
   fps?: number;
   /** Cap the number of frames processed (dev/debug). */
   maxFrames?: number;
@@ -62,7 +62,10 @@ export class MockPoseBackend implements PoseBackend {
     const height = video.height ?? DEFAULT_H;
     const frameCount = Math.max(
       1,
-      Math.min(opts.maxFrames ?? Infinity, video.durationS ? Math.round(video.durationS * fps) : DEFAULT_FRAMES),
+      Math.min(
+        opts.maxFrames ?? Infinity,
+        video.durationS ? Math.round(video.durationS * fps) : DEFAULT_FRAMES,
+      ),
     );
 
     // Rough normalized y for each joint on an upright figure.
@@ -80,6 +83,11 @@ export class MockPoseBackend implements PoseBackend {
       right_heel: 0.92,
       left_toe: 0.94,
       right_toe: 0.94,
+      // Upper limbs (Day 54): elbows between shoulder and hip, wrists lower.
+      left_elbow: 0.38,
+      right_elbow: 0.38,
+      left_wrist: 0.48,
+      right_wrist: 0.48,
     };
     const sideDx: Record<JointName, number> = {
       nose: 0,
@@ -95,6 +103,11 @@ export class MockPoseBackend implements PoseBackend {
       right_heel: 0.03,
       left_toe: -0.03,
       right_toe: 0.05,
+      // Upper limbs (Day 54): elbows just wider than shoulders, wrists inboard.
+      left_elbow: -0.08,
+      right_elbow: 0.08,
+      left_wrist: -0.06,
+      right_wrist: 0.06,
     };
 
     const frames = Array.from({ length: frameCount }, (_, index) => {
@@ -103,9 +116,13 @@ export class MockPoseBackend implements PoseBackend {
       const keypoints: Partial<Record<JointName, Keypoint>> = {};
       for (const joint of CANONICAL_JOINTS) {
         // Legs alternate vertically to hint at a stride cadence.
-        const legPhase = joint.includes("knee") || joint.includes("ankle") || joint.includes("heel") || joint.includes("toe")
-          ? 0.01 * Math.sin(2 * Math.PI * t * 2 + (joint.startsWith("left") ? 0 : Math.PI))
-          : 0;
+        const legPhase =
+          joint.includes("knee") ||
+          joint.includes("ankle") ||
+          joint.includes("heel") ||
+          joint.includes("toe")
+            ? 0.01 * Math.sin(2 * Math.PI * t * 2 + (joint.startsWith("left") ? 0 : Math.PI))
+            : 0;
         keypoints[joint] = {
           x: 0.5 + sideDx[joint] + sway,
           y: baseY[joint] + legPhase,

@@ -8,20 +8,48 @@ import { z } from "zod";
  * The callback is a discriminated union on `status`: a `complete` report
  * carries the derived metrics; a `failed` report carries an error message.
  */
-export const analysisMetricsSchema = z.object({
-  topSpeedMps: z.number().nonnegative(),
-  avgStrideLengthM: z.number().nonnegative(),
-  strideFrequencyHz: z.number().nonnegative(),
-  groundContactTimeMs: z.number().nonnegative(),
-  flightTimeMs: z.number().nonnegative(),
-  peakKneeFlexionDeg: z.number(),
-  avgTrunkLeanDeg: z.number(),
+const nullableNonnegative = z.number().nonnegative().nullable();
+const nullableNumber = z.number().nullable();
+
+/** Truthful persistence shape for new fly analyses. Null means not available. */
+export const persistedAnalysisMetricsSchema = z.object({
+  timingPolicyVersion: z.literal("CONSERVATIVE_TIMING_POLICY_V1"),
+  rawTimingMetrics: z.object({
+    groundContactTimeMs: nullableNonnegative,
+    flightTimeMs: nullableNonnegative,
+  }),
+  reportedTimingMetrics: z.object({
+    groundContactTimeMs: nullableNonnegative,
+    flightTimeMs: nullableNonnegative,
+  }),
+  topSpeedMps: nullableNonnegative,
+  avgStrideLengthM: nullableNonnegative,
+  strideFrequencyHz: nullableNonnegative,
+  groundContactTimeMs: nullableNonnegative,
+  flightTimeMs: nullableNonnegative,
+  peakKneeFlexionDeg: nullableNumber,
+  avgTrunkLeanDeg: nullableNumber,
 });
+export type PersistedAnalysisMetrics = z.infer<typeof persistedAnalysisMetricsSchema>;
+
+/** Legacy calculation adapter. Never write its synthetic zero fallbacks to storage. */
+export const analysisMetricsSchema = persistedAnalysisMetricsSchema.transform((metrics) => ({
+  topSpeedMps: metrics.topSpeedMps ?? 0,
+  avgStrideLengthM: metrics.avgStrideLengthM ?? 0,
+  strideFrequencyHz: metrics.strideFrequencyHz ?? 0,
+  groundContactTimeMs: metrics.groundContactTimeMs ?? 0,
+  flightTimeMs: metrics.flightTimeMs ?? 0,
+  peakKneeFlexionDeg: metrics.peakKneeFlexionDeg ?? 0,
+  avgTrunkLeanDeg: metrics.avgTrunkLeanDeg ?? 0,
+}));
 
 export const analysisSuccessSchema = z.object({
   status: z.literal("complete"),
   modelVersion: z.string().min(1),
-  metrics: analysisMetricsSchema,
+  metrics: persistedAnalysisMetricsSchema,
+  provenance: z.unknown().optional(),
+  inputSnapshot: z.unknown().optional(),
+  resultPayload: z.unknown().optional(),
   keypointsPath: z.string().nullable().optional(),
 });
 

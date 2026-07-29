@@ -1,0 +1,11 @@
+AVA_API_BASE_URL = https:/$()/api.example.invalid/api/mobile/v1
+AVA_SUPABASE_URL = https:/$()/production-project.supabase.co
+AVA_SUPABASE_ANON_KEY = INJECT_FROM_CI
+AVA_AUTH_REDIRECT_SCHEME = avasprint
+AVA_ENVIRONMENT = production
+PRODUCT_BUNDLE_IDENTIFIER = com.placeholder.avasprint
+AVA_ANALYTICS_ENVIRONMENT = production
+AVA_NOTIFICATION_ENVIRONMENT = production
+AVA_MAX_UPLOAD_BYTES = 1073741824
+AVA_LOG_LEVEL = error
+

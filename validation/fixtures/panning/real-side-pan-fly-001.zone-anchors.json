@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "ava-zone-anchor-alignment-v1",
+  "fixtureId": "real-side-pan-fly-001",
+  "coordinateSpace": "original_source_frame_pixels",
+  "sourceDimensions": { "width": 1280, "height": 720 },
+  "boundaries": {
+    "start": {
+      "setupFrame": 72,
+      "setupLine": [[847, 524], [943, 503]],
+      "manualVisibleLineAnnotations": [
+        { "frame": 60, "line": [[999, 587], [1105, 563]], "role": "beginning" },
+        { "frame": 66, "line": [[940, 567], [1046, 543]], "role": "early_pan" },
+        { "frame": 72, "line": [[856, 530], [962, 505]], "role": "setup" },
+        { "frame": 78, "line": [[755, 509], [862, 485]], "role": "late_pan" },
+        { "frame": 84, "line": [[657, 496], [763, 471]], "role": "near_crossing" }
+      ]
+    },
+    "finish": {
+      "setupFrame": 170,
+      "setupLine": [[1023, 459], [1105, 496]],
+      "manualVisibleLineAnnotations": [
+        { "frame": 170, "line": [[1020, 457], [1108, 498]], "role": "beginning_setup" },
+        { "frame": 175, "line": [[845, 473], [932, 512]], "role": "early_pan" },
+        { "frame": 180, "line": [[717, 509], [804, 548]], "role": "middle" },
+        { "frame": 185, "line": [[655, 529], [742, 568]], "role": "late_pan" },
+        { "frame": 190, "line": [[643, 539], [730, 577]], "role": "near_crossing" }
+      ]
+    }
+  },
+  "annotationMethod": "Manual review of original-resolution protected frames; points follow the same short painted-line segment selected in the session editor.",
+  "productionInput": false
+}

@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const upload=readFileSync("src/app/athletes/[id]/VideoUpload.tsx","utf8");
+const migration=readFileSync("supabase/migrations/0036_mvp_account_and_upload_foundation.sql","utf8");
+assert.ok(upload.indexOf('.from("sessions").insert')<upload.indexOf('.from("sprint-videos")'));
+assert.match(upload,/MAX_UPLOAD_BYTES/);
+assert.match(upload,/ACCEPTED_VIDEO_EXTENSIONS/);
+assert.match(upload,/disabled=\{uploading\}/);
+assert.match(upload,/status:"uploading"/);
+assert.match(upload,/storage\.from\("sprint-videos"\)\.remove/);
+assert.match(upload,/VIDEO_BIOMECHANICS_CONSENT_VERSION/);
+assert.match(migration,/user_consents[\s\S]*enable row level security/);
+console.log("upload lifecycle sanity: passed");

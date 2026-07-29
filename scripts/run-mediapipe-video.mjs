@@ -1,6 +1,12 @@
 // Real video → PoseSequence runner.
 //
-//   npm run mediapipe:video -- <path/to/video.mp4> [--maxFrames N] [--fps N]
+//   npm run mediapipe:video -- <path/to/video.mp4> [--maxFrames N] [--fps N] [--roi]
+//
+// --roi enables BENCHMARK POSE MODE (Day 72): a two-pass "detection zoom" that
+// crops around the athlete before pose estimation so a small/distant runner (e.g.
+// the far end of a 20 m zone) is tracked from the first frame. Landmarks are mapped
+// back to full-frame coordinates, so it's a detection zoom only — display is
+// unaffected. Slower (two passes); the default full-frame pipeline is unchanged.
 //
 // Runs the real MediaPipe backend (Python runtime) on an actual video via the
 // existing PoseBackend contract, validates the returned PoseSequence, and writes
@@ -30,13 +36,19 @@ const argv = process.argv.slice(2);
 let videoArg;
 let maxFrames;
 let fps;
+let roi = false;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === "--maxFrames") maxFrames = Number(argv[++i]);
   else if (a === "--fps") fps = Number(argv[++i]);
+  else if (a === "--roi" || a === "--benchmark") roi = true;
   else if (!a.startsWith("--") && videoArg === undefined) videoArg = a;
   else fail(`unexpected argument: ${a}`);
 }
+
+// Benchmark pose mode: the Python runner reads MEDIAPIPE_ROI from the environment,
+// and the spawned child inherits this process's env, so setting it here is enough.
+if (roi) process.env.MEDIAPIPE_ROI = "1";
 
 if (!videoArg) {
   fail("no video path provided.\n  usage: npm run mediapipe:video -- <path/to/video.mp4> [--maxFrames N] [--fps N]");

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "ava-mvp-release-checklist-v1",
+  "updatedAt": "2026-07-17",
+  "items": [
+    {"category":"authentication","item":"Email/password lifecycle and recovery","status":"implemented","evidence":"login actions, callback, reset-password route","owner":"engineering","blocker":null,"nextAction":"real email-link device test"},
+    {"category":"security","item":"Cross-user ownership","status":"implemented","evidence":"RLS migrations, auth-ownership sanity, and two-user Playwright denial test","owner":"engineering","blocker":null,"nextAction":"repeat against isolated staging users"},
+    {"category":"upload","item":"Recoverable source upload","status":"partial","evidence":"session-first upload, validation, rollback","owner":"engineering","blocker":"no resumable byte progress","nextAction":"adopt resumable storage upload"},
+    {"category":"worker","item":"Deployable production worker","status":"blocked","evidence":"Dockerfile and local health/queue runtime","owner":"platform","blocker":"hosting and secrets not provisioned","nextAction":"deploy staging worker"},
+    {"category":"analysis","item":"Validated 60 FPS mechanics pipeline","status":"partial","evidence":"analysis FPS and worker sanity suites","owner":"biomechanics","blocker":"golden-video CI coverage","nextAction":"create licensed regression set"},
+    {"category":"timing","item":"Panning automatic timing","status":"blocked","evidence":"real fixture safely withheld","owner":"biomechanics","blocker":"both physical gates not locked near crossings","nextAction":"manual validation and tracker review"},
+    {"category":"privacy","item":"Consent and deletion request","status":"partial","evidence":"migration 0036 and account/privacy routes","owner":"legal","blocker":"legal review and deletion orchestration","nextAction":"approve text and retention policy"},
+    {"category":"mobile","item":"TestFlight delivery target","status":"blocked","evidence":"web-only repository","owner":"product","blocker":"native architecture not selected","nextAction":"choose SwiftUI client or approved wrapper"},
+    {"category":"tests","item":"Golden browser workflow","status":"partial","evidence":"local two-user Playwright suite covers auth, ownership, upload rejection, session/results, Timing Workspace, saved version, reset, sign-out, and mobile smoke","owner":"engineering","blocker":"real upload and worker completion require a licensed browser fixture and staging worker","nextAction":"extend suite against isolated staging infrastructure"},
+    {"category":"deployment","item":"Production environment","status":"blocked","evidence":"central env validation and example","owner":"platform","blocker":"production Supabase, web, worker, monitoring not provisioned","nextAction":"create staging environment"}
+  ]
+}

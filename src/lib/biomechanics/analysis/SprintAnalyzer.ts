@@ -1,4 +1,5 @@
 import type { PoseSequence } from "../pose";
+import { reportMilliseconds } from "../../measurement/timingPolicy";
 import { detectFootContacts } from "../events";
 import { segmentSteps, segmentStrides } from "../strides";
 import { calculateFrameAngles } from "../angles";
@@ -111,13 +112,29 @@ export function analyzeSprint(
     stepCount: steps.length,
     strideCount: strides.length,
   };
+  const rawMetrics: RealSprintMetrics = {
+    analyzedFrames: angles.length,
+    eventCount: events.length,
+    stepCount: steps.length,
+    strideCount: strides.length,
+    ...(avgStepTimeMs != null ? { avgStepTimeMs } : {}),
+    ...(avgStrideTimeMs != null ? { avgStrideTimeMs } : {}),
+    ...(avgGroundContactMs != null ? { avgGroundContactMs } : {}),
+    ...(avgFlightTimeMs != null ? { avgFlightTimeMs } : {}),
+    ...(strideFrequencyHz != null ? { strideFrequencyHz } : {}),
+    ...(stepFrequencyHz != null ? { stepFrequencyHz } : {}),
+    ...(peakLeftKneeFlexionDeg != null ? { peakLeftKneeFlexionDeg } : {}),
+    ...(peakRightKneeFlexionDeg != null ? { peakRightKneeFlexionDeg } : {}),
+    ...(avgTrunkLeanDeg != null ? { avgTrunkLeanDeg } : {}),
+    ...(leftRightStepTimeAsymmetryPct != null ? { leftRightStepTimeAsymmetryPct } : {}),
+  };
   const set = (key: OptionalMetricKey, value: number | undefined, decimals = 1) => {
     if (value != null) metrics[key] = round(value, decimals);
   };
-  set("avgStepTimeMs", avgStepTimeMs);
-  set("avgStrideTimeMs", avgStrideTimeMs);
-  set("avgGroundContactMs", avgGroundContactMs);
-  set("avgFlightTimeMs", avgFlightTimeMs);
+  set("avgStepTimeMs", avgStepTimeMs == null ? undefined : reportMilliseconds(avgStepTimeMs));
+  set("avgStrideTimeMs", avgStrideTimeMs == null ? undefined : reportMilliseconds(avgStrideTimeMs));
+  set("avgGroundContactMs", avgGroundContactMs == null ? undefined : reportMilliseconds(avgGroundContactMs));
+  set("avgFlightTimeMs", avgFlightTimeMs == null ? undefined : reportMilliseconds(avgFlightTimeMs));
   set("strideFrequencyHz", strideFrequencyHz, 2);
   set("stepFrequencyHz", stepFrequencyHz, 2);
   set("peakLeftKneeFlexionDeg", peakLeftKneeFlexionDeg);
@@ -161,6 +178,7 @@ export function analyzeSprint(
 
   return {
     metrics,
+    rawMetrics,
     events: includeRawArrays ? events : [],
     steps: includeRawArrays ? steps : [],
     strides: includeRawArrays ? strides : [],

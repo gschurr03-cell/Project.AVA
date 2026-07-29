@@ -1,0 +1,14 @@
+{
+  "policyVersion": "ava-source-fps-tier-v2",
+  "validatedAnalysisFps": 60,
+  "experimental30AnalysisFps": 30,
+  "minimumExperimental30Fps": 29,
+  "maximumExperimental30Fps": 30.5,
+  "timestampExperimentalMinimumFps": 29,
+  "timestampExperimentalMaximumFps": 31,
+  "minimumNominal60Fps": 59,
+  "maximumNominal60Fps": 60.5,
+  "timestampEvidenceMinimumFps": 59,
+  "timestampEvidenceMaximumFps": 61,
+  "unsupportedMessage": "This recording does not provide enough temporal resolution for trustworthy sprint analysis."
+}

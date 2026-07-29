@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const schema=readFileSync("supabase/migrations/0001_initial_schema.sql","utf8");
+const videos=readFileSync("supabase/migrations/0002_storage_buckets.sql","utf8");
+const pose=readFileSync("supabase/migrations/0005_pose_artifacts_bucket.sql","utf8");
+const middleware=readFileSync("src/lib/supabase/middleware.ts","utf8");
+const callback=readFileSync("src/app/auth/callback/route.ts","utf8");
+assert.match(schema,/coaches manage their athletes[\s\S]*auth\.uid\(\) = coach_id/);
+assert.match(schema,/coaches manage sessions[\s\S]*a\.coach_id = auth\.uid\(\)/);
+assert.match(schema,/coaches read analyses[\s\S]*a\.coach_id = auth\.uid\(\)/);
+assert.match(videos,/foldername\(name\)[\s\S]*a\.coach_id = auth\.uid\(\)/);
+assert.match(pose,/foldername\(name\)[\s\S]*a\.coach_id = auth\.uid\(\)/);
+assert.match(middleware,/url\.searchParams\.set\("next"/);
+assert.match(callback,/safeReturnTo/);
+console.log("auth ownership sanity: passed");

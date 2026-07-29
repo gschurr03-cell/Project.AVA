@@ -1,0 +1,11 @@
+AVA_API_BASE_URL = https:/$()/staging.example.invalid/api/mobile/v1
+AVA_SUPABASE_URL = https:/$()/staging-project.supabase.co
+AVA_SUPABASE_ANON_KEY = INJECT_FROM_CI
+AVA_AUTH_REDIRECT_SCHEME = avasprint-staging
+AVA_ENVIRONMENT = staging
+PRODUCT_BUNDLE_IDENTIFIER = com.placeholder.avasprint.staging
+AVA_ANALYTICS_ENVIRONMENT = staging
+AVA_NOTIFICATION_ENVIRONMENT = sandbox
+AVA_MAX_UPLOAD_BYTES = 1073741824
+AVA_LOG_LEVEL = info
+

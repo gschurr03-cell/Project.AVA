@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Canonical accuracy standard
+
+Read and follow [`docs/accuracy-manifesto.md`](docs/accuracy-manifesto.md) before proposing
+or changing any feature, algorithm, model, metric, database, benchmark, recommendation,
+user interface, or architecture. Work that violates it is not ready to merge or release.
+
 ## What this is
 
 Project AVA is an AI-powered sprint biomechanics web platform. Coaches upload a
@@ -21,10 +27,24 @@ npm run format       # prettier
 
 # Supabase (requires Supabase CLI + Docker)
 supabase start       # boot local Postgres/Auth/Storage stack
-npm run db:reset     # drop + re-apply all migrations in supabase/migrations
+npm run db:reset     # drop + re-apply all migrations, then re-seed (dev:seed)
 npm run db:push      # push migrations to the linked remote project
+npm run dev:seed     # (re)seed the permanent LOCAL dev accounts (idempotent)
 npm run db:types     # regenerate src/lib/supabase/database.types.ts from the live DB
+
+# Benchmark / real-world validation (reporting only — never changes analysis math)
+node scripts/benchmark-breakdown.mjs   # full zone math for the benchmark session
+npm run benchmark:steps                # AVA vs VueMotion per-step diagnostic
+npm run field:validation -- --truth trial.json   # AVA vs timing-gate + tape-grid trial
+npm run field:sanity                   # unit-check the field-validation module
 ```
+
+The canonical permanent LOCAL dev login (Founder / Super Admin) is documented in
+`docs/permanent-dev-login.md`. It is seeded only in local development and is never
+created in staging or production.
+
+For the Tuesday testing-day capture + comparison workflow see
+`docs/field-validation-protocol.md`.
 
 There is no test runner wired up yet. When adding tests, also add the script and
 update this section.

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>$(AVA_AUTH_REDIRECT_SCHEME)</string></array></dict></array>
+<key>NSCameraUsageDescription</key><string>AVA uses the camera to record sprint videos you choose to upload for analysis.</string>
+<key>NSPhotoLibraryUsageDescription</key><string>AVA lets you select an existing sprint video to upload for analysis.</string>
+<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>$(PRODUCT_BUNDLE_IDENTIFIER).refresh</string></array>
+<key>UIBackgroundModes</key><array><string>processing</string></array>
+<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+</dict></plist>
+

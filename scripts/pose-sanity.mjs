@@ -8,6 +8,7 @@
 // that the mock + processVideo orchestration are unaffected.
 
 import { execFileSync } from "node:child_process";
+import assert from "node:assert/strict";
 import { rmSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -44,11 +45,12 @@ try {
     { cwd: root, stdio: ["ignore", "ignore", "inherit"] },
   );
 
-  const { createPoseBackend } = require(path.join(out, "pose-backend.js"));
-  const { poseSequenceSchema, keypointSchema, CANONICAL_JOINTS } = require(path.join(out, "pose.js"));
+  const compiledRoot = path.join(out, "biomechanics");
+  const { createPoseBackend } = require(path.join(compiledRoot, "pose-backend.js"));
+  const { poseSequenceSchema, keypointSchema, CANONICAL_JOINTS } = require(path.join(compiledRoot, "pose.js"));
   const { MediaPipePoseBackend, buildPoseSequence, mapFrameToKeypoints, MEDIAPIPE_LANDMARK_INDEX } =
-    require(path.join(out, "mediapipe/index.js"));
-  const { processVideo } = require(path.join(out, "video/index.js"));
+    require(path.join(compiledRoot, "mediapipe/index.js"));
+  const { processVideo } = require(path.join(compiledRoot, "video/index.js"));
 
   // Build a sample MediaPipe result: 33 landmarks + world landmarks, 2 frames.
   const landmark = (i) => ({ x: 0.5 + i * 0.001, y: 0.4 + i * 0.001, z: 0.01, visibility: 0.9, presence: 0.95 });
@@ -97,6 +99,11 @@ try {
   const viaProcess = await processVideo({ signedUrl: "https://x/v.mp4", width: 1044, height: 596, durationS: 2, fps: 30 }, { backend: injected });
   check(`processVideo(injected mediapipe) → backend=${viaProcess.backend}, ${viaProcess.frames.length} frames, schema valid`,
     viaProcess.backend === "mediapipe" && poseSequenceSchema.safeParse(viaProcess).success);
+  await assert.rejects(
+    () => processVideo({ signedUrl: "https://x/v.mp4", width: 1044, height: 596, durationS: 2, fps: 30 }),
+    /requires an explicit pose backend/,
+  );
+  check("processVideo without an explicit backend fails closed", true);
 
   console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");
 } finally {

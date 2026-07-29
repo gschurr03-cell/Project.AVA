@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "ava-production-surface-policy-v1",
+  "unsafeBooleanFeatures": [
+    "experimental30Fps",
+    "rtmpose",
+    "developerDiagnostics",
+    "interpretationDebugTrace",
+    "experimentalInterpretations",
+    "recommendationDebugTrace",
+    "experimentalRecommendations",
+    "priorityDebugTrace",
+    "reportCompositionTrace",
+    "discoveryDeveloperUi",
+    "researchAdminWorkspace",
+    "automatedClaimExtraction",
+    "internalDiscoveryValidation",
+    "researchDebugTrace",
+    "benchmarkDeveloperUi",
+    "comparisonDeveloperUi",
+    "projectionDeveloperUi",
+    "digitalTwinDashboard",
+    "adaptiveCoachingDashboard",
+    "optimizationDashboard",
+    "rootCauseDashboard",
+    "rootCauseRecommendationDashboardEnabled",
+    "intelligenceOrchestrationDashboard"
+  ],
+  "requiredModes": {
+    "intelligenceOrchestrationRolloutMode": "OFF",
+    "trainingProgramMode": "DISABLED",
+    "trainingLongitudinalMode": "DISABLED"
+  }
+}

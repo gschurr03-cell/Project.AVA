@@ -1,0 +1,499 @@
+[
+  {
+    "sprint_id": "SPRINT-01",
+    "title": "Baseline and Source-of-Truth Decisions",
+    "duration_days": 5,
+    "primary_outcome": "Control the engineering baseline and release truth",
+    "task_ids": [
+      "AVA-0001",
+      "AVA-0030",
+      "AVA-0032",
+      "AVA-0039",
+      "AVA-0040"
+    ],
+    "dependencies": [
+      "AVA-0004"
+    ],
+    "estimated_effort": "M+M+S+S+S",
+    "p0_count": 2,
+    "p1_count": 2,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent 1–4 points",
+    "execution_status": "PARTIAL",
+    "verified_complete_task_ids": [
+      "AVA-0039",
+      "AVA-0040"
+    ],
+    "blocked_task_ids": [
+      "AVA-0001",
+      "AVA-0030",
+      "AVA-0032"
+    ],
+    "completion_percent": 40
+  },
+  {
+    "sprint_id": "SPRINT-02",
+    "title": "Staging and Data Protection",
+    "duration_days": 5,
+    "primary_outcome": "Establish isolated recoverable authorized staging",
+    "task_ids": [
+      "AVA-0002",
+      "AVA-0003",
+      "AVA-0004",
+      "AVA-0005",
+      "AVA-0010",
+      "AVA-0011",
+      "AVA-0013",
+      "AVA-0038"
+    ],
+    "dependencies": [
+      "AVA-0012"
+    ],
+    "estimated_effort": "L+M+M+M+L+M+M+M",
+    "p0_count": 8,
+    "p1_count": 0,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent 1–4 points",
+    "execution_status": "PARTIAL",
+    "verified_complete_task_ids": [],
+    "in_progress_task_ids": [
+      "AVA-0005"
+    ],
+    "blocked_task_ids": [
+      "AVA-0002",
+      "AVA-0003",
+      "AVA-0004",
+      "AVA-0010",
+      "AVA-0011",
+      "AVA-0013",
+      "AVA-0038"
+    ],
+    "completion_percent": 0
+  },
+  {
+    "sprint_id": "SPRINT-03",
+    "title": "Mobile API Foundation",
+    "duration_days": 5,
+    "primary_outcome": "Versioned secure mobile provider and canonical safe result",
+    "task_ids": [
+      "AVA-0006",
+      "AVA-0012",
+      "AVA-0016",
+      "AVA-0017"
+    ],
+    "dependencies": [
+      "AVA-0004",
+      "AVA-0005",
+      "AVA-0015",
+      "AVA-0009"
+    ],
+    "estimated_effort": "L+L+M+L",
+    "p0_count": 4,
+    "p1_count": 0,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent 1–4 points",
+    "execution_status": "PARTIAL",
+    "verified_complete_task_ids": [],
+    "in_progress_task_ids": [
+      "AVA-0006",
+      "AVA-0012",
+      "AVA-0016",
+      "AVA-0017"
+    ],
+    "blocked_dependency_ids": [
+      "AVA-0004",
+      "AVA-0005",
+      "AVA-0015",
+      "AVA-0009"
+    ],
+    "completion_percentage_by_task_count": 0,
+    "execution_evidence": [
+      "docs/engineering-system/sprint-reports/sprint-03-implementation-report.md",
+      "docs/engineering-system/sprint-reports/sprint-03-test-results.md"
+    ]
+  },
+  {
+    "sprint_id": "SPRINT-04",
+    "title": "Native Authentication and Networking",
+    "duration_days": 5,
+    "primary_outcome": "Signed native session, profile and environment flow",
+    "task_ids": [
+      "AVA-0007",
+      "AVA-0008",
+      "AVA-0025",
+      "AVA-0036"
+    ],
+    "dependencies": [
+      "AVA-0006",
+      "AVA-0010"
+    ],
+    "estimated_effort": "L+M+L+M",
+    "p0_count": 2,
+    "p1_count": 2,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent 1–4 points",
+    "execution_status": "PARTIAL",
+    "verified_complete_task_ids": [],
+    "in_progress_task_ids": [
+      "AVA-0007"
+    ],
+    "blocked_task_ids": [
+      "AVA-0008",
+      "AVA-0025",
+      "AVA-0036"
+    ],
+    "blocked_dependency_ids": [
+      "AVA-0006",
+      "AVA-0008",
+      "AVA-0010",
+      "AVA-0007"
+    ],
+    "completion_percentage_by_task_count": 0,
+    "execution_evidence": [
+      "docs/engineering-system/sprint-reports/sprint-04-implementation-report.md",
+      "docs/engineering-system/sprint-reports/sprint-04-test-results.md"
+    ]
+  },
+  {
+    "sprint_id": "SPRINT-05",
+    "title": "Native Upload",
+    "duration_days": 5,
+    "primary_outcome": "Recoverable verified mobile video upload",
+    "task_ids": [
+      "AVA-0026",
+      "AVA-0027"
+    ],
+    "dependencies": [
+      "AVA-0006",
+      "AVA-0012"
+    ],
+    "estimated_effort": "L+M",
+    "p0_count": 0,
+    "p1_count": 2,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent 1–4 points",
+    "execution_status": "PARTIAL",
+    "verified_complete_task_ids": [],
+    "in_progress_task_ids": [
+      "AVA-0026",
+      "AVA-0027"
+    ],
+    "blocked_dependency_ids": [
+      "AVA-0006",
+      "AVA-0012"
+    ],
+    "completion_percentage_by_task_count": 0,
+    "execution_evidence": [
+      "docs/engineering-system/sprint-reports/sprint-05-implementation-report.md",
+      "docs/engineering-system/sprint-reports/sprint-05-test-results.md",
+      "docs/engineering-system/sprint-reports/sprint-05-local-upload-integration.md"
+    ]
+  },
+  {
+    "sprint_id": "SPRINT-06",
+    "title": "Analysis and Canonical Result",
+    "duration_days": 5,
+    "primary_outcome": "Real worker execution and immutable result compatibility",
+    "task_ids": [
+      "AVA-0009",
+      "AVA-0018",
+      "AVA-0019",
+      "AVA-0028",
+      "AVA-0029",
+      "AVA-0034",
+      "AVA-0045",
+      "AVA-0046",
+      "AVA-0047",
+      "AVA-0049"
+    ],
+    "dependencies": [
+      "AVA-0002",
+      "AVA-0004",
+      "AVA-0017",
+      "AVA-0010",
+      "AVA-0014",
+      "AVA-0030"
+    ],
+    "estimated_effort": "L+L+L+L+M+L+S+M+M+L",
+    "p0_count": 1,
+    "p1_count": 8,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent 1–4 points",
+    "execution_status": "PARTIAL",
+    "verified_complete_task_ids": [
+      "AVA-0045"
+    ],
+    "in_progress_task_ids": [
+      "AVA-0018",
+      "AVA-0046",
+      "AVA-0047"
+    ],
+    "blocked_task_ids": [
+      "AVA-0009",
+      "AVA-0019",
+      "AVA-0028",
+      "AVA-0029",
+      "AVA-0034",
+      "AVA-0049"
+    ],
+    "completion_percentage_by_task_count": 10,
+    "execution_evidence": [
+      "docs/engineering-system/sprint-reports/sprint-06-implementation-report.md",
+      "docs/engineering-system/sprint-reports/sprint-06-test-results.md"
+    ]
+  },
+  {
+    "sprint_id": "SPRINT-07",
+    "title": "Scientific and Physical Evidence",
+    "duration_days": 5,
+    "primary_outcome": "Reference cohort, device evidence and claim review",
+    "task_ids": [
+      "AVA-0014",
+      "AVA-0015",
+      "AVA-0024",
+      "AVA-0037"
+    ],
+    "dependencies": [
+      "AVA-0017"
+    ],
+    "estimated_effort": "XL+XL+XL+L",
+    "p0_count": 3,
+    "p1_count": 1,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent 1–4 points"
+  },
+  {
+    "sprint_id": "SPRINT-08",
+    "title": "Training Persistence and Approval",
+    "duration_days": 5,
+    "primary_outcome": "Durable coach-controlled plan lifecycle",
+    "task_ids": [
+      "AVA-0020",
+      "AVA-0021"
+    ],
+    "dependencies": [
+      "AVA-0005"
+    ],
+    "estimated_effort": "XL+L",
+    "p0_count": 0,
+    "p1_count": 2,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent; no automatic credit"
+  },
+  {
+    "sprint_id": "SPRINT-09",
+    "title": "Native Training and Safety Events",
+    "duration_days": 5,
+    "primary_outcome": "Safe offline execution, adherence and notification",
+    "task_ids": [
+      "AVA-0022",
+      "AVA-0023",
+      "AVA-0043"
+    ],
+    "dependencies": [
+      "AVA-0006",
+      "AVA-0020",
+      "AVA-0021",
+      "AVA-0010",
+      "AVA-0007"
+    ],
+    "estimated_effort": "XL+L+L",
+    "p0_count": 0,
+    "p1_count": 2,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent; no automatic credit"
+  },
+  {
+    "sprint_id": "SPRINT-10",
+    "title": "Closed-Beta Operations",
+    "duration_days": 5,
+    "primary_outcome": "Capacity, least-privilege operations and support",
+    "task_ids": [
+      "AVA-0042",
+      "AVA-0044"
+    ],
+    "dependencies": [
+      "AVA-0002",
+      "AVA-0010",
+      "AVA-0005"
+    ],
+    "estimated_effort": "L+L",
+    "p0_count": 0,
+    "p1_count": 0,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent; no automatic credit"
+  },
+  {
+    "sprint_id": "SPRINT-11",
+    "title": "Quality and Security Hardening",
+    "duration_days": 5,
+    "primary_outcome": "Supply chain, tests, CSP and maintainability",
+    "task_ids": [
+      "AVA-0031",
+      "AVA-0033",
+      "AVA-0035",
+      "AVA-0041",
+      "AVA-0051"
+    ],
+    "dependencies": [
+      "AVA-0030",
+      "AVA-0007",
+      "AVA-0017"
+    ],
+    "estimated_effort": "M+M+M+L+S",
+    "p0_count": 0,
+    "p1_count": 4,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent; no automatic credit"
+  },
+  {
+    "sprint_id": "SPRINT-12",
+    "title": "Launch Readiness",
+    "duration_days": 5,
+    "primary_outcome": "Benchmark governance and public-launch program",
+    "task_ids": [
+      "AVA-0048",
+      "AVA-0050"
+    ],
+    "dependencies": [
+      "AVA-0014"
+    ],
+    "estimated_effort": "XL+XL",
+    "p0_count": 0,
+    "p1_count": 0,
+    "entry_criteria": [
+      "All external/hard dependencies available"
+    ],
+    "exit_criteria": [
+      "Every committed task Verified Complete or explicitly replanned"
+    ],
+    "test_plan": [
+      "Run task-required gates and regression suite"
+    ],
+    "documentation_plan": [
+      "Update tracker and sprint implementation report"
+    ],
+    "expected_percentage_impact": "Evidence-dependent; no automatic credit"
+  }
+]

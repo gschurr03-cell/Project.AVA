@@ -29,6 +29,8 @@ export interface RealSprintMetrics {
 
 export interface SprintAnalysisResult {
   metrics: RealSprintMetrics;
+  /** Exact aggregate values before reporting policy or display formatting. */
+  rawMetrics: RealSprintMetrics;
   events: GaitEvent[];
   steps: StepSegment[];
   strides: StrideSegment[];

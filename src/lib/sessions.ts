@@ -1,5 +1,6 @@
 /** Display labels for the `session_status` enum. */
 export const STATUS_LABELS: Record<string, string> = {
+  uploading: "Upload incomplete",
   uploaded: "Uploaded",
   queued: "Queued",
   analyzing: "Analyzing",

@@ -1,0 +1,245 @@
+[
+  {
+    "milestone_id": "M0",
+    "title": "Engineering Baseline Controlled",
+    "purpose": "Tracker, reproducible build and controlled source truth",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0001",
+      "AVA-0030",
+      "AVA-0032",
+      "AVA-0039",
+      "AVA-0040",
+      "AVA-0051"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 33
+  },
+  {
+    "milestone_id": "M1",
+    "title": "Staging Foundation Verified",
+    "purpose": "Isolated environment, authorization, recovery and telemetry",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0002",
+      "AVA-0003",
+      "AVA-0004",
+      "AVA-0005",
+      "AVA-0010",
+      "AVA-0011",
+      "AVA-0013",
+      "AVA-0038"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  },
+  {
+    "milestone_id": "M2",
+    "title": "Native Analysis Vertical Slice",
+    "purpose": "Signed native capture through one canonical result",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0006",
+      "AVA-0007",
+      "AVA-0008",
+      "AVA-0009",
+      "AVA-0012",
+      "AVA-0017",
+      "AVA-0025",
+      "AVA-0026",
+      "AVA-0027",
+      "AVA-0028",
+      "AVA-0029",
+      "AVA-0034",
+      "AVA-0036",
+      "AVA-0045",
+      "AVA-0046",
+      "AVA-0047",
+      "AVA-0049"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  },
+  {
+    "milestone_id": "M3",
+    "title": "Scientific Beta Gate",
+    "purpose": "Eligible reference evidence and enforced metric/claim gates",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0014",
+      "AVA-0015",
+      "AVA-0016",
+      "AVA-0018",
+      "AVA-0019",
+      "AVA-0024",
+      "AVA-0048"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  },
+  {
+    "milestone_id": "M4",
+    "title": "Training Vertical Slice",
+    "purpose": "Persisted coach-approved training lifecycle",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0020",
+      "AVA-0021",
+      "AVA-0022",
+      "AVA-0023"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  },
+  {
+    "milestone_id": "M5",
+    "title": "Coach Operations Ready",
+    "purpose": "Least-privilege operations and notifications",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0043",
+      "AVA-0044"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  },
+  {
+    "milestone_id": "M6",
+    "title": "Closed-Beta Readiness",
+    "purpose": "Security, legal, support, capacity and release controls",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0031",
+      "AVA-0033",
+      "AVA-0035",
+      "AVA-0037",
+      "AVA-0041",
+      "AVA-0042"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  },
+  {
+    "milestone_id": "M7",
+    "title": "Closed Beta Active",
+    "purpose": "Controlled real cohort and weekly monitoring",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  },
+  {
+    "milestone_id": "M8",
+    "title": "TestFlight Candidate",
+    "purpose": "Signing, archive and device stability",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0008",
+      "AVA-0025",
+      "AVA-0036"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  },
+  {
+    "milestone_id": "M9",
+    "title": "Public Launch Candidate",
+    "purpose": "Production scale and public launch gates",
+    "entry_criteria": [
+      "All hard dependencies satisfied"
+    ],
+    "task_ids": [
+      "AVA-0050"
+    ],
+    "exit_criteria": [
+      "All required tasks Verified Complete",
+      "Evidence linked"
+    ],
+    "evidence": [
+      "Tracker task completion evidence"
+    ],
+    "release_decision": "GO only after exit criteria",
+    "current_percentage": 0
+  }
+]

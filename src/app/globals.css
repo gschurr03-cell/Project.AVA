@@ -2,14 +2,153 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * AVA design system — premium sports-performance identity.
+ * Dark, refined, technical. Blue is AVA's signature. Very little glow, no neon,
+ * lots of negative space, thin borders, soft shadows, strong typography.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #0b1416;
+  /* Surfaces */
+  --ava-bg: #081019;
+  --ava-bg-secondary: #101827;
+  --ava-surface: #182233;
+  --ava-surface-hover: #223047;
+  /* Text */
+  --ava-text: #f5f7fb;
+  --ava-text-secondary: #b3bccb;
+  --ava-text-muted: #7e8797;
+  /* Border */
+  --ava-border: rgba(255, 255, 255, 0.08);
+  /* Brand accent (signature blue) */
+  --ava-accent: #2f80ed;
+  --ava-accent-hover: #3b8eff;
+  --ava-accent-pressed: #2469c9;
+  --ava-accent-soft: rgba(47, 128, 237, 0.14);
+  /* Semantic */
+  --ava-success: #89d46a;
+  --ava-warning: #f5c451;
+  --ava-error: #e46464;
+
+  --background: var(--ava-bg);
+  --foreground: var(--ava-text);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--ava-bg);
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Flat, engineered dark — a single deep blue-black, no AI lighting. */
+  background: var(--ava-bg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Headings use the engineered display face. */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: rgba(47, 128, 237, 0.32);
+  color: #ffffff;
+}
+
+/* Subtle technical surface texture (kept extremely faint). */
+.ava-carbon {
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.012) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.012) 25%, transparent 25%);
+  background-size: 22px 22px;
+}
+
+/* Legacy accent-emphasis hook — glow removed for the refined identity. Kept as a
+ * no-op class so existing call sites stay valid; primary buttons read as flat blue. */
+.ava-red-glow {
+  box-shadow: none;
+}
+
+/* Experimental hazard stripes — restrained amber warning, not brassy gold. */
+.ava-caution-tape {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(245, 196, 81, 0.9) 0,
+    rgba(245, 196, 81, 0.9) 12px,
+    #0a121c 12px,
+    #0a121c 24px
+  );
+}
+
+/* Large faint watermark stamped over not-yet-trusted content. */
+.ava-coming-soon {
+  position: relative;
+}
+.ava-coming-soon::after {
+  content: "COMING SOON";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  font-size: clamp(1.6rem, 6vw, 3.2rem);
+  color: rgba(47, 128, 237, 0.14);
+  transform: rotate(-8deg);
+  pointer-events: none;
+  text-transform: uppercase;
+  z-index: 10;
+}
+
+.report-label {
+  color: var(--ava-text-muted);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+@media print {
+  @page { margin: 14mm 13mm 16mm; size: Letter portrait; }
+  html, body { background: #fff !important; color: #111 !important; }
+  .report-no-print { display: none !important; }
+  .analysis-report-shell { max-width: none !important; padding: 0 !important; }
+  .analysis-report-paper {
+    background: #fff !important; color: #111 !important; border: 0 !important;
+    border-radius: 0 !important; box-shadow: none !important;
+  }
+  .analysis-report-paper * {
+    background: transparent !important; color: #171b22 !important;
+    border-color: #d9dde4 !important; box-shadow: none !important;
+  }
+  .report-cover {
+    min-height: 240mm !important; padding: 12mm 8mm !important;
+    break-after: page; page-break-after: always;
+  }
+  .report-cover h1 { color: #111827 !important; }
+  .report-body { padding: 0 !important; }
+  .report-section { break-before: auto; padding: 8mm 0 !important; }
+  .report-section-title { break-after: avoid; page-break-after: avoid; }
+  .report-card, .report-keep-together, .report-metric-row, .report-summary-item {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .report-label { color: #5c6675 !important; }
+  .report-metrics-table { font-size: 9.5pt !important; }
+  .report-metrics-table thead { display: table-header-group; }
+  .report-metrics-table tr { break-inside: avoid; page-break-inside: avoid; }
+  details > * { display: block !important; }
+  .report-footer {
+    padding: 5mm 0 0 !important; border-top: 1px solid #d9dde4 !important;
+  }
+  a { text-decoration: none !important; }
 }

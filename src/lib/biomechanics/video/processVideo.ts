@@ -1,4 +1,3 @@
-import { createPoseBackend } from "../pose-backend";
 import type { PoseBackend, PoseEstimateOptions, VideoRef } from "../pose-backend";
 import type { PoseSequence } from "../pose";
 
@@ -10,13 +9,12 @@ import { DefaultFrameExtractor } from "./FrameExtractor";
 import type { FrameExtractor } from "./FrameExtractor";
 
 /**
- * Ingestion dependencies. Every stage is injectable; each defaults to its
- * lightweight implementation. Swapping in MediaPipe is purely a matter of
- * passing `{ backend: createPoseBackend("mediapipe") }` (and, when ready, real
- * metadata/frame extractors) — `processVideo` itself never changes.
+ * Ingestion dependencies. The pose backend is deliberately required so a
+ * production caller can never receive fabricated metrics through an implicit
+ * mock fallback. Loaders/extractors remain injectable development seams.
  */
 export interface ProcessVideoDeps {
-  backend?: PoseBackend;
+  backend: PoseBackend;
   loader?: VideoLoader;
   metadataExtractor?: MetadataExtractor;
   frameExtractor?: FrameExtractor;
@@ -34,16 +32,18 @@ export interface ProcessVideoOptions {
  *
  *   load video → extract metadata → plan frames → backend.estimate()
  *
- * The pipeline is backend-agnostic: it only ever calls the {@link PoseBackend}
- * contract (`VideoRef` in, `PoseSequence` out). It defaults to the mock backend
- * so the whole flow runs before MediaPipe exists.
+ * The pipeline is backend-agnostic: it only ever calls the explicitly supplied
+ * {@link PoseBackend} contract (`VideoRef` in, `PoseSequence` out).
  */
 export async function processVideo(
   source: VideoSource,
-  deps: ProcessVideoDeps = {},
+  deps: ProcessVideoDeps,
   options: ProcessVideoOptions = {},
 ): Promise<PoseSequence> {
-  const backend = deps.backend ?? createPoseBackend("mock");
+  if (!deps?.backend) {
+    throw new Error("processVideo requires an explicit pose backend");
+  }
+  const backend = deps.backend;
   const loader = deps.loader ?? new DefaultVideoLoader();
   const metadataExtractor = deps.metadataExtractor ?? new DefaultMetadataExtractor();
   const frameExtractor = deps.frameExtractor ?? new DefaultFrameExtractor();

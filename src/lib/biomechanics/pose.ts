@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { rawCameraEvidenceSchema, recordingAssessmentSchema } from "../video/recordingMode";
+import { WORLD_COORDINATE_SCHEMA_VERSION } from "../video/worldProjection";
 
 /**
  * Canonical pose vocabulary for Project AVA.
@@ -27,6 +29,13 @@ export const CANONICAL_JOINTS = [
   "right_heel",
   "left_toe",
   "right_toe",
+  // Upper limbs — added Day 54 for arm/shoulder tracking. MediaPipe already
+  // emits these; they are consumed by the interactive overlay (arm segments and
+  // elbow/shoulder angles). No existing lower-body metric reads them.
+  "left_elbow",
+  "right_elbow",
+  "left_wrist",
+  "right_wrist",
 ] as const;
 
 export const jointNameSchema = z.enum(CANONICAL_JOINTS);
@@ -55,7 +64,14 @@ export const poseFrameSchema = z.object({
   index: z.number().int().nonnegative(),
   /** Frame timestamp in milliseconds from the start of the clip. */
   tMs: z.number().nonnegative(),
+  sourceFrameIndex: z.number().int().nonnegative().optional(),
+  sourceTimestampMs: z.number().nonnegative().optional(),
   keypoints: z.record(jointNameSchema, keypointSchema),
+  /** Person-track confidence supplied by detector-backed pose engines. */
+  trackingConfidence: z.number().min(0).max(1).optional(),
+  /** Optional second-engine pose for visual debugging only; never read by metrics. */
+  comparisonKeypoints: z.record(jointNameSchema, keypointSchema).optional(),
+  comparisonBackend: z.string().optional(),
 });
 /** Partial keypoint map is guaranteed here regardless of Zod's record inference. */
 export type PoseFrame = Omit<z.infer<typeof poseFrameSchema>, "keypoints"> & {
@@ -74,6 +90,27 @@ export const poseSequenceSchema = z.object({
   fps: z.number().positive(),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
+  cameraEvidence: rawCameraEvidenceSchema.optional(),
+  coordinateSchemaVersion: z.literal(WORLD_COORDINATE_SCHEMA_VERSION).optional(),
+  recordingAssessment: recordingAssessmentSchema.optional(),
+  sourceMetadata: z
+    .object({
+      fps: z.number().positive(),
+      averageFps: z.number().positive().nullable().optional(),
+      nominalFps: z.number().positive().nullable().optional(),
+      realFps: z.number().positive().nullable().optional(),
+      timestampFps: z.number().positive().nullable().optional(),
+      variableFrameRate: z.boolean().optional(),
+      fpsClassification: z
+        .enum(["experimental_30_fps_class", "validated_60_fps_class", "high_speed_source_normalized_to_60"])
+        .optional(),
+      fpsTierReason: z.string().optional(),
+      fpsTierPolicyVersion: z.string().optional(),
+      frameCount: z.number().int().nonnegative(),
+      durationSeconds: z.number().nonnegative(),
+      codec: z.string().nullable(),
+    })
+    .optional(),
   frames: z.array(poseFrameSchema),
 });
 export type PoseSequence = Omit<z.infer<typeof poseSequenceSchema>, "frames"> & {
