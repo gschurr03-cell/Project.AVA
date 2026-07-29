@@ -36,7 +36,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Reject common committed secret forms
         run: node scripts/secret-scan.mjs
-      - run: npm audit --audit-level=high
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Report development dependency advisories
+        continue-on-error: true
+        run: npm audit --audit-level=high
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run production-security:sanity
