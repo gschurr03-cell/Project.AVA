@@ -40,7 +40,12 @@ import { detectStepMarks, type StepDistanceScale } from "@/lib/video/steps";
 import { stepFrequencyFromContacts } from "@/lib/video/cadence";
 import type { ManualCalibrationPoints } from "@/lib/calibration";
 import { calibrationGatesSchema, type CalibrationGates } from "@/lib/calibration/gates";
-import { calibrationAuthority, mergeCalibrationAuthority, normalizeCalibrationAuthority } from "@/lib/calibration/authority";
+import {
+  calibrationAuthority,
+  isConfirmedCalibrationComplete,
+  mergeCalibrationAuthority,
+  normalizeCalibrationAuthority,
+} from "@/lib/calibration/authority";
 import { calibrationRevisionOf, classifyResultStatus } from "@/lib/calibration/lifecycle";
 import CalibrationStatusCard, { type CalibrationCardStatus } from "./CalibrationStatusCard";
 import CalibrationAuthorityControls from "./CalibrationAuthorityControls";
@@ -1313,7 +1318,12 @@ export default async function SessionPage({
 
             {/* The four trusted metrics — the single source of truth. */}
             {session.analysis_type === "fly" && measurements && (
-              <PerformanceSummaryCard trusted={trusted} confidence={trustedConfidence} />
+              <PerformanceSummaryCard
+                trusted={calibrationResultStatus === "current" && isConfirmedCalibrationComplete(calibrationGates) ? trusted : null}
+                confidence={calibrationResultStatus === "current" && isConfirmedCalibrationComplete(calibrationGates) ? trustedConfidence : null}
+                calibrationComplete={isConfirmedCalibrationComplete(calibrationGates)}
+                resultStatus={calibrationResultStatus}
+              />
             )}
 
             {/* Recording-quality trust indicator (collapsed). */}

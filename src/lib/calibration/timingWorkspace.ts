@@ -58,6 +58,24 @@ export const timingWorkspaceSchema = z.object({
 });
 export type TimingWorkspaceState = z.infer<typeof timingWorkspaceSchema>;
 
+/**
+ * The one readiness predicate for the user-authored Timing Workspace calibration.
+ * A zone is ready to lock as soon as both complete gate lines and a positive known
+ * distance exist. Gate review flags are presentation state; the authoritative save
+ * stamps both gates confirmed/locked after this predicate passes.
+ */
+export function isTimingWorkspaceCalibrationComplete(
+  state: Pick<TimingWorkspaceState, "gates" | "distanceM">,
+): boolean {
+  return Boolean(
+    state.gates.start &&
+      state.gates.finish &&
+      state.distanceM != null &&
+      Number.isFinite(state.distanceM) &&
+      state.distanceM > 0,
+  );
+}
+
 export const DEFAULT_TIMING_WORKSPACE: TimingWorkspaceState = {
   schemaVersion: TIMING_WORKSPACE_VERSION, zoneType: "timed_zone", goal: "fly", setupMode: "marked_zone",
   distanceM: 30, bodyReference: "torso",

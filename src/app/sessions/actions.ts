@@ -24,7 +24,11 @@ import {
   timingSetupModeSchema,
   timingSetupSchema,
 } from "@/lib/calibration/timingSetup";
-import { timingWorkspaceSchema } from "@/lib/calibration/timingWorkspace";
+import {
+  isTimingWorkspaceCalibrationComplete,
+  timingWorkspaceSchema,
+  type TimingWorkspaceState,
+} from "@/lib/calibration/timingWorkspace";
 import { WORLD_COORDINATE_SCHEMA_VERSION } from "@/lib/video/worldProjection";
 import { ANALYSIS_TYPE_CONFIG, isAnalysisType } from "@/lib/analysisTypes";
 import {
@@ -783,6 +787,28 @@ export async function saveGateCalibration(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!id) redirect("/dashboard");
 
+  let workspace: TimingWorkspaceState | null = null;
+  if (formData.has("workspace")) {
+    let rawWorkspace: unknown;
+    try {
+      rawWorkspace = JSON.parse(String(formData.get("workspace") ?? "{}"));
+    } catch {
+      redirect(`/sessions/${id}/timing?error=${encodeURIComponent("Calibration save failed: workspace data was invalid.")}`);
+    }
+    const parsedWorkspace = timingWorkspaceSchema.safeParse(rawWorkspace);
+    if (!parsedWorkspace.success) {
+      redirect(
+        `/sessions/${id}/timing?error=${encodeURIComponent(`Calibration save failed: ${parsedWorkspace.error.issues[0]?.message ?? "workspace data was invalid."}`)}`,
+      );
+    }
+    if (!isTimingWorkspaceCalibrationComplete(parsedWorkspace.data)) {
+      redirect(
+        `/sessions/${id}/timing?error=${encodeURIComponent("Calibration save failed: place both gates and enter a valid known distance.")}`,
+      );
+    }
+    workspace = parsedWorkspace.data;
+  }
+
   const startFrame = numField(formData, "gate_start_frame");
   const finishFrame = numField(formData, "gate_finish_frame");
   const sourcePoints = [0, 1, 2, 3].map((index) => ({
@@ -910,6 +936,7 @@ export async function saveGateCalibration(formData: FormData) {
   let writeQuery = supabase
     .from("sessions")
     .update({
+      ...(workspace ? { timing_workspace: workspace as unknown as Json } : {}),
       calibration_gates: parsed.data,
       timing_zone_schema_version: GROUND_ANCHOR_SCHEMA_VERSION,
       timing_zone_version: version,

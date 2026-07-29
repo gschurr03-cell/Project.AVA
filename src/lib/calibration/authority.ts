@@ -59,6 +59,17 @@ export function calibrationAuthority(gates: CalibrationGates): CalibrationAuthor
   return { source: "auto", revision, confirmedAt: null, updatedAt };
 }
 
+/** A durable calibration is complete only when valid geometry is manually confirmed. */
+export function isConfirmedCalibrationComplete(gates: CalibrationGates | null | undefined): boolean {
+  if (!gates) return false;
+  const authority = calibrationAuthority(gates);
+  return (
+    authority.source === "manual_confirmed" &&
+    Number.isFinite(gates.distanceM) &&
+    gates.distanceM > 0
+  );
+}
+
 /** The canonical raw geometry to render a manual-confirmed gate from directly. */
 export interface CanonicalGateGeometry {
   c1: { x: number; y: number };

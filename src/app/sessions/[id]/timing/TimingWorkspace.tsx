@@ -5,7 +5,8 @@ import {
   type Dispatch, type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent, type ReactNode,
 } from "react";
-import { saveTimingWorkspace } from "@/app/sessions/actions";
+import { useFormStatus } from "react-dom";
+import { saveGateCalibration } from "@/app/sessions/actions";
 import type { OverlayFrame } from "@/lib/video/overlay";
 import { propagateSourcePoint } from "@/lib/calibration/zoneAnchors";
 import type { RawCameraEvidence } from "@/lib/video/recordingMode";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/calibration/viewportTransform";
 import {
   DEFAULT_TIMING_WORKSPACE,
+  isTimingWorkspaceCalibrationComplete,
   timingWorkspaceSchema,
   type TimingWorkspaceState,
 } from "@/lib/calibration/timingWorkspace";
@@ -84,15 +86,21 @@ function lineStats(line:Line|null){ if(!line)return {length:0,angle:0}; return {
 export default function TimingWorkspace({
   sessionId, videoUrl, frames, initialWorkspace, initialGates, sourceFps, duration,
   cameraFrames, cameraMode, cameraEvidence, sourceWidth, sourceHeight, initialGateAnchorFrames,
+  initialDistanceM, initialRevision,
 }: {
   sessionId:string; videoUrl:string; frames:OverlayFrame[]; initialWorkspace:unknown;
   initialGates:{start:Line|null;finish:Line|null}; sourceFps:number; duration:number;
   cameraFrames:CameraFrame[]; cameraMode:string;
   cameraEvidence?:RawCameraEvidence; sourceWidth?:number|null; sourceHeight?:number|null;
   initialGateAnchorFrames?:{start:number;finish:number};
+  initialDistanceM?:number|null; initialRevision:number;
 }) {
   const parsed=timingWorkspaceSchema.safeParse(initialWorkspace);
-  const seed=parsed.success?parsed.data:{...DEFAULT_TIMING_WORKSPACE,gates:initialGates};
+  const seed=parsed.success?parsed.data:{
+    ...DEFAULT_TIMING_WORKSPACE,
+    distanceM:initialDistanceM ?? DEFAULT_TIMING_WORKSPACE.distanceM,
+    gates:initialGates,
+  };
   const [state,dispatch]=useReducer(reducer,seed);
   const [currentTime,setCurrentTime]=useState(0),[playing,setPlaying]=useState(false),[speed,setSpeed]=useState(1);
   const [loop,setLoop]=useState(false),[drag,setDrag]=useState<{gate:GateName;end:"c1"|"c2"}|null>(null);
@@ -154,10 +162,10 @@ export default function TimingWorkspace({
     if(!canProject)return point;
     return propagateSourcePoint(point,currentSourceFrame,anchorRef.current[name],cameraEvidence!,sourceWidth!,sourceHeight!).point;
   },[canProject,cameraEvidence,sourceWidth,sourceHeight,currentSourceFrame]);
-  const gatesReady=Boolean(state.gates.start&&state.gates.finish&&state.gateReview.start.accepted&&state.gateReview.finish.accepted);
+  const gatesReady=isTimingWorkspaceCalibrationComplete(state);
   const readiness=[
-    ["Start gate locked",Boolean(state.gates.start&&state.gateReview.start.locked)],["Finish gate locked",Boolean(state.gates.finish&&state.gateReview.finish.locked)],
-    ["Distance entered",Boolean(state.distanceM)],["Pose complete",frames.length>0],
+    ["Gate A placed",Boolean(state.gates.start)],["Gate B placed",Boolean(state.gates.finish)],
+    ["Valid distance entered",Boolean(state.distanceM&&state.distanceM>0)],["Pose complete",frames.length>0],
     ["Tracking evidence",Boolean(camera&&camera.confidence>=.45)],
   ] as const;
 
@@ -222,18 +230,73 @@ export default function TimingWorkspace({
   const requiredGates: GateName[] = ["start", "finish"];
   const calibrationStatus = (() => {
     const placed = requiredGates.filter((g) => state.gates[g]).length;
-    const confirmed = requiredGates.every((g) => state.gates[g] && state.gateReview[g].accepted);
-    if (confirmed && state.distanceM) return { label: "Confirmed", tone: "#89d46a" };
+    const locked = requiredGates.every((g) => state.gateReview[g].accepted && state.gateReview[g].locked);
+    if (gatesReady && locked) return { label: "Confirmed & locked", tone: "#89d46a" };
+    if (gatesReady) return { label: "Ready to save", tone: "#89d46a" };
     if (placed === 0) return { label: "Not started", tone: "#7e8797" };
     if (placed < requiredGates.length || !state.distanceM) return { label: "In progress", tone: "#f5c451" };
     return { label: "Needs review", tone: "#f5c451" };
   })();
+  const technicalReady=Boolean(sourceWidth&&sourceHeight&&sourceFps>0);
+  const submissionReady=gatesReady&&technicalReady;
+  const startGate=state.gates.start;
+  const finishGate=state.gates.finish;
+  const compensateToReference=(line:Line,name:GateName):Line=>{
+    if(!canProject)return line;
+    return {
+      c1:propagateSourcePoint(line.c1,anchorRef.current[name],0,cameraEvidence!,sourceWidth!,sourceHeight!).point,
+      c2:propagateSourcePoint(line.c2,anchorRef.current[name],0,cameraEvidence!,sourceWidth!,sourceHeight!).point,
+    };
+  };
+  const compensatedStart=startGate?compensateToReference(startGate,"start"):null;
+  const compensatedFinish=finishGate?compensateToReference(finishGate,"finish"):null;
+  const workspaceForSave:TimingWorkspaceState=gatesReady?{
+    ...state,
+    gateReview:{
+      start:{accepted:true,locked:true},
+      finish:{accepted:true,locked:true},
+    },
+    gateEvidence:{
+      start:{
+        ...state.gateEvidence.start,source:"manual_physical_line",userConfirmed:true,
+        frame:anchorRef.current.start,manualAdjustment:startGate,finalLine:startGate,
+      },
+      finish:{
+        ...state.gateEvidence.finish,source:"manual_physical_line",userConfirmed:true,
+        frame:anchorRef.current.finish,manualAdjustment:finishGate,finalLine:finishGate,
+      },
+    },
+  }:state;
 
   return <div className="flex h-screen min-h-[760px] flex-col overflow-hidden bg-[#081019] text-[#f5f7fb]">
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/[.07] bg-[#081019] px-5">
       <div className="flex items-center gap-3"><a href={`/sessions/${sessionId}`} className="text-[#7e8797] hover:text-white">←</a><div><b className="text-sm">AVA Timing</b><span className="ml-3 text-[10px] uppercase tracking-[.2em] text-[#7e8797]">Calibration Workspace</span></div></div>
       <div className="flex items-center gap-3"><span className="rounded-full bg-[#182233] px-3 py-1 text-[11px] text-[#7e8797]">{cameraMode}</span>
-        <form action={saveTimingWorkspace}><input type="hidden" name="id" value={sessionId}/><input type="hidden" name="workspace" value={JSON.stringify(state)}/><button className="rounded-md bg-[#2f80ed] px-4 py-2 text-xs font-semibold">Save Workspace</button></form>
+        <form action={saveGateCalibration}>
+          <input type="hidden" name="id" value={sessionId}/>
+          <input type="hidden" name="workspace" value={JSON.stringify(workspaceForSave)}/>
+          <input type="hidden" name="expected_revision" value={initialRevision}/>
+          <input type="hidden" name="calibration_known_distance_m" value={state.distanceM??""}/>
+          <input type="hidden" name="gate_start_frame" value={anchorRef.current.start}/>
+          <input type="hidden" name="gate_finish_frame" value={anchorRef.current.finish}/>
+          <input type="hidden" name="gate_start_time_s" value={anchorRef.current.start/sourceFps}/>
+          <input type="hidden" name="gate_finish_time_s" value={anchorRef.current.finish/sourceFps}/>
+          <input type="hidden" name="gate_source_width" value={sourceWidth??""}/>
+          <input type="hidden" name="gate_source_height" value={sourceHeight??""}/>
+          <input type="hidden" name="gate_start_c1x" value={startGate?.c1.x??""}/>
+          <input type="hidden" name="gate_start_c1y" value={startGate?.c1.y??""}/>
+          <input type="hidden" name="gate_start_c2x" value={startGate?.c2.x??""}/>
+          <input type="hidden" name="gate_start_c2y" value={startGate?.c2.y??""}/>
+          <input type="hidden" name="gate_finish_c1x" value={finishGate?.c1.x??""}/>
+          <input type="hidden" name="gate_finish_c1y" value={finishGate?.c1.y??""}/>
+          <input type="hidden" name="gate_finish_c2x" value={finishGate?.c2.x??""}/>
+          <input type="hidden" name="gate_finish_c2y" value={finishGate?.c2.y??""}/>
+          {[compensatedStart?.c1,compensatedStart?.c2,compensatedFinish?.c1,compensatedFinish?.c2].map((point,index)=><span key={index}>
+            <input type="hidden" name={`gate_comp_${index}_x`} value={point?.x??""}/>
+            <input type="hidden" name={`gate_comp_${index}_y`} value={point?.y??""}/>
+          </span>)}
+          <SaveCalibrationButton disabled={!submissionReady}/>
+        </form>
       </div>
     </header>
 
@@ -250,7 +313,9 @@ export default function TimingWorkspace({
         </section>
         <section className="mt-6"><Label>Body reference</Label><div className="mt-2"><button className={chip(true)}>Torso</button></div><p className="mt-1 text-[10px] text-[#7e8797]">Torso is the validated timing-crossing reference.</p></section>
         <section className="mt-6"><Label>Calibration status</Label><div className="mt-2 flex items-center gap-2"><span className="inline-block h-2 w-2 rounded-full" style={{background:calibrationStatus.tone}}/><span className="text-sm font-semibold text-[#f5f7fb]">{calibrationStatus.label}</span></div>
-          <ol className="mt-3 space-y-1 text-[10px] leading-4 text-[#7e8797]"><li>1. Select the zone type</li><li>2. Set the distance</li><li>3. Place the gates</li><li>4. Confirm and save</li></ol>
+          <ol className="mt-3 space-y-1 text-[10px] leading-4 text-[#7e8797]"><li>1. Select the zone type</li><li>2. Set the distance</li><li>3. Place Gate A and Gate B</li><li>4. Save gates and run analysis</li></ol>
+          {!gatesReady&&<p className="mt-2 text-[10px] text-[#f5c451]">{!state.gates.start?"Place Gate A. ":!state.gates.finish?"Place Gate B. ":""}{!state.distanceM?"Enter a valid known distance.":""}</p>}
+          {gatesReady&&!technicalReady&&<p className="mt-2 text-[10px] text-red-300">Source video dimensions are unavailable; calibration cannot be saved safely.</p>}
         </section>
         <section className="mt-6"><Label>Overlay</Label><div className="flex flex-wrap gap-1">{Object.entries(state.overlays).filter(([k])=>k!=="opacity").map(([key,value])=><Toggle key={key} label={key.replace(/([A-Z])/g," $1")} checked={Boolean(value)} onChange={v=>dispatch({type:"overlay",key:key as keyof TimingWorkspaceState["overlays"],value:v})}/>)}</div>
           <label className="mt-3 block text-[10px] text-[#7e8797]">Opacity <input className="mt-1 w-full accent-[#2f80ed]" type="range" min="0" max="1" step=".05" value={state.overlays.opacity} onChange={e=>dispatch({type:"overlay",key:"opacity",value:Number(e.target.value)})}/></label>
@@ -310,7 +375,7 @@ export default function TimingWorkspace({
         <div className="mt-5"><Label>Keyframes</Label>{state.keyframes.filter(k=>k.gate===state.selectedGate).map(k=><div key={k.id} className="mt-2 flex items-center rounded bg-[#182233] px-2 py-2 text-xs"><button onClick={()=>seek(k.frame/sourceFps)} className="flex-1 text-left">Frame {k.frame}</button><button onClick={()=>dispatch({type:"keyframe_delete",id:k.id})} className="text-[#777] hover:text-red-300">×</button></div>)}</div>
         {state.setupMode==="manual_crossing"&&<div className="mt-6"><Label>Crossing review</Label><ManualCrossingEditor state={state} frames={frames.length} dispatch={dispatch}/><div className="mt-2 grid grid-cols-3 gap-1"><button onClick={()=>seek((state.manual.startBefore??0)/sourceFps)} className={chip(false)}>Previous</button><button onClick={()=>seek(((state.manual.startBefore??0)+state.manual.startInterpolation)/sourceFps)} className={chip(true)}>Current</button><button onClick={()=>seek((state.manual.startAfter??state.manual.startBefore??0)/sourceFps)} className={chip(false)}>Next</button></div><InspectorRow label="Body reference" value={state.bodyReference}/><InspectorRow label="Timing plane" value={state.overlays.plane?"Visible":"Hidden"}/></div>}
         <div className="mt-6"><Label>Camera diagnostics</Label><InspectorRow label="Pan" value={`${Math.min(100,Math.abs(camera?.rotationDeg??0)*10+35).toFixed(0)}%`}/><InspectorRow label="Zoom" value={`${(Math.abs(1-(camera?.scale??1))*100).toFixed(1)}%`}/><InspectorRow label="Shake" value={`${Math.min(100,(camera?.residualPx??0)*10).toFixed(0)}%`}/><InspectorRow label="Camera confidence" value={percent(camera?.confidence??0)}/></div>
-        <div className={`mt-6 rounded-xl border p-4 ${gatesReady&&state.distanceM?"border-emerald-400/30 bg-emerald-400/5":"border-amber-400/20 bg-amber-400/5"}`}><p className="text-sm font-semibold">{gatesReady&&state.distanceM?"Estimated ready":"Needs attention"}</p>{readiness.map(([label,ok])=><p key={label} className={`mt-2 text-xs ${ok?"text-emerald-300":"text-[#7e8797]"}`}>{ok?"✓":"○"} {label}</p>)}<InspectorRow label="Distance confidence" value={state.distanceM?"Defined":"Missing"}/><InspectorRow label="Expected uncertainty" value={(camera?.confidence??0)>.75?"Lower":(camera?.confidence??0)>.45?"Elevated":"Unknown"}/><InspectorRow label="Unsupported metrics" value={cameraFrames.length?"See result trust":"Camera-derived"}/><p className="mt-3 text-[10px] text-[#7e8797]">Preview only. No timing calculation is performed here.</p></div>
+        <div className={`mt-6 rounded-xl border p-4 ${gatesReady?"border-emerald-400/30 bg-emerald-400/5":"border-amber-400/20 bg-amber-400/5"}`}><p className="text-sm font-semibold">{gatesReady?"Ready to lock and analyze":"Needs attention"}</p>{readiness.map(([label,ok])=><p key={label} className={`mt-2 text-xs ${ok?"text-emerald-300":"text-[#7e8797]"}`}>{ok?"✓":"○"} {label}</p>)}<InspectorRow label="Distance confidence" value={state.distanceM?"Defined":"Missing"}/><InspectorRow label="Expected uncertainty" value={(camera?.confidence??0)>.75?"Lower":(camera?.confidence??0)>.45?"Elevated":"Unknown"}/><InspectorRow label="Unsupported metrics" value={cameraFrames.length?"See result trust":"Camera-derived"}/><p className="mt-3 text-[10px] text-[#7e8797]">Saving locks this calibration before AVA queues the analysis.</p></div>
       </aside>
     </div>
 
@@ -330,6 +395,10 @@ export default function TimingWorkspace({
 }
 
 function Label({children}:{children:ReactNode}){return <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#7e8797]">{children}</p>;}
+function SaveCalibrationButton({disabled}:{disabled:boolean}){
+  const {pending}=useFormStatus();
+  return <button disabled={disabled||pending} className="rounded-md bg-[#2f80ed] px-4 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40">{pending?"Saving calibration…":"Save Gates & Run Analysis"}</button>;
+}
 function chip(active:boolean){return `rounded px-2.5 py-1.5 text-[11px] font-semibold ${active?"bg-[#2f80ed] text-white":"bg-[#182233] text-[#7e8797] hover:bg-white/10"}`;}
 function InspectorRow({label,value,tone}:{label:string;value:string;tone?:string}){return <div className="mt-3 flex items-center justify-between border-b border-white/[.05] pb-2 text-xs"><span className="text-[#7e8797]">{label}</span><span className={tone==="green"?"text-emerald-300":tone==="red"?"text-red-300":"font-mono text-[#b3bccb]"}>{value}</span></div>;}
 function TimelineTrack({label,children}:{label:string;children:ReactNode}){return <div className="grid h-7 grid-cols-[100px_1fr] items-center"><span className="text-[9px] uppercase tracking-wide text-[#7e8797]">{label}</span><div className="relative h-6 overflow-hidden rounded bg-[#182233]">{children}</div></div>;}

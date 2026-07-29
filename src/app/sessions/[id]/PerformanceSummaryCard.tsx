@@ -47,18 +47,24 @@ function BigStat({
 export default function PerformanceSummaryCard({
   trusted,
   confidence,
+  calibrationComplete,
+  resultStatus,
 }: {
   trusted: TrustedMetrics | null;
   confidence: TrustedMetricConfidence | null;
+  calibrationComplete: boolean;
+  resultStatus: "current" | "superseded" | "pending";
 }) {
   const n = (v: number | null | undefined, d = 2) => (v == null ? "—" : v.toFixed(d));
 
   if (!trusted || !confidence) {
+    const updating = calibrationComplete && resultStatus !== "current";
     return (
-      <AvaPanel eyebrow="Sprint Metrics" title="Awaiting calibration">
+      <AvaPanel eyebrow="Sprint Metrics" title={updating ? "Analysis updating" : "Awaiting calibration"}>
         <p className="text-sm text-[#b3bccb]">
-          Set the two timing gates and a known distance on the overlay below to unlock average step
-          length, peak step length, step frequency, average velocity, and peak velocity for this run.
+          {updating
+            ? "Your confirmed timing gates and known distance are saved. AVA is calculating the five sprint metrics against the latest calibration."
+            : "Set Gate A, Gate B, and a known distance in the Timing Workspace to unlock average step length, peak step length, step frequency, average velocity, and peak velocity for this run."}
         </p>
       </AvaPanel>
     );

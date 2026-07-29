@@ -55,8 +55,12 @@ export default async function TimingWorkspacePage({
   // Rendering reprojects from this frame into the current view so the gate stays
   // painted on the track as the camera pans (identity when no evidence / static camera).
   const initialGateAnchorFrames = {
-    start: parsedGates.success ? parsedGates.data.startBoundary?.setupFrameIndex ?? 0 : 0,
-    finish: parsedGates.success ? parsedGates.data.finishBoundary?.setupFrameIndex ?? 0 : 0,
+    start: parsedGates.success
+      ? parsedGates.data.startGate.setupFrameIndex ?? parsedGates.data.startBoundary?.setupFrameIndex ?? 0
+      : 0,
+    finish: parsedGates.success
+      ? parsedGates.data.finishGate.setupFrameIndex ?? parsedGates.data.finishBoundary?.setupFrameIndex ?? 0
+      : 0,
   };
   const sourceFps = session.fps ?? overlay.meta?.fps ?? 60;
   const duration = session.duration_s
@@ -84,6 +88,8 @@ export default async function TimingWorkspacePage({
       sourceWidth={session.width ?? overlay.meta?.width ?? null}
       sourceHeight={session.height ?? overlay.meta?.height ?? null}
       initialGateAnchorFrames={initialGateAnchorFrames}
+      initialDistanceM={parsedGates.success ? parsedGates.data.distanceM : null}
+      initialRevision={parsedGates.success ? parsedGates.data.revision ?? parsedGates.data.version ?? 0 : 0}
       cameraMode={overlay.meta?.recordingAssessment?.recordingMode ?? "evidence unavailable"}
     />
   );
