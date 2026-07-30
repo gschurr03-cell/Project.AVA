@@ -26,11 +26,28 @@ export interface VideoRef {
   fps?: number;
 }
 
+/** One accepted Phase 2 manual World-Lock Repair, as the worker needs it —
+ *  see `saveWorldLockRepair` (source of truth) and `camera_path.py`
+ *  (`manual_repairs`, consumer). Deliberately minimal: the worker
+ *  RE-DERIVES `targetFrameToGlobalMatrix` from `pointPairs` itself rather
+ *  than trusting any client/DB-cached matrix (Part 11). */
+export interface ManualRepairInput {
+  repairId: string;
+  referenceFrameIndex: number;
+  targetFrameIndex: number;
+  pointPairs: { id: string; referencePoint: { x: number; y: number }; targetPoint: { x: number; y: number } }[];
+  createdAt: string;
+  acceptedBy: string;
+  version: number;
+}
+
 export interface PoseEstimateOptions {
   /** Target analysis rate. Production callers must use the validated 60 FPS clock. */
   fps?: number;
   /** Cap the number of frames processed (dev/debug). */
   maxFrames?: number;
+  /** Accepted Phase 2 repairs to apply on top of the automatic camera path. */
+  manualRepairs?: ManualRepairInput[];
 }
 
 export interface PoseBackend {

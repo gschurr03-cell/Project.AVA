@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { calibrationCameraTypeSchema } from "./gates";
 
 export const TIMING_WORKSPACE_VERSION = "ava-timing-workspace-v1" as const;
 const point = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) });
@@ -6,6 +7,7 @@ const line = z.object({ c1: point, c2: point });
 
 export const timingWorkspaceSchema = z.object({
   schemaVersion: z.literal(TIMING_WORKSPACE_VERSION),
+  cameraType: calibrationCameraTypeSchema.default("stationary"),
   // The MVP calibration concept the coach chooses. Optional so legacy saved workspaces
   // (which only have `goal`) still parse; the UI derives it from `goal` when absent.
   // `goal`/`setupMode` are retained internally for backward compatibility and always
@@ -77,7 +79,8 @@ export function isTimingWorkspaceCalibrationComplete(
 }
 
 export const DEFAULT_TIMING_WORKSPACE: TimingWorkspaceState = {
-  schemaVersion: TIMING_WORKSPACE_VERSION, zoneType: "timed_zone", goal: "fly", setupMode: "marked_zone",
+  schemaVersion: TIMING_WORKSPACE_VERSION, cameraType: "stationary",
+  zoneType: "timed_zone", goal: "fly", setupMode: "marked_zone",
   distanceM: 30, bodyReference: "torso",
   overlays: { pose: true, skeleton: true, gates: true, landmarks: false, confidence: true,
     searchWindow: false, tracking: true, plane: false, opacity: .9 },

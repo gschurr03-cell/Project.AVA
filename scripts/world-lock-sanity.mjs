@@ -85,13 +85,40 @@ try {
   const inverse = world.sourcePointToCanonicalWorld(clicked, 2, pan, 1000, 500);
   assert.deepEqual(world.canonicalWorldToSourceFrame(inverse, 2, pan, 1000, 500).point, clicked);
 
-  const low = evidence([transform(0), transform(1, 0.1, 0, 1, 0.1)]);
-  assert.equal(world.sourcePointToCanonicalWorld({ x: 0.5, y: 0.5 }, 1, low, 1000, 500).projectable, false);
+  const briefLow = evidence([
+    transform(0),
+    ...Array.from({ length: 6 }, (_, index) => transform(index + 1, 0.01, 0, 1, 0.1)),
+  ]);
+  const brieflyDegraded = world.sourcePointToCanonicalWorld({ x: 0.5, y: 0.5 }, 6, briefLow, 1000, 500);
+  assert.equal(brieflyDegraded.projectable, true);
+  assert.ok(brieflyDegraded.warnings.includes("brief_camera_transform_degradation"));
+
+  const lost = evidence([
+    transform(0),
+    ...Array.from({ length: 7 }, (_, index) => transform(index + 1, 0.01, 0, 1, 0.1)),
+  ]);
+  assert.equal(world.sourcePointToCanonicalWorld({ x: 0.5, y: 0.5 }, 7, lost, 1000, 500).projectable, false);
 
   const overlay = readFileSync(path.join(root, "src/components/video/VideoOverlay.tsx"), "utf8");
   assert.doesNotMatch(overlay, /estimateCameraMotion\(frames\)/);
   assert.match(overlay, /sourcePointToCanonicalWorld/);
   assert.match(overlay, /canonicalWorldToSourceFrame/);
+
+  // Pending (in-progress, unconfirmed) gate placement, stationary vs panning:
+  // stationary always renders the raw point; panning must reproject through the
+  // same reliability bar a saved crossing needs and hide (never screen-lock) when
+  // that bar isn't cleared.
+  assert.match(overlay, /if \(!useCameraProjection\) \{ drawCone\(project\(c\), pc\); return; \}/,
+    "stationary pending cones render the raw point directly, with no camera-evidence dependency");
+  assert.match(overlay, /reliablePendingPoint/,
+    "panning pending cones must go through a named reliability check, not a raw/unprojected fallback");
+  assert.match(overlay, /!result\.safe \|\| !result\.allFramesReliable \|\| result\.confidence < MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE/,
+    "the pending-cone reliability check requires allFramesReliable, not confidence alone");
+  assert.match(overlay, /noteTrackingUnavailable/,
+    "an unreliable panning pending cone must surface a non-authoritative status, not a silently misplaced marker");
+  assert.doesNotMatch(overlay, /drawCone\(project\(result\.point\), result\.safe \? pc : "#e46464"\)/,
+    "the old always-draw-something-even-if-unsafe pending cone must be gone");
+
   console.log("world lock sanity: passed");
 } finally {
   rmSync(out, { recursive: true, force: true });

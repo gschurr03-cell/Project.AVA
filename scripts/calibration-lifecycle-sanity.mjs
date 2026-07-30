@@ -66,6 +66,12 @@ try {
   check("21/§10. matching rev-5 result IS current + accepted",
     classifyResultStatus({ hasResult: true, resultCalibrationRevision: 5, currentCalibrationRevision: 5 }) === "current" &&
     acceptResultForCurrentRevision(5, 5) === true);
+  check("camera-type change is revisioned and invalidates the prior mode result",
+    classifyResultStatus({
+      hasResult: true,
+      resultCalibrationRevision: 5,
+      currentCalibrationRevision: 6,
+    }) === "superseded");
   check("§9. no result yet → pending",
     classifyResultStatus({ hasResult: false, resultCalibrationRevision: null, currentCalibrationRevision: 5 }) === "pending");
   check("§10. recompute in flight → pending",

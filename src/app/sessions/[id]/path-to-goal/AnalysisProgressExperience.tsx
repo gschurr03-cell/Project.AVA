@@ -27,10 +27,16 @@ export default function AnalysisProgressExperience({
 }) {
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
-  const [now, setNow] = useState(() => Date.now());
+  // Hydration-safe: seed from the server-provided `startedAtMs` snapshot (identical on
+  // server and client) rather than each side's own `Date.now()`, which differ by
+  // however long hydration took and flip the rendered percent/text between the server
+  // and client's first render. The real clock starts ticking from the effect below,
+  // strictly after mount — a normal post-hydration update, not part of the first paint.
+  const [now, setNow] = useState(() => startedAtMs);
   const startRef = useRef(startedAtMs);
 
   useEffect(() => {
+    setNow(Date.now());
     const tick = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(tick);
   }, []);

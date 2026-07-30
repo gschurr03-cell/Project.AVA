@@ -24,6 +24,7 @@ import { z } from "zod";
 import type { ManualCalibrationPoints } from "./index";
 import { groundBoundarySchema, GROUND_ANCHOR_SCHEMA_VERSION } from "./zoneAnchors";
 import { WORLD_COORDINATE_SCHEMA_VERSION } from "../video/worldProjection";
+import { manualCameraPathRepairSchema } from "../video/cameraPathSchema";
 
 const gatePointSchema = z.object({
   x: z.number().min(0).max(1),
@@ -53,6 +54,21 @@ export const CALIBRATION_AUTHORITY_SCHEMA_VERSION = "ava-calibration-authority-v
  */
 export const calibrationSourceSchema = z.enum(["auto", "manual_draft", "manual_confirmed"]);
 export type CalibrationSource = z.infer<typeof calibrationSourceSchema>;
+export const calibrationCameraTypeSchema = z.enum(["stationary", "panning"]);
+export type CalibrationCameraType = z.infer<typeof calibrationCameraTypeSchema>;
+export const cameraTrackingSummarySchema = z.object({
+  methodVersion: z.string().min(1),
+  transformCount: z.number().int().nonnegative(),
+  reliableTransformCount: z.number().int().nonnegative(),
+  reliabilityRatio: z.number().min(0).max(1),
+  meanFeatureCount: z.number().nonnegative(),
+  meanInlierRatio: z.number().min(0).max(1),
+  p95ReprojectionErrorPx: z.number().nonnegative().nullable(),
+  lastReliableFrame: z.number().int().nonnegative().nullable(),
+  longestLostRunFrames: z.number().int().nonnegative(),
+  reviewed: z.boolean().default(false),
+});
+export type CameraTrackingSummary = z.infer<typeof cameraTrackingSummarySchema>;
 
 export const calibrationGatesSchema = z.object({
   startGate: gateBarSchema,
@@ -79,12 +95,26 @@ export const calibrationGatesSchema = z.object({
   revision: z.number().int().nonnegative().optional(),
   authoritySchemaVersion: z.literal(CALIBRATION_AUTHORITY_SCHEMA_VERSION).optional(),
   coordinateSchemaVersion: z.literal(WORLD_COORDINATE_SCHEMA_VERSION).optional(),
+  cameraType: calibrationCameraTypeSchema.optional(),
+  cameraTrackingSummary: cameraTrackingSummarySchema.optional(),
   referenceFrameIndex: z.number().int().nonnegative().optional(),
   sourceFrameWidth: z.number().int().positive().optional(),
   sourceFrameHeight: z.number().int().positive().optional(),
   /** Provenance: the revision this one superseded (e.g. a Reset-to-Auto over a manual zone). */
   supersededFromRevision: z.number().int().nonnegative().optional(),
   supersededFromSource: calibrationSourceSchema.optional(),
+  /**
+   * Phase 2 (Part 9/10): confirmed manual World-Lock Repairs, carried inside
+   * the SAME `calibration_gates` jsonb column — no new table, no migration.
+   * This is the authoritative SOURCE the worker reads on every rerun to
+   * rebuild the repaired global camera path (Part 11); it is NOT the same
+   * array as `CameraPathArtifact.repairs` (the worker's own record of what
+   * it actually applied, written back into the pose artifact each run).
+   * Optimistic concurrency/ownership/staleness all reuse the existing
+   * `version`/RLS machinery above — a repair bumps `version` exactly like a
+   * gate save does.
+   */
+  worldLockRepairs: z.array(manualCameraPathRepairSchema).optional(),
 });
 export type CalibrationGates = z.infer<typeof calibrationGatesSchema>;
 

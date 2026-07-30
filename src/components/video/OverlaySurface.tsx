@@ -31,7 +31,12 @@ import { useRouter } from "next/navigation";
 import type { CalibrationGates } from "@/lib/calibration/gates";
 import type { SaveGateResult } from "@/app/sessions/actions";
 import type { TrochanterMarker } from "@/lib/video/overlayAlignment";
-import type { RawCameraEvidence } from "@/lib/video/recordingMode";
+import {
+  recordingModeUsesCameraProjection,
+  type RawCameraEvidence,
+  type RecordingMode,
+} from "@/lib/video/recordingMode";
+import type { CameraPathArtifact } from "@/lib/video/cameraPathSchema";
 import {
   MAX_SAFE_ANCHOR_RESIDUAL_PX,
   MIN_SAFE_ANCHOR_FEATURES,
@@ -164,6 +169,9 @@ type Props = {
    *  gates/contacts still render, but no placement controls appear here. */
   allowCalibrationEditing?: boolean;
   cameraEvidence?: RawCameraEvidence;
+  cameraPath?: CameraPathArtifact;
+  recordingMode?: RecordingMode;
+  calibrationCameraType?: "stationary" | "panning";
   sourceWidth?: number | null;
   sourceHeight?: number | null;
 };
@@ -191,6 +199,9 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     calibration,
     allowCalibrationEditing = false,
     cameraEvidence,
+    cameraPath,
+    recordingMode,
+    calibrationCameraType,
     sourceWidth,
     sourceHeight,
   },
@@ -372,7 +383,11 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
   const currentFrame = frames[currentIndex];
   const currentSourceFrame = currentFrame?.sourceFrameIndex ?? currentFrame?.frame ?? currentIndex;
   const currentCameraTransform = cameraEvidence?.transforms.find((item) => item.frame === currentSourceFrame);
-  const currentAnchorUnsafe = !!cameraEvidence && !!currentCameraTransform && (
+  const useCalibrationCameraProjection = calibrationCameraType
+    ? calibrationCameraType === "panning"
+    : recordingModeUsesCameraProjection(recordingMode);
+  const currentAnchorUnsafe = useCalibrationCameraProjection
+    && !!cameraEvidence && !!currentCameraTransform && (
     currentCameraTransform.confidence < MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE
     || currentCameraTransform.supportingFeatureCount < MIN_SAFE_ANCHOR_FEATURES
     || currentCameraTransform.residualPx == null
@@ -464,7 +479,7 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
     calibration?.savedGates?.distanceM ?? calibration?.saved?.distanceM ?? null;
   const hasCalibration = !!(calibration?.savedGates || calibration?.saved);
   const compensatedPending = pendingCones.map((cone) =>
-    cameraEvidence && sourceWidth && sourceHeight
+    useCalibrationCameraProjection && cameraEvidence && sourceWidth && sourceHeight
       ? sourcePointToCompensated(cone, cone.sourceFrameIndex, cameraEvidence, sourceWidth, sourceHeight)
       : null,
   );
@@ -512,8 +527,12 @@ const OverlaySurface = forwardRef<OverlaySurfaceHandle, Props>(function OverlayS
             autoFollow={autoFollow}
             followStateRef={followStateRef}
             cameraEvidence={cameraEvidence}
+            recordingMode={recordingMode}
+            calibrationCameraType={calibrationCameraType}
             sourceWidth={sourceWidth}
             sourceHeight={sourceHeight}
+            sessionId={calibration?.sessionId}
+            cameraPath={cameraPath}
           />
           {overlaySlot}
         </div>

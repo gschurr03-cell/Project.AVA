@@ -1,5 +1,4 @@
 import { AvaPanel } from "@/components/ava/AvaPanel";
-import { ConfidenceBadge, ConfidenceDetails } from "@/components/confidence/MetricConfidence";
 import type { TrustedMetricConfidence } from "@/lib/confidence";
 import type { TrustedMetrics } from "@/lib/intelligence/trustedMetrics";
 
@@ -22,13 +21,11 @@ function BigStat({
   value,
   unit,
   sub,
-  confidence,
 }: {
   label: string;
   value: string;
   unit: string;
   sub?: string;
-  confidence: TrustedMetricConfidence[keyof TrustedMetricConfidence];
 }) {
   return (
     <div className="rounded-xl border border-white/[0.06] bg-[#182233] p-4">
@@ -38,8 +35,6 @@ function BigStat({
         <span className="ml-1 text-base font-medium text-[#b3bccb]">{unit}</span>
       </p>
       {sub && <p className="mt-0.5 text-xs text-[#7e8797]">{sub}</p>}
-      <div className="mt-2"><ConfidenceBadge confidence={confidence} /></div>
-      <ConfidenceDetails confidence={confidence} />
     </div>
   );
 }
@@ -87,11 +82,11 @@ export default function PerformanceSummaryCard({
       {/* MVP locked scope: exactly these five metrics, each independent. Peak Step Length
           and Peak Velocity are rolling four-consecutive-step aggregates (not single steps). */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <BigStat label="Average step length" value={n(trusted.avgStrideLengthM)} unit="m" sub="Average opposite-foot (L↔R)" confidence={confidence.avgStrideLengthM} />
-        <BigStat label="Peak step length" value={n(trusted.peakStrideLengthM)} unit="m" sub="Best rolling 4-step average" confidence={confidence.peakStrideLengthM} />
-        <BigStat label="Step frequency" value={n(trusted.frequencyHz)} unit="Hz" sub="Across calibrated zone" confidence={confidence.frequencyHz} />
-        <BigStat label="Average velocity" value={n(trusted.avgVelocityMps)} unit="m/s" sub={`${trusted.zoneDistanceM != null ? Math.round(trusted.zoneDistanceM) : 30} m average`} confidence={confidence.avgVelocityMps} />
-        <BigStat label="Peak velocity" value={n(trusted.topSpeedMps)} unit="m/s" sub="Peak single-stride" confidence={confidence.topSpeedMps} />
+        <BigStat label="Average step length" value={n(trusted.avgStrideLengthM)} unit="m" sub="Average opposite-foot (L↔R)" />
+        <BigStat label="Peak step length" value={n(trusted.peakStrideLengthM)} unit="m" sub="Best rolling 4-step average" />
+        <BigStat label="Step frequency" value={n(trusted.frequencyHz)} unit="Hz" sub="Across calibrated zone" />
+        <BigStat label="Average velocity" value={n(trusted.avgVelocityMps)} unit="m/s" sub={`${trusted.zoneDistanceM != null ? Math.round(trusted.zoneDistanceM) : 30} m average`} />
+        <BigStat label="Peak velocity" value={n(trusted.topSpeedMps)} unit="m/s" sub="Peak single-stride" />
       </div>
     </AvaPanel>
   );

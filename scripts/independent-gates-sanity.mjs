@@ -13,10 +13,15 @@ assert.doesNotMatch(overlay, /zoneShade|9\s*\/\s*savedGates\.distanceM/,
   "consumer overlay creates no connected zone surface");
 assert.doesNotMatch(overlay, /lineTo\(finishG\.mid|lineTo\(startG\.mid/,
   "start and finish geometry is never joined");
-assert.match(overlay, /if \(startG\) strokeBar\(startG/);
-assert.match(overlay, /if \(finishG\) strokeBar\(finishG/);
 assert.match(overlay, /sourceLineIntersectsViewport/,
   "each gate is independently hidden when its rigid segment is offscreen");
+// A gate whose camera-transform chain is unsafe must never be drawn at all (not even
+// in a "warning" color) — only a non-positional status note. strokeBar is called only
+// on the safe branch; the unsafe branch shows a distinct message instead.
+assert.match(overlay, /if \(startG\.safe === false\) drawLabel\(ctx, "Start gate: tracking unavailable"/);
+assert.match(overlay, /else strokeBar\(startG, COLORS\.calibration, "Start"\)/);
+assert.match(overlay, /if \(finishG\.safe === false\) drawLabel\(ctx, "Finish gate: tracking unavailable"/);
+assert.match(overlay, /else strokeBar\(finishG, COLORS\.calibration, "Finish"\)/);
 assert.match(anchors, /sourceLineIntersectsViewport/);
 assert.match(anchors, /gateId/);
 assert.match(anchors, /physicalLineOrientationDeg/);

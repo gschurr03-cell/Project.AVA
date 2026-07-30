@@ -21,10 +21,137 @@ export interface DisplayRect {
   height: number;
 }
 
+/** A crop in original source-video pixels. Omit it to project the full frame. */
+export interface SourceCropRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type VideoFitMode = "contain" | "cover" | "fill";
+
 /** A minimal 2-D point; landmarks may also carry visibility, ignored here. */
 export interface Point2D {
   x: number;
   y: number;
+}
+
+export interface SourceToDisplayInput {
+  /** Immutable point normalized over the ORIGINAL source frame. */
+  point: Point2D;
+  sourceWidth: number;
+  sourceHeight: number;
+  /** Current visible crop in original source pixels; defaults to the full frame. */
+  sourceCrop?: SourceCropRect | null;
+  /** Video element/content rectangle in CSS pixels. */
+  displayRect: DisplayRect;
+  fitMode: VideoFitMode;
+}
+
+export interface SourceToDisplayProjection {
+  point: Point2D;
+  crop: SourceCropRect;
+  pictureRect: DisplayRect;
+  scaleX: number;
+  scaleY: number;
+  letterboxOffsetX: number;
+  letterboxOffsetY: number;
+}
+
+/**
+ * The one source-video → display projection used by calibration overlays.
+ *
+ * The input point is always immutable original-source geometry. A caller may
+ * supply the crop currently shown by the video, but athlete position and any
+ * previous rendered point are deliberately absent from this API.
+ */
+export function sourceToDisplayProjection(input: SourceToDisplayInput): SourceToDisplayProjection {
+  const sourceWidth = input.sourceWidth > 0 ? input.sourceWidth : 1;
+  const sourceHeight = input.sourceHeight > 0 ? input.sourceHeight : 1;
+  const crop = input.sourceCrop ?? { x: 0, y: 0, width: sourceWidth, height: sourceHeight };
+  const cropWidth = crop.width > 0 ? crop.width : sourceWidth;
+  const cropHeight = crop.height > 0 ? crop.height : sourceHeight;
+  const pointPx = {
+    x: input.point.x > 1 ? input.point.x : input.point.x * sourceWidth,
+    y: input.point.y > 1 ? input.point.y : input.point.y * sourceHeight,
+  };
+
+  let scaleX = input.displayRect.width / cropWidth;
+  let scaleY = input.displayRect.height / cropHeight;
+  if (input.fitMode !== "fill") {
+    const scale = input.fitMode === "cover"
+      ? Math.max(scaleX, scaleY)
+      : Math.min(scaleX, scaleY);
+    scaleX = scale;
+    scaleY = scale;
+  }
+
+  const pictureWidth = cropWidth * scaleX;
+  const pictureHeight = cropHeight * scaleY;
+  const letterboxOffsetX = (input.displayRect.width - pictureWidth) / 2;
+  const letterboxOffsetY = (input.displayRect.height - pictureHeight) / 2;
+  const pictureRect = {
+    x: input.displayRect.x + letterboxOffsetX,
+    y: input.displayRect.y + letterboxOffsetY,
+    width: pictureWidth,
+    height: pictureHeight,
+  };
+  return {
+    point: {
+      x: pictureRect.x + (pointPx.x - crop.x) * scaleX,
+      y: pictureRect.y + (pointPx.y - crop.y) * scaleY,
+    },
+    crop: { ...crop, width: cropWidth, height: cropHeight },
+    pictureRect,
+    scaleX,
+    scaleY,
+    letterboxOffsetX,
+    letterboxOffsetY,
+  };
+}
+
+export function projectSourcePointToDisplay(input: SourceToDisplayInput): Point2D {
+  return sourceToDisplayProjection(input).point;
+}
+
+/**
+ * Mirrors the worker's crop→full-frame remap exactly (`landmark_dict` in
+ * `mediapipe_pose_runner.py`: `full = (crop.origin + n * crop.size) / sourceSize`).
+ * A landmark detected inside a pose-detection ROI/crop is normalized to that
+ * crop, not to the full source frame — this undoes the crop offset and scale
+ * BEFORE the point is treated as a full-source-frame coordinate.
+ *
+ * `crop` is in original source-video PIXELS (matching {@link SourceCropRect}).
+ * With no crop (full-frame detection, the normal case once the worker has
+ * already remapped its own output) this is the identity function.
+ */
+export function poseOrCropPointToFullSourcePoint(
+  point: Point2D,
+  crop: SourceCropRect | null | undefined,
+  sourceWidth: number,
+  sourceHeight: number,
+): Point2D {
+  if (!crop || sourceWidth <= 0 || sourceHeight <= 0) return point;
+  const scaleX = crop.width / sourceWidth;
+  const scaleY = crop.height / sourceHeight;
+  const offsetX = crop.x / sourceWidth;
+  const offsetY = crop.y / sourceHeight;
+  return { x: offsetX + point.x * scaleX, y: offsetY + point.y * scaleY };
+}
+
+/** Exact inverse used by calibration pointer editing. */
+export function unprojectDisplayPointToSource(
+  point: Point2D,
+  input: Omit<SourceToDisplayInput, "point">,
+): Point2D {
+  const projection = sourceToDisplayProjection({ ...input, point: { x: 0, y: 0 } });
+  return {
+    x: (projection.crop.x + (point.x - projection.pictureRect.x) / projection.scaleX)
+      / (input.sourceWidth || 1),
+    y: (projection.crop.y + (point.y - projection.pictureRect.y) / projection.scaleY)
+      / (input.sourceHeight || 1),
+  };
 }
 
 /**
@@ -102,9 +229,11 @@ export function projectLandmark(
   sourceWidth?: number,
   sourceHeight?: number,
 ): Point2D {
-  const n = normalizeLandmark(point, sourceWidth, sourceHeight);
-  return {
-    x: rect.x + n.x * rect.width,
-    y: rect.y + n.y * rect.height,
-  };
+  return projectSourcePointToDisplay({
+    point: normalizeLandmark(point, sourceWidth, sourceHeight),
+    sourceWidth: sourceWidth || 1,
+    sourceHeight: sourceHeight || 1,
+    displayRect: rect,
+    fitMode: "fill",
+  });
 }

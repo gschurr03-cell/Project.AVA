@@ -55,7 +55,14 @@ try {
   const bar = (x, t) => ({ c1: { x, y: 0.4111111111 }, c2: { x: x + 0.02, y: 0.6222222222 }, timeS: t });
   const base = () => ({ startGate: bar(0.201234567890123, 1.5), finishGate: bar(0.701234567890123, 3.25), distanceM: 20 });
   const manualFields = authMod.manualConfirmedAuthorityFields(5, new Date("2026-07-21T00:00:00.000Z"));
-  const manual = { ...base(), ...manualFields, revision: 5 };
+  const trackingSummary = {
+    methodVersion: "ava-background-world-lock-v1", transformCount: 100,
+    reliableTransformCount: 95, reliabilityRatio: .95, meanFeatureCount: 240,
+    meanInlierRatio: .9, p95ReprojectionErrorPx: .8, lastReliableFrame: 100,
+    longestLostRunFrames: 2, reviewed: false,
+  };
+  const manual = { ...base(), ...manualFields, revision: 5, cameraType: "panning",
+    referenceFrameIndex: 12, cameraTrackingSummary: trackingSummary };
   const auto = { ...base(), calibrationSource: "auto", revision: 2 };
   const legacy = base(); // no authority fields
 
@@ -81,7 +88,9 @@ try {
   const prov = workerResultProvenance(cm);
   check("5. result provenance records revision 5 + manual_confirmed + schema",
     prov.calibrationRevision === 5 && prov.calibrationSource === "manual_confirmed" &&
-    prov.authoritySchemaVersion === "ava-calibration-authority-v1");
+    prov.authoritySchemaVersion === "ava-calibration-authority-v1" &&
+    prov.cameraType === "panning" && prov.referenceFrameIndex === 12 &&
+    prov.cameraTrackingSummary?.methodVersion === "ava-background-world-lock-v1");
 
   // 6. Manual-confirmed is authoritative over auto detection.
   check("6. manual-confirmed flagged authoritative (auto cannot replace it)", cm.manualAuthoritative === true);
@@ -90,7 +99,7 @@ try {
   // 7. Legacy input without revision remains backward compatible.
   const cl = parseWorkerCalibration(legacy);
   check("7. legacy (no authority fields) parses; revision defaults to 0, source auto",
-    cl !== null && cl.revision === 0 && cl.source === "auto");
+    cl !== null && cl.revision === 0 && cl.source === "auto" && cl.cameraType === "stationary");
 
   // 8. A result generated from revision N is classified against revision N correctly.
   check("8. result@rev5 vs current rev5 → current; vs rev6 → superseded",

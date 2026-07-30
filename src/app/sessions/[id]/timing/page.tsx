@@ -85,6 +85,7 @@ export default async function TimingWorkspacePage({
       duration={duration}
       cameraFrames={cameraFrames}
       cameraEvidence={overlay.meta?.cameraEvidence}
+      cameraPath={overlay.meta?.cameraPath}
       sourceWidth={session.width ?? overlay.meta?.width ?? null}
       sourceHeight={session.height ?? overlay.meta?.height ?? null}
       initialGateAnchorFrames={initialGateAnchorFrames}

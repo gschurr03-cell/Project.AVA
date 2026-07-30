@@ -18,6 +18,11 @@ export const recordingModeSchema = z.enum([
 ]);
 export type RecordingMode = z.infer<typeof recordingModeSchema>;
 
+/** Static recordings render fixed source anchors without accumulating estimator noise. */
+export function recordingModeUsesCameraProjection(mode: RecordingMode | null | undefined): boolean {
+  return mode !== "static_precision" && mode !== "static_usable";
+}
+
 export const zoomClassificationSchema = z.enum([
   "no_meaningful_zoom",
   "stable_gradual_zoom",

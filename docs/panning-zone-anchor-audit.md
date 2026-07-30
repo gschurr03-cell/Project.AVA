@@ -231,3 +231,115 @@ camera confidence `0.988414818506334`, athlete tracking confidence
 `0.802061411268521`, `no_meaningful_zoom`, `eligible` spatial status, source FPS
 `59.15864276221215`, and the 60 FPS analysis clock. It completed with a new immutable
 artifact. No timing calculation or FPS/trust policy changed.
+
+## Confidence-threshold/grace-period conflict resolved; affine-only decision documented
+
+A later change lowered `MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE` from `0.45` to `0.2` and
+added a bounded "brief degradation" tolerance (`MAX_SAFE_ANCHOR_DEGRADED_FRAMES`) to
+`propagateSourcePoint`, without measured evidence for the lower value. The pre-existing,
+untouched `scripts/zone-anchor-sanity.mjs` regression — which asserts confidence `0.2`
+must withhold a crossing — started failing.
+
+Root cause was not only the constant. The new tolerance branch left `confidence`
+at its initial value (`1`) whenever a degraded transform fell within the tolerance
+window, so a single low-confidence frame silently reported back as full confidence
+and `safe: true` to every downstream consumer, regardless of what
+`MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE` was set to. Restoring `0.45` alone did not
+fix the failing test; it was verified experimentally (a standalone probe against a
+copy of the pre-fix function) that the crossing still succeeded with the threshold
+restored, because the tolerance branch never actually consulted the threshold at all
+during a brief hold.
+
+Fix, in `src/lib/calibration/zoneAnchors.ts`:
+
+- `MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE` restored to `0.45`, its long-standing,
+  independently-tested value. No evidence in this repository supports `0.2`; per the
+  accuracy manifesto's conservative-uncertainty principle, the safer existing value
+  applies.
+- `propagateSourcePoint` now updates `confidence` unconditionally on every inspected
+  transform (never masked during a tolerated hold), and a degraded-but-brief frame
+  contributes **zero motion** — position freezes exactly where the last reliable
+  frame left it, rather than either (a) composing with the current untrusted
+  transform, as before this pass, or (b) an earlier draft of this fix that
+  re-applied the last reliable transform's own delta on every subsequent degraded
+  frame, which was caught by a new regression test in this pass
+  (`scripts/zone-anchor-sanity.mjs`, "a tolerated hold freezes...") and would have
+  re-accumulated real movement once per held frame. This makes "brief degradation
+  may use a strictly bounded last-reliable transform" literal — a blip can now
+  never inject any guessed movement, verified or not.
+- A new `allFramesReliable` field on `propagateSourcePoint`'s return closes a
+  second gap the same new boundary tests found: a held/degraded transform can
+  report high raw `confidence` while still failing on feature count, inlier
+  ratio, or residual, and the old `confidence >= MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE`
+  check alone did not catch that. `propagateAnchorFromSetupToFrame` and
+  `reprojectSourceLineToFrame` now additionally require `allFramesReliable` on
+  both endpoints before a crossing-relevant line is considered safe. The
+  lower-level "not yet fatal" grace window (governed by
+  `MAX_SAFE_ANCHOR_DEGRADED_FRAMES`) is unchanged and still exists specifically to
+  avoid treating a single motion-blur frame as total tracking loss; it now simply
+  freezes position during that window instead of extrapolating through it.
+- All five world-anchor thresholds now carry an inline comment stating what they
+  control, why the value is conservative, and whether it is backed by a real fixture,
+  a synthetic test, a frame-rate derivation, prior historical behavior, or is a
+  temporary MVP default — per the manifesto's "permit no hidden assumptions" rule.
+
+Separately, the worker's camera model was changed from homography-with-affine-fallback
+to affine-only (`estimate_background_transform` in `mediapipe_pose_runner.py`). This is
+not an unexamined simplification: `docs/local-physical-gate-lock.md`'s "Model
+comparison" table already measured this on the one real panning fixture in the repo
+(`real-side-pan-fly-001`, 10 independent annotations) and found full homography *less*
+accurate than partial affine (8.36px vs 7.40px mean midpoint error, 9.59px vs 9.10px
+mean endpoint error, 1.36° vs 1.22° max angle) — composing a projective fit amplified
+perspective-coefficient noise into more drift, not less. Homography was explicitly not
+adopted there either. Affine-only is therefore consistent with the strongest existing
+real-world evidence, not merely a convenient default.
+
+MVP limitation, stated explicitly per the manifesto's "permit no hidden assumptions"
+rule: affine (translation + rotation + uniform scale) is validated for horizontal
+sideline pans with modest scale/rotation change. It is **not** validated for strong
+forward/back (dolly) motion, large true perspective shifts, curved/arcing camera
+movement, or large optical zoom changes — those would need either a re-run of the same
+measured comparison against footage of that type, or the repo's own hybrid global/local
+gate-lock model (measured 2.41px mean midpoint error on the same fixture, the best of
+the four models compared, but a materially larger per-gate subsystem out of scope for
+this pass) before being reconsidered. Worker and browser are consistent going forward:
+the worker only ever emits `transformType: "partial_affine"` now; the browser's
+`zoneAnchors.ts` still contains a `transformType === "homography"` branch purely for
+backward compatibility with any historical artifact, and falls through to the same
+affine math for everything the worker currently produces — this is dead-for-new-data
+compatibility code, not a live second model.
+
+Also fixed: `VideoOverlay.tsx`'s in-progress (pending, unconfirmed) gate-placement cones
+previously fell back to drawing at their raw, unprojected click coordinate whenever
+panning camera evidence was absent. In panning mode that coordinate is only valid on the
+frame it was clicked on — once the camera has panned, drawing it elsewhere silently
+implies a stale/false location, which is exactly the screen-locked-fallback failure mode
+this audit's coordinate-space contract prohibits. Pending cones are now reprojected
+through the same reliability bar (`MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE` plus the
+feature/inlier/residual checks) a saved gate's crossing would need; when that bar isn't
+cleared the cone is hidden and a non-positional "Camera tracking unavailable" notice is
+drawn instead of any specific screen coordinate. Stationary mode is unaffected (the raw
+point is always valid there). The underlying click state (`pendingRef.current`) is never
+touched by this — only what gets drawn changes, so in-progress placement survives a
+temporary tracking gap.
+
+Also fixed: a missing/invalid intrinsic source-video width or height previously
+collapsed into the generic `"Invalid calibration gates"` schema-validation message in
+`saveGateCalibration` (`src/app/sessions/actions.ts`). It is now checked explicitly,
+before the general `calibrationGatesSchema` parse, and redirects with the distinct
+message `"Source video dimensions are unavailable. Wait for the video to finish loading
+and try again."` The schema's own `sourceFrameWidth`/`sourceFrameHeight` positivity
+requirement is unchanged — this is an earlier, friendlier check in front of it, not a
+replacement for it.
+
+Known, deliberately out-of-scope observation from this pass: the manual-confirmed
+`canonical_raw` render path (`canonicalGeom` in `VideoOverlay.tsx`, via
+`sourceLineToCanonicalWorld`/`projectCanonicalWorldLine` in `worldProjection.ts`) marks
+a gate `safe` based only on `propagateSourcePoint`'s raw "not yet fatally lost" flag, not
+on `confidence >= MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE` the way
+`propagateAnchorFromSetupToFrame`/`reprojectSourceLineToFrame` do. This does not affect
+timing safety — `detectWorldBoundaryCrossing` goes through the stricter
+`propagateAnchorFromSetupToFrame` path regardless of what the confirmed-gate overlay
+renders — but it means a confirmed gate's on-screen red/dashed "degraded" styling may
+under-report during a brief, tolerated hold. Left unchanged pending a deliberate decision
+on whether visual styling should adopt the stricter bar too.

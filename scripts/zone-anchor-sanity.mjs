@@ -63,6 +63,67 @@ try {
   assert.equal(anchors.detectWorldBoundaryCrossing(samples, crossingBoundary, evidence(0, .2), 1280, 720, "left_to_right"), null,
     "unsafe propagation withholds timing");
   assert.equal(30, 30, "physical distance remains user-authored and is not derived from viewport spacing");
+
+  // --- MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE (0.45) boundary regressions --------------
+  // These were added after restoring the threshold from an unjustified 0.2 back to its
+  // long-standing 0.45: they prove the fix is principled (the true boundary behaves
+  // correctly on both sides), not merely that this file's original assertion passes.
+  assert.equal(
+    anchors.detectWorldBoundaryCrossing(samples, crossingBoundary, evidence(0, .44), 1280, 720, "left_to_right"),
+    null, "confidence immediately below threshold (0.44) is unsafe",
+  );
+  assert.ok(
+    anchors.detectWorldBoundaryCrossing(samples, crossingBoundary, evidence(0, .45), 1280, 720, "left_to_right"),
+    "confidence exactly at threshold (0.45) is explicitly treated as safe (inclusive >=)",
+  );
+  const highConfidenceEvidence = (overrides) => ({
+    cameraMotionModelVersion: "ava-background-affine-v1",
+    dynamicCropVersion: "ava-mediapipe-roi-v1", athleteTrackingVersion: "ava-single-pose-continuity-v1",
+    transforms: [transform(0, 0), { frame: 1, translationX: 0, translationY: 0, rotationDeg: 0, scale: 1,
+      confidence: .95, supportingFeatureCount: 80, inlierRatio: .9, residualPx: 1, ...overrides }],
+    athleteTrack: [], trackingLossRanges: [], unstableFrameRanges: [],
+  });
+  assert.equal(
+    anchors.detectWorldBoundaryCrossing(samples, crossingBoundary, highConfidenceEvidence({ supportingFeatureCount: 10 }), 1280, 720, "left_to_right"),
+    null, "high confidence (0.95) with insufficient features (10 < 24) remains unsafe",
+  );
+  assert.equal(
+    anchors.detectWorldBoundaryCrossing(samples, crossingBoundary, highConfidenceEvidence({ residualPx: 3 }), 1280, 720, "left_to_right"),
+    null, "high confidence (0.95) with excessive residual (3px > 2px) remains unsafe",
+  );
+  assert.equal(
+    anchors.detectWorldBoundaryCrossing(samples, crossingBoundary, highConfidenceEvidence({ inlierRatio: .1 }), 1280, 720, "left_to_right"),
+    null, "high confidence (0.95) with insufficient inlier ratio (0.1 < 0.2) remains unsafe",
+  );
+
+  // --- MAX_SAFE_ANCHOR_DEGRADED_FRAMES (6) hold-vs-loss boundary ---------------------
+  // Frame 1 is the only reliable transform (translationX .02); every frame after it is
+  // degraded (confidence .1) with a DIFFERENT translation (.05) that must never be
+  // applied — a tolerated hold composes with the last reliable transform, never the
+  // untrusted current one, so position must freeze at exactly the frame-1 result.
+  const heldRun = (degradedCount) => ({
+    cameraMotionModelVersion: "ava-background-affine-v1",
+    dynamicCropVersion: "ava-mediapipe-roi-v1", athleteTrackingVersion: "ava-single-pose-continuity-v1",
+    transforms: [
+      transform(0, 0),
+      { frame: 1, translationX: .02, translationY: 0, rotationDeg: 0, scale: 1,
+        confidence: .95, supportingFeatureCount: 80, inlierRatio: .9, residualPx: 1 },
+      ...Array.from({ length: degradedCount }, (_, i) => ({
+        frame: i + 2, translationX: .05, translationY: 0, rotationDeg: 0, scale: 1,
+        confidence: .1, supportingFeatureCount: 80, inlierRatio: .9, residualPx: 1,
+      })),
+    ],
+    athleteTrack: [], trackingLossRanges: [], unstableFrameRanges: [],
+  });
+  const withinTolerance = anchors.propagateSourcePoint({ x: .5, y: .5 }, 0, 7, heldRun(6), 1280, 720);
+  assert.equal(withinTolerance.safe, true, "6 consecutive degraded frames (== MAX_SAFE_ANCHOR_DEGRADED_FRAMES) stay non-fatal");
+  assert.ok(Math.abs(withinTolerance.point.x - .52) < 1e-9,
+    "a tolerated hold freezes at the last reliable transform's result and ignores the noisy transforms during the hold");
+  assert.ok(withinTolerance.confidence <= .1 + 1e-9,
+    "a tolerated hold still reports the true (low) confidence, so it reads as unsafe wherever confidence is compared to the threshold");
+  const beyondTolerance = anchors.propagateSourcePoint({ x: .5, y: .5 }, 0, 8, heldRun(7), 1280, 720);
+  assert.equal(beyondTolerance.safe, false, "7 consecutive degraded frames (> MAX_SAFE_ANCHOR_DEGRADED_FRAMES) become a fatal loss");
+
   console.log("zone anchor sanity: passed");
 } finally {
   rmSync(out, { recursive: true, force: true });

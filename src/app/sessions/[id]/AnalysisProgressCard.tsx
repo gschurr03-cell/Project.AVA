@@ -50,9 +50,21 @@ export default function AnalysisProgressCard({
   const [message, setMessage] = useState<string | null>(initialMessage);
   const [attemptCount, setAttemptCount] = useState<number>(initialAttemptCount);
   const [updatedAtMs, setUpdatedAtMs] = useState<number>(() =>
-    initialUpdatedAt ? Date.parse(initialUpdatedAt) : Date.now(),
+    initialUpdatedAt ? Date.parse(initialUpdatedAt) : 0,
   );
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  // Hydration-safe: the server render and the client's first (hydration) render must
+  // compute the exact same `percent` from the exact same inputs, or React flags a
+  // mismatch on `aria-valuenow` (observed as e.g. server="24" vs client="25" — one
+  // `Date.now()` call on the server, a slightly later one on the client). Seeding from
+  // the server-provided `initialUpdatedAt` snapshot instead of the wall clock makes the
+  // first render deterministic on both sides; the real clock only starts ticking from
+  // the effect below, strictly after mount, which is a normal post-hydration update.
+  const [nowMs, setNowMs] = useState<number>(() =>
+    initialUpdatedAt ? Date.parse(initialUpdatedAt) : 0,
+  );
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, []);
 
   // Poll the authoritative RPC; ignore stale/illegal transitions from out-of-order responses.
   useEffect(() => {

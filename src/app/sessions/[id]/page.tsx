@@ -135,7 +135,6 @@ const MVP_FIVE_ONLY = true;
  * that follows a sprinter accumulates several frame-widths (>3); a tripod / minor shake
  * stays well under a quarter frame-width.
  */
-const CAMERA_MEANINGFUL_PAN_CUMULATIVE = 0.25;
 
 /**
  * Session detail page. Shows the session's metadata and lets the coach rename
@@ -411,10 +410,24 @@ export default async function SessionPage({
   // only when the cumulative horizontal camera translation is non-negligible. Overlay
   // world-lock is unaffected — it consumes camera evidence through its own render path.
   const cameraEvidence = overlayMeta?.cameraEvidence;
-  const cumulativeCameraPanX = cameraEvidence
-    ? cameraEvidence.transforms.reduce((sum, t) => sum + Math.abs(t.translationX ?? 0), 0)
-    : 0;
-  const cameraPansMeaningfully = cumulativeCameraPanX > CAMERA_MEANINGFUL_PAN_CUMULATIVE;
+  // Phase 1 global keyframe camera path (optional — see cameraPathSchema.ts).
+  // Read-only overlay rendering prefers this when present; absent on analyses
+  // run before Phase 1, which keep using the legacy per-frame chain unchanged.
+  const cameraPath = overlayMeta?.cameraPath;
+  // Explicit only — `undefined` when the coach has never saved a camera-type decision
+  // for this session (no calibration_gates, no timing_workspace draft). Kept separate
+  // from `calibrationCameraType` below: the MEASUREMENT engine must stay conservative
+  // (never auto-detect panning for metric math — an explicit "stationary" default is
+  // correct there), but the READ-ONLY overlay's world-lock rendering must be able to
+  // fall back to the worker's own recordingMode classification when no explicit
+  // decision exists yet, rather than silently rendering every un-calibrated pan as if
+  // it were stationary.
+  const explicitCalibrationCameraType: "stationary" | "panning" | undefined =
+    calibrationGates?.cameraType
+    ?? (session.timing_workspace as { cameraType?: "stationary" | "panning" } | null)?.cameraType
+    ?? undefined;
+  const calibrationCameraType = explicitCalibrationCameraType ?? "stationary";
+  const cameraPansMeaningfully = calibrationCameraType === "panning" && Boolean(cameraEvidence);
   const measurements =
     session.analysis_type === "fly" && overlayFrames.length
       ? computeSprintMeasurements(overlayFrames, manualPoints, effectiveWidth, effectiveHeight, {
@@ -1200,6 +1213,9 @@ export default async function SessionPage({
                 sourceFps={detectedFps}
                 analysisFps={analysis?.analysis_fps ?? null}
                 cameraEvidence={overlayMeta?.cameraEvidence}
+                cameraPath={cameraPath}
+                recordingMode={overlayMeta?.recordingAssessment?.recordingMode}
+                calibrationCameraType={explicitCalibrationCameraType}
                 sourceWidth={effectiveWidth}
                 sourceHeight={effectiveHeight}
                 stepScale={stepScale}

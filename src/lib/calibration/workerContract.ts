@@ -21,6 +21,9 @@ export interface WorkerCalibration {
   startGate: CalibrationGates["startGate"];
   finishGate: CalibrationGates["finishGate"];
   distanceM: number;
+  cameraType: "stationary" | "panning";
+  referenceFrameIndex: number;
+  cameraTrackingSummary: CalibrationGates["cameraTrackingSummary"] | null;
   /** True when a manual-confirmed zone is authoritative over any auto detection. */
   manualAuthoritative: boolean;
   gates: CalibrationGates;
@@ -59,6 +62,9 @@ export function parseWorkerCalibration(rawGates: unknown): WorkerCalibration | n
     startGate: gates.startGate,
     finishGate: gates.finishGate,
     distanceM: gates.distanceM,
+    cameraType: gates.cameraType ?? "stationary",
+    referenceFrameIndex: gates.referenceFrameIndex ?? 0,
+    cameraTrackingSummary: gates.cameraTrackingSummary ?? null,
     manualAuthoritative: authority.source === "manual_confirmed",
     gates,
   };
@@ -70,6 +76,9 @@ export interface WorkerResultCalibrationProvenance {
   calibrationSource: CalibrationSource;
   authoritySchemaVersion: string | null;
   confirmedAt: string | null;
+  cameraType: "stationary" | "panning";
+  referenceFrameIndex: number;
+  cameraTrackingSummary: CalibrationGates["cameraTrackingSummary"] | null;
 }
 
 export function workerResultProvenance(calibration: WorkerCalibration): WorkerResultCalibrationProvenance {
@@ -78,6 +87,9 @@ export function workerResultProvenance(calibration: WorkerCalibration): WorkerRe
     calibrationSource: calibration.source,
     authoritySchemaVersion: calibration.authoritySchemaVersion,
     confirmedAt: calibration.confirmedAt,
+    cameraType: calibration.cameraType,
+    referenceFrameIndex: calibration.referenceFrameIndex,
+    cameraTrackingSummary: calibration.cameraTrackingSummary,
   };
 }
 
@@ -93,6 +105,8 @@ export function workerCalibrationLogLine(calibration: WorkerCalibration | null):
     authoritySchemaVersion: calibration.authoritySchemaVersion,
     manualAuthoritative: calibration.manualAuthoritative,
     distanceM: calibration.distanceM,
+    cameraType: calibration.cameraType,
+    referenceFrameIndex: calibration.referenceFrameIndex,
     startMidX: (calibration.startGate.c1.x + calibration.startGate.c2.x) / 2,
     finishMidX: (calibration.finishGate.c1.x + calibration.finishGate.c2.x) / 2,
   };

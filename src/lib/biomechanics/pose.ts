@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { rawCameraEvidenceSchema, recordingAssessmentSchema } from "../video/recordingMode";
 import { WORLD_COORDINATE_SCHEMA_VERSION } from "../video/worldProjection";
+import { cameraPathArtifactSchema } from "../video/cameraPathSchema";
 
 /**
  * Canonical pose vocabulary for Project AVA.
@@ -91,6 +92,11 @@ export const poseSequenceSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   cameraEvidence: rawCameraEvidenceSchema.optional(),
+  /** Phase 1 global keyframe camera path (optional, additive — see
+   *  cameraPathSchema.ts). Absent on older analyses; consumers fall back to
+   *  walking `cameraEvidence.transforms` (the legacy per-frame chain). Never
+   *  reinterprets an old artifact — this is purely a new, sibling field. */
+  cameraPath: cameraPathArtifactSchema.optional(),
   coordinateSchemaVersion: z.literal(WORLD_COORDINATE_SCHEMA_VERSION).optional(),
   recordingAssessment: recordingAssessmentSchema.optional(),
   sourceMetadata: z

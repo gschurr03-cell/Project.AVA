@@ -706,6 +706,9 @@ function readWorkerCalibration(snapshot) {
     finishC1: gates.finishGate.c1 ?? null,
     finishC2: gates.finishGate.c2 ?? null,
     finishTimeS: gates.finishGate.timeS ?? null,
+    cameraType: gates.cameraType ?? "stationary",
+    referenceFrameIndex: gates.referenceFrameIndex ?? 0,
+    cameraTrackingSummary: gates.cameraTrackingSummary ?? null,
     manualAuthoritative: source === "manual_confirmed",
   };
 }
@@ -756,14 +759,34 @@ async function processJob(claimed) {
     distanceM: workerCalibration?.distanceM ?? null,
     startTimeS: workerCalibration?.startTimeS ?? null,
     finishTimeS: workerCalibration?.finishTimeS ?? null,
+    cameraType: workerCalibration?.cameraType ?? null,
+    referenceFrameIndex: workerCalibration?.referenceFrameIndex ?? null,
   });
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "video_path, athlete_id, analysis_type, pose_engine, distance_m, calibration_point_bx, calibration_known_distance_m, fps, duration_s, width, height, codec, size_bytes",
+      "video_path, athlete_id, analysis_type, pose_engine, distance_m, calibration_point_bx, calibration_known_distance_m, fps, duration_s, width, height, codec, size_bytes, calibration_gates",
     )
     .eq("id", claimed.session_id)
     .single();
+  // Phase 2 (Part 11): accepted manual World-Lock Repairs travel with the
+  // session's calibration_gates jsonb (see saveWorldLockRepair in actions.ts)
+  // — never discarded on rerun, and never overridden by automatic ORB output
+  // unless a coach explicitly invalidates one (status would no longer be
+  // "accepted"). A malformed/missing array is just "no repairs", not a job failure.
+  const acceptedManualRepairs = Array.isArray(session?.calibration_gates?.worldLockRepairs)
+    ? session.calibration_gates.worldLockRepairs
+        .filter((repair) => repair?.status === "accepted")
+        .map((repair) => ({
+          repairId: repair.repairId,
+          referenceFrameIndex: repair.referenceFrameIndex,
+          targetFrameIndex: repair.targetFrameIndex,
+          pointPairs: repair.pointPairs,
+          createdAt: repair.createdAt,
+          acceptedBy: repair.acceptedBy,
+          version: repair.version,
+        }))
+    : [];
 
   try {
     if (!session?.video_path) throw new Error("Session has no uploaded video.");
@@ -811,7 +834,11 @@ async function processJob(claimed) {
     const opts = {
       fps: VALIDATED_ANALYSIS_FPS,
       ...(MAX_FRAMES ? { maxFrames: MAX_FRAMES } : {}),
+      ...(acceptedManualRepairs.length ? { manualRepairs: acceptedManualRepairs } : {}),
     };
+    if (acceptedManualRepairs.length) {
+      log(`applying ${acceptedManualRepairs.length} accepted manual world-lock repair(s)`);
+    }
     // Acceleration start detection needs unusually clear wrist/ground landmarks.
     // Tighten the existing INTERNAL inference ROI for this job only. The Python
     // runner maps every cropped landmark back into full-frame coordinates, so the
@@ -1074,7 +1101,13 @@ async function processJob(claimed) {
         authoritySchemaVersion: workerCalibration.authoritySchemaVersion,
         confirmedAt: workerCalibration.confirmedAt,
         manualAuthoritative: workerCalibration.manualAuthoritative,
+        cameraType: workerCalibration.cameraType,
+        referenceFrameIndex: workerCalibration.referenceFrameIndex,
+        trackingSummary: workerCalibration.cameraTrackingSummary,
       };
+      foundation.provenance.calibrationCameraType = workerCalibration.cameraType;
+      foundation.provenance.calibrationReferenceFrameIndex = workerCalibration.referenceFrameIndex;
+      foundation.provenance.calibrationTrackingSummary = workerCalibration.cameraTrackingSummary;
     }
     await setStage(claimed, "completing");
     const { data: completed, error: completionError } = await supabase.rpc(

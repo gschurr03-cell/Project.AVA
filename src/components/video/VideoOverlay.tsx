@@ -8,21 +8,34 @@ import {
   type StepDistanceScale,
 } from "@/lib/video/steps";
 import {
+  MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE,
   propagateAnchorFromSetupToFrame,
   propagateSourcePoint,
   sourceLineIntersectsViewport,
 } from "@/lib/calibration/zoneAnchors";
 import {
-  canonicalWorldToSourceFrame,
   projectCanonicalWorldLine,
   sourceLineToCanonicalWorld,
   sourcePointToCanonicalWorld,
+  toWorldContactAnchor,
+  verifyFrameReferenceRoundTrip,
   WORLD_COORDINATE_SCHEMA_VERSION,
+  WORLD_REFERENCE_FRAME_INDEX,
 } from "@/lib/video/worldProjection";
-import type { RawCameraEvidence } from "@/lib/video/recordingMode";
+import { projectWorldAnchorToFrame } from "@/lib/video/worldAnchor";
+import {
+  recordingModeUsesCameraProjection,
+  type RawCameraEvidence,
+  type RecordingMode,
+} from "@/lib/video/recordingMode";
+import { cameraTrackingStateAt } from "@/lib/calibration/cameraTracking";
+import { WORLD_LOCK_BUILD_TAG } from "@/lib/video/buildTag";
+import type { CameraPathArtifact } from "@/lib/video/cameraPathSchema";
+import { framePointToGlobal, globalPointToFrame, indexCameraFramePaths } from "@/lib/video/cameraPath";
 import {
   getDisplayedVideoRect,
   projectLandmark,
+  projectSourcePointToDisplay,
   type DisplayRect,
   type Point2D,
 } from "@/lib/video/coordinates";
@@ -98,8 +111,15 @@ type Props = {
   autoFollow?: boolean;
   followStateRef?: React.RefObject<{ current: FollowBox; target: FollowBox } | null>;
   cameraEvidence?: RawCameraEvidence;
+  /** Phase 1 global keyframe camera path — preferred over `cameraEvidence`'s
+   *  legacy chain-walk for gate/contact world-lock when present (Part 9). */
+  cameraPath?: CameraPathArtifact;
   sourceWidth?: number | null;
   sourceHeight?: number | null;
+  recordingMode?: RecordingMode;
+  calibrationCameraType?: "stationary" | "panning";
+  /** For [world-lock-runtime] diagnostics only — never used to alter rendering. */
+  sessionId?: string;
 };
 
 const bones = [
@@ -236,8 +256,12 @@ export default function VideoOverlay({
   autoFollow = false,
   followStateRef,
   cameraEvidence,
+  cameraPath,
   sourceWidth,
   sourceHeight,
+  recordingMode,
+  calibrationCameraType,
+  sessionId,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -264,11 +288,25 @@ export default function VideoOverlay({
   pendingRef.current = pendingGates;
   const trochanterRef = useRef(trochanterMarker);
   trochanterRef.current = trochanterMarker;
+  // [world-contact-render] sampling: dedupe by (source frame, contact id) so a
+  // paused video (rAF still ticking at 60fps) or the HUD's second projection
+  // pass for the same frame never re-logs — one entry per contact per distinct
+  // source frame actually reached, not per animation tick.
+  const contactRenderLogFrameRef = useRef<number>(-1);
+  const contactRenderLoggedIdsRef = useRef<Set<string>>(new Set());
+  // [world-lock-runtime] sampling: one summary per distinct source frame reached.
+  const worldLockRuntimeLoggedFrameRef = useRef<number>(-1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     if (!canvas || !video || !frames.length) return;
+
+    // Phase 1: an O(1) index into the global keyframe camera path, when the
+    // analysis has one — built once per clip, exactly like the legacy
+    // per-frame chain it supersedes. `null` when absent (older analyses),
+    // which every consumer below falls back on to the unchanged legacy path.
+    const cameraPathIndex = cameraPath ? indexCameraFramePaths(cameraPath) : null;
 
     // Detect step marks once per clip (cheap, O(frames)); the draw loop only
     // reveals the ones reached by the current playback time. When a calibration
@@ -286,6 +324,43 @@ export default function VideoOverlay({
           )
         : null,
     }));
+    // `[world-contact-create]` fires once per contact the FIRST time debug is
+    // observed on (from inside `draw`, which reads the live toggle every
+    // frame) — not at computation time above, since the debug checkbox is
+    // normally flipped on well after this effect's one-time setup has already
+    // run. `contactCreateLoggedIds` is shared across every `draw()` call for
+    // this clip, so each contact still logs exactly once, however late.
+    const contactCreateLoggedIds = new Set<string>();
+    const logContactCreateIfNeeded = () => {
+      if (process.env.NODE_ENV === "production" || !cameraEvidence || !sourceWidth || !sourceHeight) return;
+      for (const mark of worldSteps) {
+        if (!mark.world) continue;
+        const anchor = toWorldContactAnchor(
+          `contact-${mark.sourceFrameIndex}-${mark.side}-${mark.index}`,
+          mark.sourceFrameIndex,
+          mark.side,
+          mark.world,
+          cameraEvidence.cameraMotionModelVersion,
+        );
+        if (contactCreateLoggedIds.has(anchor.id)) continue;
+        contactCreateLoggedIds.add(anchor.id);
+        const roundTrip = verifyFrameReferenceRoundTrip(
+          mark, mark.sourceFrameIndex, mark.world.referenceFrameIndex, cameraEvidence, sourceWidth, sourceHeight,
+        );
+        console.debug("[world-contact-create]", {
+          contactId: anchor.id,
+          contactFrameIndex: anchor.contactFrameIndex,
+          referenceFrameIndex: mark.world.referenceFrameIndex,
+          cropOrRoiCoordinate: null, // worker already remaps crop→full-frame before this artifact is written
+          fullSourceContactCoordinate: { x: mark.x, y: mark.y },
+          cameraModelVersion: anchor.cameraModelVersion,
+          storedReferencePoint: { x: mark.world.x, y: mark.world.y },
+          roundTripErrorNormalized: roundTrip.errorNormalized,
+          roundTripSafe: roundTrip.ok,
+          confidence: mark.world.projectionConfidence,
+        });
+      }
+    };
     // Display-only step labels use the same immutable world points as the dots.
     // This does not alter worker metrics or timing values.
     const canonicalSteps = worldSteps.map((mark, index) => {
@@ -363,6 +438,7 @@ export default function VideoOverlay({
       const show = togglesRef.current;
       const hovered = hoveredRef.current;
       const selected = selectedRef.current;
+      if (show.debug) logContactCreateIfNeeded();
 
       // Draw in CSS pixels; the DPR scale keeps the backing store sharp.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -384,27 +460,70 @@ export default function VideoOverlay({
         }
       }
       const currentSourceFrame = frame.sourceFrameIndex ?? frame.frame;
+      const useCameraProjection = calibrationCameraType
+        ? calibrationCameraType === "panning"
+        : recordingModeUsesCameraProjection(recordingMode);
+      if (contactRenderLogFrameRef.current !== currentSourceFrame) {
+        contactRenderLogFrameRef.current = currentSourceFrame;
+        contactRenderLoggedIdsRef.current.clear();
+      }
 
+      // A detected ground contact is a permanent chalk mark on the physical track: its
+      // canonical coordinate never changes. What CAN change is whether the current
+      // frame's view still contains that physical location — camera motion moves the
+      // VIEW, never the mark, and the mark must be free to leave the frame entirely,
+      // exactly like gates. `null` here means "do not draw this frame" — never a
+      // clamped, recentered, or screen-fixed substitute.
       const projectWorldStep = (mark: (typeof canonicalSteps)[number]): Point2D | null => {
-        // A detected ground contact is a permanent chalk mark on the track: once
-        // playback has reached it, it must stay visible for the rest of the clip.
-        // Camera motion (pan/zoom) only changes WHERE the world point projects into
-        // the current view, never WHETHER it exists — so we always render the
-        // best-effort reprojected position and NEVER cull on projection confidence /
-        // safety. (Low confidence can affect trust styling elsewhere, not existence.)
-        if (!mark.world || !cameraEvidence || !sourceWidth || !sourceHeight) {
-          // No camera evidence (static clip): the raw source position is already
-          // world-locked — there is no pan to compensate.
+        // Phase 1: prefer the precomputed global camera path when present — a
+        // direct lookup + one applied transform, resolved once by the worker,
+        // never the legacy per-frame chain below (Part 9: gates and contacts
+        // consume the exact same artifact through cameraPath.ts).
+        if (cameraPathIndex && sourceWidth && sourceHeight) {
+          const contactId = `contact-${mark.sourceFrameIndex}-${mark.side}-${mark.index}`;
+          const g = framePointToGlobal(cameraPathIndex, mark.sourceFrameIndex, mark, sourceWidth, sourceHeight);
+          const f = g.available
+            ? globalPointToFrame(cameraPathIndex, currentSourceFrame, g.point, sourceWidth, sourceHeight)
+            : { available: false as const, point: mark, state: "unavailable" as const };
+          if (show.debug && process.env.NODE_ENV !== "production" && !contactRenderLoggedIdsRef.current.has(contactId)) {
+            contactRenderLoggedIdsRef.current.add(contactId);
+            console.debug("[world-contact-render]", {
+              contactId, currentFrame: currentSourceFrame, cameraPathVersion: cameraPath?.version,
+              creationFrameGloballyAvailable: g.available, globalPoint: g.available ? g.point : null,
+              projectedState: f.available ? "anchored" : f.state, projectionPath: "cameraPath.ts:globalPointToFrame",
+            });
+          }
+          if (!g.available || !f.available) return null;
+          return projectSourcePointToDisplay({ point: f.point, sourceWidth, sourceHeight, displayRect: rect, fitMode: "fill" });
+        }
+        if (!useCameraProjection || !mark.world || !cameraEvidence || !sourceWidth || !sourceHeight) {
+          // Stationary mode (or no camera evidence at all): the raw source position IS
+          // the world position — there is no pan to compensate for.
           return project(mark);
         }
-        const result = canonicalWorldToSourceFrame(
-          mark.world,
-          currentSourceFrame,
-          cameraEvidence,
-          sourceWidth,
-          sourceHeight,
+        const result = projectWorldAnchorToFrame(
+          mark.world, currentSourceFrame, cameraEvidence, sourceWidth, sourceHeight, rect, "fill",
         );
-        return project(result.point);
+        const contactId = `contact-${mark.sourceFrameIndex}-${mark.side}-${mark.index}`;
+        if (show.debug && process.env.NODE_ENV !== "production" && !contactRenderLoggedIdsRef.current.has(contactId)) {
+          contactRenderLoggedIdsRef.current.add(contactId);
+          console.debug("[world-contact-render]", {
+            contactId,
+            currentFrame: currentSourceFrame,
+            storedReferencePoint: { x: mark.world.x, y: mark.world.y, referenceFrameIndex: mark.world.referenceFrameIndex },
+            referenceToCurrentTransform: cameraEvidence.transforms.find((item) => item.frame === currentSourceFrame) ?? null,
+            projectedCurrentFrameSourcePoint: result.sourcePoint,
+            displayPoint: result.displayPoint,
+            visible: result.visible,
+            offscreen: !result.visible,
+            safe: result.safe,
+            projectionPath: "projectWorldAnchorToFrame(worldAnchor.ts) -> canonicalWorldToSourceFrame -> referenceToFrame",
+          });
+        }
+        // Never draw offscreen (visible=false) or built on an untrustworthy transform
+        // chain (safe=false) — no clamping, no fallback position, no forced onscreen.
+        if (!result.visible || !result.safe) return null;
+        return result.displayPoint;
       };
 
       ctx.lineWidth = 3;
@@ -684,17 +803,22 @@ export default function VideoOverlay({
       if (show.stepMarks && canonicalSteps.length) {
         const reached = canonicalSteps.filter((m) => m.time <= currentTime + 1e-3);
 
-        // Debug only: dashed step-to-step path linking consecutive contacts.
+        // Debug only: dashed step-to-step path linking consecutive contacts. A contact
+        // that is offscreen/unsafe at this frame breaks the path (new subpath on the
+        // next visible contact) rather than drawing a straight jump across the gap —
+        // stride segments must clip at the frame boundary like everything else here.
         if (show.debug && reached.length > 1) {
           ctx.strokeStyle = COLORS.stepPath;
           ctx.lineWidth = 2;
           ctx.setLineDash([5, 4]);
           ctx.beginPath();
-          reached.forEach((m, i) => {
+          let needsMove = true;
+          reached.forEach((m) => {
             const p = projectWorldStep(m);
-            if (!p) return;
-            if (i === 0) ctx.moveTo(p.x, p.y);
+            if (!p) { needsMove = true; return; }
+            if (needsMove) ctx.moveTo(p.x, p.y);
             else ctx.lineTo(p.x, p.y);
+            needsMove = false;
           });
           ctx.stroke();
           ctx.setLineDash([]);
@@ -783,26 +907,30 @@ export default function VideoOverlay({
       let diagnosticFinishGate: BarGeom | null = null;
       // Stroke a gate bar (cone-to-cone) with cone markers and an optional tag.
       // Day 74: thin (2 px) so the laser line is precise and unobtrusive.
+      // A gate whose camera-transform chain is unsafe is never drawn at all — a
+      // dashed/red line at a possibly-wrong position is still a false gate. The
+      // caller checks `safe` and shows a non-positional status note instead.
       const strokeBar = (g: BarGeom, color: string, tag?: string) => {
-        ctx.strokeStyle = g.safe === false ? "#e46464" : color;
+        ctx.strokeStyle = color;
         ctx.lineWidth = 2;
-        ctx.setLineDash(g.safe === false ? [5, 4] : []);
         ctx.beginPath();
         ctx.moveTo(g.p1.x, g.p1.y);
         ctx.lineTo(g.p2.x, g.p2.y);
         ctx.stroke();
-        ctx.setLineDash([]);
         drawCone(g.p1, color);
         drawCone(g.p2, color);
-        if (tag) placeLabel(ctx, tag, g.mid.x + 8, g.mid.y - 12,
-          g.safe === false ? "#e46464" : color, placedLabels);
+        if (tag) placeLabel(ctx, tag, g.mid.x + 8, g.mid.y - 12, color, placedLabels);
       };
 
       const savedGates = calibrationGatesRef.current;
       const savedCalibration = calibrationRef.current;
       if (savedGates) {
         const authoritativeGeom = (boundary: typeof savedGates.startBoundary): BarGeom | null => {
-          if (!boundary || !cameraEvidence || !sourceWidth || !sourceHeight) return null;
+          if (!boundary) return null;
+          if (!useCameraProjection || !cameraEvidence || !sourceWidth || !sourceHeight) {
+            const p1=project(boundary.sourceFrameLine.c1),p2=project(boundary.sourceFrameLine.c2);
+            return {p1,p2,mid:{x:(p1.x+p2.x)/2,y:(p1.y+p2.y)/2},confidence:boundary.confidence,safe:true};
+          }
           const propagated = propagateAnchorFromSetupToFrame(
             boundary, currentSourceFrame, cameraEvidence, sourceWidth, sourceHeight,
           );
@@ -813,7 +941,10 @@ export default function VideoOverlay({
           };
         };
         const migratedGeom = (bar: typeof savedGates.startGate): BarGeom | null => {
-          if (!cameraEvidence || !sourceWidth || !sourceHeight) return null;
+          if (!useCameraProjection || !cameraEvidence || !sourceWidth || !sourceHeight) {
+            const p1=project(bar.c1),p2=project(bar.c2);
+            return {p1,p2,mid:{x:(p1.x+p2.x)/2,y:(p1.y+p2.y)/2},safe:true};
+          }
           const setupOverlayFrame = frames.reduce((best, candidate) =>
             Math.abs(candidate.time - bar.timeS) < Math.abs(best.time - bar.timeS) ? candidate : best,
           );
@@ -851,7 +982,7 @@ export default function VideoOverlay({
           identity: "start" | "finish",
         ): BarGeom | null => {
           // Authoritative reprojection when production camera evidence is available.
-          if (cameraEvidence && sourceWidth && sourceHeight) {
+          if (useCameraProjection && cameraEvidence && sourceWidth && sourceHeight) {
             const setupFrame = setupFrameFor(canonical.timeS, canonical.setupFrameIndex);
             if (setupFrame != null) {
               const worldLine = sourceLineToCanonicalWorld(
@@ -902,11 +1033,97 @@ export default function VideoOverlay({
             sourceFrame: currentSourceFrame,
             canonicalStart: gateDirective.start.c1,
             projectedStart: startG?.p1 ?? null,
-            hasCameraEvidence: !!(cameraEvidence && sourceWidth && sourceHeight),
+            hasCameraEvidence: !!(useCameraProjection && cameraEvidence && sourceWidth && sourceHeight),
           });
         }
-        if (startG) strokeBar(startG, COLORS.calibration, "Start");
-        if (finishG) strokeBar(finishG, COLORS.calibration, "Finish");
+        if (show.debug && process.env.NODE_ENV !== "production") {
+          const currentTransform = cameraEvidence?.transforms.find((item) => item.frame === currentSourceFrame) ?? null;
+          for (const [id, geom, referenceCoordinate] of [
+            ["start", startG, gateDirective.mode === "canonical_raw" ? gateDirective.start.c1 : savedGates.startGate.c1],
+            ["finish", finishG, gateDirective.mode === "canonical_raw" ? gateDirective.finish.c1 : savedGates.finishGate.c1],
+          ] as const) {
+            console.debug("[world-anchor-gate]", {
+              gateId: id,
+              currentFrame: currentSourceFrame,
+              referenceCoordinate,
+              currentAffineTransform: currentTransform,
+              projectedDisplayCoordinate: geom?.p1 ?? null,
+              visible: geom != null,
+              safe: geom ? geom.safe !== false : null,
+              clamped: false,
+            });
+          }
+        }
+        // [world-lock-runtime]: one summary per distinct source frame, covering BOTH
+        // gates and historical contacts, so the two can be directly compared — this is
+        // the diagnostic that answers "do gates and contacts use different projection
+        // paths" and "why did a contact stop rendering" from the running app itself,
+        // rather than from static code reading.
+        if (show.debug && process.env.NODE_ENV !== "production"
+          && worldLockRuntimeLoggedFrameRef.current !== currentSourceFrame) {
+          worldLockRuntimeLoggedFrameRef.current = currentSourceFrame;
+          const currentTransform = cameraEvidence?.transforms.find((item) => item.frame === currentSourceFrame) ?? null;
+          const projectableContacts = canonicalSteps.filter((m) => m.world?.projectable).length;
+          const visibleContacts = canonicalSteps.filter((m) => projectWorldStep(m) !== null).length;
+          const rejectedContacts = canonicalSteps
+            .filter((m) => !m.world?.projectable)
+            .map((m) => ({
+              contactId: `contact-${m.sourceFrameIndex}-${m.side}-${m.index}`,
+              reasons: m.world?.warnings ?? (cameraEvidence ? ["no_camera_evidence_for_contact"] : ["no_camera_evidence_at_all"]),
+            }));
+          const activeFramePath = cameraPathIndex?.get(currentSourceFrame) ?? null;
+          const activeKeyframe = activeFramePath
+            ? cameraPath?.keyframes.find((kf) => kf.keyframeId === activeFramePath.keyframeId) ?? null
+            : null;
+          console.debug("[world-lock-runtime]", {
+            sourceRevision: WORLD_LOCK_BUILD_TAG,
+            sessionId: sessionId ?? null,
+            cameraMode: calibrationCameraType ?? recordingMode ?? null,
+            currentFrame: currentSourceFrame,
+            referenceFrameIndex: WORLD_REFERENCE_FRAME_INDEX,
+            cameraArtifactVersion: cameraEvidence?.cameraMotionModelVersion ?? null,
+            transformAvailable: currentTransform != null,
+            transformModel: currentTransform?.transformType ?? null,
+            transformConfidence: currentTransform?.confidence ?? null,
+            trackingState: cameraTrackingStateAt(cameraEvidence, currentSourceFrame),
+            gateProjectionPath: cameraPathIndex
+              ? "cameraPath.ts:globalPointToFrame (precomputed, no chain-walk)"
+              : !useCameraProjection
+                ? "stationary-raw"
+                : gateDirective.mode === "canonical_raw"
+                  ? "worldProjection.ts:projectCanonicalWorldLine (propagateSourcePoint)"
+                  : "authority.ts:selectRenderableGateGeometry (legacy path)",
+            contactProjectionPath: cameraPathIndex
+              ? "cameraPath.ts:globalPointToFrame (precomputed, no chain-walk)"
+              : !useCameraProjection
+                ? "coordinates.ts:project (raw, no camera compensation)"
+                : "worldAnchor.ts:projectWorldAnchorToFrame (propagateSourcePoint)",
+            canonicalContacts: canonicalSteps.length,
+            projectableContacts,
+            visibleContacts,
+            rejectedContacts,
+            gateAVisible: startG != null,
+            gateBVisible: finishG != null,
+            // Phase 1 extensions (Part 11) — undefined/null when no camera path artifact.
+            cameraPathArtifactVersion: cameraPath?.version ?? null,
+            frameKeyframeId: activeFramePath?.keyframeId ?? null,
+            globalPathAvailable: activeFramePath?.state === "anchored",
+            relockSegmentId: activeKeyframe?.relockEvent ? activeKeyframe.keyframeId : null,
+            projectionResumedAfterGap: Boolean(activeKeyframe?.relockEvent),
+          });
+        }
+        // `null` means offscreen (normal, expected while panning — never an error and
+        // never noted). `safe:false` means onscreen but the camera-transform chain is
+        // untrustworthy right now — never draw a possibly-wrong line; show a
+        // non-positional status note instead of a false screen-fixed gate.
+        if (startG) {
+          if (startG.safe === false) drawLabel(ctx, "Start gate: tracking unavailable", 14, 56, "#e46464");
+          else strokeBar(startG, COLORS.calibration, "Start");
+        }
+        if (finishG) {
+          if (finishG.safe === false) drawLabel(ctx, "Finish gate: tracking unavailable", 14, 70, "#e46464");
+          else strokeBar(finishG, COLORS.calibration, "Finish");
+        }
       } else if (savedCalibration) {
         // Legacy midpoint-only records lack source-frame and background-transform
         // provenance. They require a rerun instead of being misdrawn as world data.
@@ -915,27 +1132,61 @@ export default function VideoOverlay({
       // In-progress placement: [startC1, startC2, finishC1, finishC2]. Complete
       // pairs draw as a pending bar; a lone cone draws as a marker until its partner
       // is placed. Each cone is world-anchored by its own click time.
+      //
+      // Stationary mode: the raw stored point IS the current display point (no camera
+      // motion to compensate), so it always renders normally.
+      //
+      // Panning mode: a pending cone was clicked on a potentially DIFFERENT source
+      // frame than the one currently displayed. Once the camera has panned, its raw
+      // stored coordinate no longer corresponds to where that landmark is on screen
+      // NOW, so it may only be drawn after reprojecting through the background camera
+      // model — and only when that reprojection actually clears the same reliability
+      // bar (`MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE`, features, inliers, residual) a
+      // saved gate's crossing would need. Reprojection missing OR unreliable must
+      // never fall back to the raw/screen-locked point (that would silently imply a
+      // false, stale location); it hides the cone and surfaces a clearly
+      // non-authoritative status note instead. The click itself (`pendingRef.current`)
+      // is untouched by any of this — only what gets drawn changes, so placement can
+      // never be lost while tracking is temporarily unavailable.
       const pending = pendingRef.current;
       if (pending && pending.length) {
         const pc = COLORS.calibrationPending;
-        const drawPendingCone = (c: PendingCone) => {
-          if (cameraEvidence && sourceWidth && sourceHeight) {
-            const result = propagateSourcePoint(c, c.sourceFrameIndex, frame.sourceFrameIndex ?? frame.frame,
-              cameraEvidence, sourceWidth, sourceHeight);
-            drawCone(project(result.point), result.safe ? pc : "#e46464");
-          } else {
-            // No background-camera evidence: no fabricated world-lock preview.
-          }
+        let notedTrackingUnavailable = false;
+        const noteTrackingUnavailable = () => {
+          if (notedTrackingUnavailable) return;
+          notedTrackingUnavailable = true;
+          ctx.font = DEFAULT_LABEL_FONT;
+          drawLabel(ctx, "Camera tracking unavailable — pending gate hidden", 14, 56, "#e46464");
         };
-        const pendingGeom = (c1: PendingCone, c2: PendingCone): BarGeom | null => {
+        // Reprojects one pending cone to the current frame, returning null unless the
+        // transform actually clears the same reliability bar a saved crossing needs.
+        // `allFramesReliable` (not just confidence) is required: a held/degraded
+        // transform can report high raw confidence while still failing on feature
+        // count, inlier ratio, or residual.
+        const reliablePendingPoint = (c: PendingCone): Point2D | null => {
           if (!cameraEvidence || !sourceWidth || !sourceHeight) return null;
           const target = frame.sourceFrameIndex ?? frame.frame;
-          const a = propagateSourcePoint(c1, c1.sourceFrameIndex, target, cameraEvidence, sourceWidth, sourceHeight);
-          const b = propagateSourcePoint(c2, c2.sourceFrameIndex, target, cameraEvidence, sourceWidth, sourceHeight);
-          if (!sourceLineIntersectsViewport(a.point, b.point)) return null;
-          const p1 = project(a.point); const p2 = project(b.point);
-          return { p1, p2, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
-            confidence: Math.min(a.confidence, b.confidence), safe: a.safe && b.safe };
+          const result = propagateSourcePoint(c, c.sourceFrameIndex, target, cameraEvidence, sourceWidth, sourceHeight);
+          if (!result.safe || !result.allFramesReliable || result.confidence < MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE) return null;
+          return result.point;
+        };
+        const drawPendingCone = (c: PendingCone) => {
+          if (!useCameraProjection) { drawCone(project(c), pc); return; }
+          const point = reliablePendingPoint(c);
+          if (!point) { noteTrackingUnavailable(); return; }
+          drawCone(project(point), pc);
+        };
+        const pendingGeom = (c1: PendingCone, c2: PendingCone): BarGeom | null => {
+          if (!useCameraProjection) {
+            const p1=project(c1),p2=project(c2);
+            return {p1,p2,mid:{x:(p1.x+p2.x)/2,y:(p1.y+p2.y)/2}};
+          }
+          const a = reliablePendingPoint(c1);
+          const b = reliablePendingPoint(c2);
+          if (!a || !b) { noteTrackingUnavailable(); return null; }
+          if (!sourceLineIntersectsViewport(a, b)) return null;
+          const p1 = project(a); const p2 = project(b);
+          return { p1, p2, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } };
         };
         if (pending.length >= 2) { const g = pendingGeom(pending[0], pending[1]); if (g) strokeBar(g, pc, "Start"); }
         else if (pending.length === 1) drawPendingCone(pending[0]);
@@ -1055,11 +1306,15 @@ export default function VideoOverlay({
     frames,
     stepScale,
     cameraEvidence,
+    cameraPath,
+    recordingMode,
+    calibrationCameraType,
     sourceWidth,
     sourceHeight,
     athleteHeightCm,
     autoFollow,
     followStateRef,
+    sessionId,
   ]);
 
   // Position/size are driven imperatively in the draw loop so the canvas covers

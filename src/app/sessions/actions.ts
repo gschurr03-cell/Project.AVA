@@ -9,7 +9,12 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { ANALYSIS_SUBMISSION_ENABLED, BETA_LIMITS } from "@/lib/beta/config";
 import type { Json } from "@/lib/supabase/database.types";
 import { MIN_FPS, MAX_FPS } from "@/lib/video/fps";
-import { calibrationGatesSchema, gatesToManualPoints } from "@/lib/calibration/gates";
+import {
+  calibrationGatesSchema,
+  cameraTrackingSummarySchema,
+  gatesToManualPoints,
+} from "@/lib/calibration/gates";
+import { panningTrackingCanBeConfirmed } from "@/lib/calibration/cameraTracking";
 import { manualConfirmedAuthorityFields } from "@/lib/calibration/authority";
 import { resetToAutoAuthority } from "@/lib/calibration/lifecycle";
 import {
@@ -30,6 +35,15 @@ import {
   type TimingWorkspaceState,
 } from "@/lib/calibration/timingWorkspace";
 import { WORLD_COORDINATE_SCHEMA_VERSION } from "@/lib/video/worldProjection";
+import {
+  fitPartialAffine,
+  affineToDecomposedSimilarity,
+  composeFittedAffine,
+  decomposedSimilarityToFittedAffine,
+  validateRepairCandidate,
+} from "@/lib/video/worldLockRepair";
+import { landmarkPointPairSchema } from "@/lib/video/cameraPathSchema";
+import { loadOverlayFrames } from "@/lib/video/loadOverlayFrames";
 import { ANALYSIS_TYPE_CONFIG, isAnalysisType } from "@/lib/analysisTypes";
 import {
   ANALYSIS_PIPELINE_VERSION,
@@ -824,6 +838,32 @@ export async function saveGateCalibration(formData: FormData) {
   const distanceM = numField(formData, "calibration_known_distance_m");
   const sourceFrameWidth = numField(formData, "gate_source_width");
   const sourceFrameHeight = numField(formData, "gate_source_height");
+  const sourceDuration = numField(formData, "gate_source_duration");
+  // Explicit, distinct check BEFORE the general gate schema validation below. The
+  // client only ever submits `videoWidth`/`videoHeight` measured from the actual
+  // <video> element after `loadedmetadata` (never CSS/container size), and disables
+  // Save until they're known — so reaching here without them means either a stale
+  // form submission or a bypassed client, not a normal validation failure. Naming it
+  // separately (rather than letting it fall through to the generic calibration-gates
+  // schema error) lets the coach tell "the video hasn't finished loading yet" apart
+  // from "the placed gates themselves are invalid."
+  if (!Number.isFinite(sourceFrameWidth) || sourceFrameWidth <= 0
+    || !Number.isFinite(sourceFrameHeight) || sourceFrameHeight <= 0) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("Source video dimensions are unavailable. Wait for the video to finish loading and try again.")}`);
+  }
+  const trackingSummary = (() => {
+    const raw = String(formData.get("gate_camera_tracking_summary") ?? "");
+    if (!raw) return null;
+    try {
+      const parsed = cameraTrackingSummarySchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  })();
+  if (workspace?.cameraType === "panning" && !panningTrackingCanBeConfirmed(trackingSummary)) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("Panning calibration cannot be saved while camera tracking is degraded or lost.")}`);
+  }
 
   const supabase = await createClient();
   const { data: currentSession } = await supabase
@@ -870,6 +910,8 @@ export async function saveGateCalibration(formData: FormData) {
     travelDirection: inferredDirection,
     bodyReference,
     coordinateSchemaVersion: WORLD_COORDINATE_SCHEMA_VERSION,
+    cameraType: workspace?.cameraType ?? "stationary",
+    ...(trackingSummary ? { cameraTrackingSummary: trackingSummary } : {}),
     referenceFrameIndex: 0,
     sourceFrameWidth,
     sourceFrameHeight,
@@ -947,6 +989,9 @@ export async function saveGateCalibration(formData: FormData) {
       calibration_known_distance_m: points.distanceM,
       calibration_point_a_time_s: points.aTimeS ?? null,
       calibration_point_b_time_s: points.bTimeS ?? null,
+      width: sourceFrameWidth,
+      height: sourceFrameHeight,
+      ...(Number.isFinite(sourceDuration) && sourceDuration > 0 ? { duration_s: sourceDuration } : {}),
     })
     .eq("id", id);
   if (enforceCas) writeQuery = writeQuery.eq("timing_zone_version", expectedRevision);
@@ -1004,6 +1049,217 @@ export async function saveGateCalibrationAction(
     const digest = (error as { digest?: unknown })?.digest;
     if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) {
       return classifyGateSaveRedirect(digest);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Phase 2 — Manual World-Lock Repair (Part 10). Persists one confirmed repair
+ * (2-4 fixed-landmark point pairs between a globally-anchored reference frame
+ * and an unavailable target frame) into `calibration_gates.worldLockRepairs`
+ * — the SAME jsonb column and revision/CAS machinery `saveGateCalibration`
+ * already uses, so ownership (RLS via `sessions`/`athletes`), optimistic
+ * concurrency (`timing_zone_version` compare-and-set), and "increment
+ * revision + queue a fresh analysis" are all reused, not reimplemented.
+ *
+ * Validation is re-run HERE, server-side, from the raw point pairs — the
+ * client's own live-preview validation is never trusted as authoritative
+ * (Part 13). `targetFrameToGlobalMatrix` computed here is a best-effort
+ * PREVIEW only (composed from whatever `cameraPath` the current pose artifact
+ * happens to have); the worker recomputes it authoritatively from
+ * `targetFrameToReferenceMatrix` on every rerun (Part 11) and that value is
+ * what actually governs rendering once the queued analysis completes.
+ */
+export async function saveWorldLockRepair(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const referenceFrameIndex = numField(formData, "repair_reference_frame");
+  const targetFrameIndex = numField(formData, "repair_target_frame");
+  const sourceWidth = numField(formData, "repair_source_width");
+  const sourceHeight = numField(formData, "repair_source_height");
+  const expectedRevision = numField(formData, "expected_revision");
+
+  if (!Number.isFinite(referenceFrameIndex) || !Number.isFinite(targetFrameIndex)
+    || !Number.isFinite(sourceWidth) || sourceWidth <= 0 || !Number.isFinite(sourceHeight) || sourceHeight <= 0) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("World-lock repair save failed: missing frame or source-dimension data.")}`);
+  }
+
+  let rawPairs: unknown;
+  try {
+    rawPairs = JSON.parse(String(formData.get("repair_point_pairs") ?? "[]"));
+  } catch {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("World-lock repair save failed: point-pair data was invalid.")}`);
+  }
+  const parsedPairs = z.array(landmarkPointPairSchema).safeParse(rawPairs);
+  if (!parsedPairs.success) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("World-lock repair save failed: point-pair data did not match the expected shape.")}`);
+  }
+
+  const validation = validateRepairCandidate(parsedPairs.data, sourceWidth, sourceHeight);
+  if (!validation.accepted) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent(`World-lock repair rejected: ${validation.rejectionReasons.join(", ")}`)}`);
+  }
+
+  const pixelPairs = parsedPairs.data.map((pair) => ({
+    target: { x: pair.targetPoint.x * sourceWidth, y: pair.targetPoint.y * sourceHeight },
+    reference: { x: pair.referencePoint.x * sourceWidth, y: pair.referencePoint.y * sourceHeight },
+  }));
+  const fit = fitPartialAffine(pixelPairs);
+  if (!fit) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("World-lock repair rejected: non_invertible")}`);
+  }
+  const decomposed = affineToDecomposedSimilarity(fit);
+  const targetFrameToReferenceMatrix = {
+    frame: 0,
+    rotationDeg: decomposed.rotationDeg,
+    scale: decomposed.scale,
+    translationX: decomposed.translationX / sourceWidth,
+    translationY: decomposed.translationY / sourceHeight,
+    confidence: 1,
+    supportingFeatureCount: parsedPairs.data.length,
+    inlierRatio: 1,
+    residualPx: validation.meanErrorPx,
+    transformType: "partial_affine" as const,
+  };
+
+  const supabase = await createClient();
+  const { data: currentSession } = await supabase
+    .from("sessions")
+    .select("calibration_gates")
+    .eq("id", id)
+    .single();
+  const previous = calibrationGatesSchema.safeParse(currentSession?.calibration_gates);
+  if (!previous.success) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("Save Gate A and Gate B before repairing world lock — a repair extends an existing panning calibration.")}`);
+  }
+  const currentRevision = previous.data.version ?? 0;
+
+  // Best-effort preview matrix (see docstring) — look up the reference
+  // frame's current global anchor from the latest pose artifact, if any.
+  let targetFrameToGlobalMatrix = targetFrameToReferenceMatrix;
+  try {
+    const { data: analysis } = await supabase
+      .from("analyses")
+      .select("keypoints_path")
+      .eq("session_id", id)
+      .eq("status", "complete")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const overlay = await loadOverlayFrames(supabase, analysis?.keypoints_path);
+    const referenceFramePath = overlay.meta?.cameraPath?.framePaths.find((fp) => fp.frameIndex === referenceFrameIndex);
+    if (referenceFramePath?.frameToGlobalMatrix) {
+      const referenceToGlobal = decomposedSimilarityToFittedAffine(referenceFramePath.frameToGlobalMatrix, sourceWidth, sourceHeight);
+      const composed = composeFittedAffine(referenceToGlobal, fit);
+      const composedDecomposed = affineToDecomposedSimilarity(composed);
+      targetFrameToGlobalMatrix = {
+        frame: 0,
+        rotationDeg: composedDecomposed.rotationDeg,
+        scale: composedDecomposed.scale,
+        translationX: composedDecomposed.translationX / sourceWidth,
+        translationY: composedDecomposed.translationY / sourceHeight,
+        confidence: 1,
+        supportingFeatureCount: parsedPairs.data.length,
+        inlierRatio: 1,
+        residualPx: validation.meanErrorPx,
+        transformType: "partial_affine" as const,
+      };
+    }
+  } catch {
+    // Best-effort only — the worker's authoritative rerun always corrects this.
+  }
+
+  const { data: userResult } = await supabase.auth.getUser();
+  const repairId = `repair-${id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const nextVersion = currentRevision + 1;
+  const repair = {
+    repairId,
+    createdAt: new Date().toISOString(),
+    referenceFrameIndex,
+    targetFrameIndex,
+    pointPairs: parsedPairs.data,
+    targetFrameToReferenceMatrix,
+    targetFrameToGlobalMatrix,
+    meanErrorPx: validation.meanErrorPx,
+    maxErrorPx: validation.maxErrorPx,
+    scale: validation.scale,
+    rotationDeg: validation.rotationDeg,
+    acceptedBy: userResult?.user?.email ?? userResult?.user?.id ?? "unknown",
+    status: "accepted" as const,
+    version: nextVersion,
+  };
+
+  const nextGates = {
+    ...previous.data,
+    version: nextVersion,
+    updatedAt: new Date().toISOString(),
+    worldLockRepairs: [...(previous.data.worldLockRepairs ?? []), repair],
+  };
+  const parsedNext = calibrationGatesSchema.safeParse(nextGates);
+  if (!parsedNext.success) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent(`World-lock repair save failed: ${parsedNext.error.issues[0]?.message ?? "invalid repair data"}`)}`);
+  }
+
+  // Optimistic concurrency — identical pattern to saveGateCalibration.
+  const enforceCas = Number.isFinite(expectedRevision) && expectedRevision > 0;
+  let writeQuery = supabase
+    .from("sessions")
+    .update({ calibration_gates: parsedNext.data, timing_zone_version: nextVersion })
+    .eq("id", id);
+  if (enforceCas) writeQuery = writeQuery.eq("timing_zone_version", expectedRevision);
+  const { data: writtenRows, error } = await writeQuery.select("id");
+
+  if (error) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent(`World-lock repair save failed: ${error.message}`)}`);
+  }
+  if (enforceCas && (!writtenRows || writtenRows.length === 0)) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("This calibration was updated elsewhere. Reload and try the repair again.")}`);
+  }
+
+  await queueAnalysis(formData);
+  redirect(`/sessions/${id}/timing?repaired=${repairId}`);
+}
+
+export type SaveRepairStatus = "saved" | "conflict" | "validation_error" | "error";
+export interface SaveRepairResult {
+  ok: boolean;
+  status: SaveRepairStatus;
+  repairId?: string;
+  message?: string;
+}
+
+function classifyRepairSaveRedirect(digest: string): SaveRepairResult {
+  const url = digest.split(";")[2] ?? "";
+  const query = url.includes("?") ? new URLSearchParams(url.slice(url.indexOf("?") + 1)) : new URLSearchParams();
+  const err = query.get("error");
+  const repaired = query.get("repaired");
+  if (!err) return { ok: true, status: "saved", repairId: repaired ?? undefined };
+  if (/updated elsewhere/i.test(err)) return { ok: false, status: "conflict", message: err };
+  if (/rejected:|missing frame|invalid|did not match/i.test(err)) return { ok: false, status: "validation_error", message: err };
+  return { ok: false, status: "error", message: err };
+}
+
+/**
+ * `useActionState`-compatible wrapper (Part 13: distinct, structured errors;
+ * Part 10: "double clicks do not duplicate it" — `useActionState` disables
+ * its own submit while pending, and every repair gets a fresh random
+ * `repairId` server-side per actual invocation, so even a genuine double
+ * network request creates at most one extra, harmless, superseded-looking
+ * repair rather than corrupting the array).
+ */
+export async function saveWorldLockRepairAction(
+  _prev: SaveRepairResult | null,
+  formData: FormData,
+): Promise<SaveRepairResult> {
+  try {
+    await saveWorldLockRepair(formData);
+    return { ok: true, status: "saved" };
+  } catch (error) {
+    const digest = (error as { digest?: unknown })?.digest;
+    if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) {
+      return classifyRepairSaveRedirect(digest);
     }
     throw error;
   }

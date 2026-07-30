@@ -24,7 +24,8 @@ import type { CalibrationGates } from "@/lib/calibration/gates";
 import PlayerControls from "./PlayerControls";
 import TelestrationCanvas from "./TelestrationCanvas";
 import type { TrochanterMarker } from "@/lib/video/overlayAlignment";
-import type { RawCameraEvidence } from "@/lib/video/recordingMode";
+import type { RawCameraEvidence, RecordingMode } from "@/lib/video/recordingMode";
+import type { CameraPathArtifact } from "@/lib/video/cameraPathSchema";
 
 type Props = {
   videoUrl: string;
@@ -52,6 +53,9 @@ type Props = {
   sourceFps?: number | null;
   analysisFps?: number | null;
   cameraEvidence?: RawCameraEvidence;
+  cameraPath?: CameraPathArtifact;
+  recordingMode?: RecordingMode;
+  calibrationCameraType?: "stationary" | "panning";
   sourceWidth?: number | null;
   sourceHeight?: number | null;
 };
@@ -78,6 +82,9 @@ export default function OverlayVideoPlayer({
   sourceFps = null,
   analysisFps = null,
   cameraEvidence,
+  cameraPath,
+  recordingMode,
+  calibrationCameraType,
   sourceWidth = null,
   sourceHeight = null,
 }: Props) {
@@ -167,6 +174,9 @@ export default function OverlayVideoPlayer({
       calibration={calibration}
       allowCalibrationEditing={allowCalibrationEditing}
       cameraEvidence={cameraEvidence}
+      cameraPath={cameraPath}
+      recordingMode={recordingMode}
+      calibrationCameraType={calibrationCameraType}
       sourceWidth={sourceWidth}
       sourceHeight={sourceHeight}
       onState={setState}

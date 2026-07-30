@@ -355,7 +355,27 @@ def _mask_out_athlete(shape, box):
 
 
 def estimate_background_transform(prev_gray, gray, prev_box, cv2, frame_index):
-    """Robust planar homography with a conservative partial-affine fallback."""
+    """Robust partial-affine background motion, estimated with RANSAC.
+
+    MVP limitation: this recovers translation + rotation + uniform scale only
+    (`cv2.estimateAffinePartial2D`), never a full projective/perspective warp.
+    It is a deliberate, evidence-backed choice, not an unexamined simplification:
+    on the one real panning fixture measured in this repo (`real-side-pan-fly-001`,
+    see docs/local-physical-gate-lock.md "Model comparison"), a direct full
+    homography was LESS accurate than partial affine (8.36px vs 7.40px mean
+    midpoint error, 9.59px vs 9.10px mean endpoint error, 1.36 vs 1.22 max angle
+    over 10 independent annotations) — composing a projective model amplified
+    small perspective-coefficient noise into larger drift rather than reducing
+    error. Homography was explicitly not adopted for that reason.
+    Known reliable envelope: horizontal/lateral pan with modest scale and
+    rotation change (sideline coverage of a straight sprint). NOT validated for:
+    strong forward/back (dolly) camera motion, large true perspective shifts,
+    curved/arcing camera movement, or large optical zoom changes — an affine fit
+    over any of those will systematically under- or mis-represent the true
+    motion. If real footage of those types needs support, re-run the same
+    measured comparison (or the repo's hybrid global/local lock, which measured
+    2.41px on this fixture) before reconsidering a projective model.
+    """
     empty = {"frame": frame_index, "translationX": 0.0, "translationY": 0.0,
              "rotationDeg": 0.0, "scale": 1.0, "confidence": 0.0,
              "supportingFeatureCount": 0, "inlierRatio": 0.0, "residualPx": None,
@@ -377,51 +397,48 @@ def estimate_background_transform(prev_gray, gray, prev_box, cv2, frame_index):
     if support < MIN_BACKGROUND_FEATURES:
         empty["supportingFeatureCount"] = support
         return empty
-    homography, homography_inliers = cv2.findHomography(
-        good_prev, good_next, cv2.RANSAC, 2.5, maxIters=2000, confidence=0.99
+
+    # Similarity motion is the stable default for a handheld pan. Composing a
+    # projective model on every frame can amplify tiny perspective coefficients
+    # into large long-clip drift even when each individual residual is small.
+    affine, affine_inliers = cv2.estimateAffinePartial2D(
+        good_prev, good_next, method=cv2.RANSAC, ransacReprojThreshold=2.5,
+        maxIters=2000, confidence=0.99
     )
-    if homography is not None and homography_inliers is not None:
-        selected = homography_inliers.reshape(-1).astype(bool)
-        inlier_count = int(selected.sum())
-        ratio = inlier_count / float(max(1, support))
-        predicted = cv2.perspectiveTransform(good_prev.reshape(-1, 1, 2), homography).reshape(-1, 2)
+    affine_result = None
+    affine_ratio = 0.0
+    affine_residual = None
+    if affine is not None and affine_inliers is not None:
+        affine_selected = affine_inliers.reshape(-1).astype(bool)
+        affine_inlier_count = int(affine_selected.sum())
+        affine_ratio = affine_inlier_count / float(max(1, support))
+        a, b, tx = affine[0]; c, d, ty = affine[1]
+        scale = float((a * a + c * c) ** 0.5)
+        rotation = float(__import__("math").degrees(__import__("math").atan2(c, a)))
+        predicted = cv2.transform(good_prev.reshape(-1, 1, 2), affine).reshape(-1, 2)
         residuals = __import__("numpy").linalg.norm(predicted - good_next, axis=1)
-        residual = float(__import__("numpy").median(residuals[selected])) if inlier_count else None
-        if inlier_count >= MIN_BACKGROUND_FEATURES and ratio >= 0.5 and residual is not None and residual <= 4.0:
-            a, b, tx = homography[0]; c, d, ty = homography[1]
-            scale = float((a * a + c * c) ** 0.5)
-            rotation = float(__import__("math").degrees(__import__("math").atan2(c, a)))
-            support_score = min(1.0, support / 80.0)
-            residual_score = max(0.0, 1.0 - residual / 5.0)
-            confidence = max(0.0, min(1.0, ratio * support_score * residual_score))
-            return {"frame": frame_index, "translationX": float(tx / gray.shape[1]),
-                    "translationY": float(ty / gray.shape[0]), "rotationDeg": rotation,
-                    "scale": max(0.01, scale), "confidence": confidence,
-                    "supportingFeatureCount": support, "inlierRatio": ratio,
-                    "residualPx": residual, "transformType": "homography",
-                    "homography": [float(value) for value in homography.reshape(-1)]}
-    transform, inliers = cv2.estimateAffinePartial2D(good_prev, good_next,
-        method=cv2.RANSAC, ransacReprojThreshold=2.5, maxIters=2000, confidence=0.99)
-    if transform is None or inliers is None:
-        empty["supportingFeatureCount"] = support
-        return empty
-    selected = inliers.reshape(-1).astype(bool)
-    inlier_count = int(selected.sum())
-    ratio = inlier_count / float(max(1, support))
-    a, b, tx = transform[0]; c, d, ty = transform[1]
-    scale = float((a * a + c * c) ** 0.5)
-    rotation = float(__import__("math").degrees(__import__("math").atan2(c, a)))
-    predicted = cv2.transform(good_prev.reshape(-1, 1, 2), transform).reshape(-1, 2)
-    residuals = __import__("numpy").linalg.norm(predicted - good_next, axis=1)
-    residual = float(__import__("numpy").median(residuals[selected])) if inlier_count else None
-    support_score = min(1.0, support / 80.0)
-    residual_score = 0.0 if residual is None else max(0.0, 1.0 - residual / 5.0)
-    confidence = max(0.0, min(1.0, ratio * support_score * residual_score))
-    return {"frame": frame_index, "translationX": float(tx / gray.shape[1]),
+        affine_residual = (
+            float(__import__("numpy").median(residuals[affine_selected]))
+            if affine_inlier_count else None
+        )
+        support_score = min(1.0, support / 80.0)
+        residual_score = (
+            0.0 if affine_residual is None
+            else max(0.0, 1.0 - affine_residual / 5.0)
+        )
+        affine_result = {
+            "frame": frame_index, "translationX": float(tx / gray.shape[1]),
             "translationY": float(ty / gray.shape[0]), "rotationDeg": rotation,
-            "scale": max(0.01, scale), "confidence": confidence,
-            "supportingFeatureCount": support, "inlierRatio": ratio, "residualPx": residual,
-            "transformType": "partial_affine"}
+            "scale": max(0.01, scale),
+            "confidence": max(0.0, min(1.0, affine_ratio * support_score * residual_score)),
+            "supportingFeatureCount": support, "inlierRatio": affine_ratio,
+            "residualPx": affine_residual, "transformType": "partial_affine",
+        }
+
+    if affine_result is not None:
+        return affine_result
+    empty["supportingFeatureCount"] = support
+    return empty
 
 
 def frame_ranges(indices):
@@ -453,11 +470,27 @@ def normalized_crop(crop, width, height):
             "width": (x1 - x0) / width, "height": (y1 - y0) / height}
 
 
+def monotonic_media_timestamp(raw_timestamp_ms, frame_index, source_fps, previous_timestamp_ms):
+    """MediaPipe VIDEO mode requires strictly increasing timestamps.
+
+    Some valid MOV files repeat or briefly regress CAP_PROP_POS_MSEC. Preserve the
+    container timestamp when possible, but advance by at least one source-frame
+    interval so decoding remains deterministic and never fails at startup.
+    """
+    nominal = (frame_index / source_fps) * 1000.0
+    candidate = raw_timestamp_ms if raw_timestamp_ms > 0 else nominal
+    if previous_timestamp_ms is not None and candidate <= previous_timestamp_ms:
+        candidate = max(nominal, previous_timestamp_ms + 1000.0 / source_fps)
+    return candidate
+
+
 def main():
     parser = argparse.ArgumentParser(description="MediaPipe Pose runner")
     parser.add_argument("--input", required=True, help="Video path or URL")
     parser.add_argument("--fps", type=float, default=None, help="Target analysis frame rate (maximum 60)")
     parser.add_argument("--max-frames", type=int, default=None, help="Cap analysis frames emitted")
+    parser.add_argument("--repairs-file", type=str, default=None,
+                         help="Phase 2: path to a JSON file of accepted manual World-Lock Repairs")
     args = parser.parse_args()
 
     os.environ.setdefault("GLOG_minloglevel", "3")
@@ -470,6 +503,26 @@ def main():
         from mediapipe.tasks.python import vision as mp_vision
     except Exception as exc:  # ImportError or native load failure
         fail("%s (%s)" % (INSTALL_HINT, exc))
+
+    camera_path_diagnostics = os.environ.get("CAMERA_PATH_DIAGNOSTICS", "").strip().lower() in ("1", "true", "yes", "on")
+    try:
+        import camera_path as cp
+        import repair_transform as rt
+    except Exception as exc:  # noqa: BLE001 — Phase 1/2 camera path is additive; never block analysis
+        cp = None
+        rt = None
+        print("camera_path module unavailable, Phase 1/2 global path will be skipped: %s" % exc, file=sys.stderr)
+
+    # Phase 2 (Part 11): load accepted manual repairs, if the Node worker
+    # supplied any (see PythonMediaPipePoseService.ts). Never let a malformed
+    # repairs file block the rest of analysis — camera-path is additive.
+    pending_repairs = []
+    if args.repairs_file:
+        try:
+            with open(args.repairs_file, "r", encoding="utf-8") as handle:
+                pending_repairs = json.load(handle)
+        except Exception as exc:  # noqa: BLE001
+            print("repairs file unreadable, continuing without manual repairs: %s" % exc, file=sys.stderr)
 
     # Open the video first so a bad path fails fast (before any model download).
     cap = cv2.VideoCapture(args.input)
@@ -514,11 +567,24 @@ def main():
     direct_box_flags = []
     box_confidences = []
     camera_transforms = []
+    orb_snapshots = {}
     if ROI_ENABLED:
         loc = mp_vision.PoseLandmarker.create_from_options(make_options(model_path, mp_python, mp_vision))
         index = 0
         prev_gray = None
         prev_box = None
+        previous_locator_timestamp_ms = None
+        # Phase 1 recovery-capture bookkeeping: a periodic snapshot stride alone
+        # essentially never lands exactly on the frame where a real relock
+        # candidate is chosen (that frame is decided dynamically, by when
+        # tracking actually stabilizes again) — the first real end-to-end run
+        # against this footage found exactly that: 0 relock attempts, because
+        # `orb_snapshots.get(candidate_frame)` was always None. Capturing a
+        # short window right after every recovery from an unreliable step
+        # guarantees a snapshot exists at whichever frame `build_camera_path`
+        # actually selects as the candidate.
+        prev_step_ok = True
+        recovery_capture_countdown = 0
         try:
             while True:
                 if args.max_frames is not None and index >= int(round(args.max_frames * src_fps / fps)):
@@ -530,9 +596,10 @@ def main():
                     height, width = frame_bgr.shape[0], frame_bgr.shape[1]
                 rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-                source_timestamp_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-                if source_timestamp_ms <= 0 and index > 0:
-                    source_timestamp_ms = (index / src_fps) * 1000.0
+                source_timestamp_ms = monotonic_media_timestamp(
+                    cap.get(cv2.CAP_PROP_POS_MSEC), index, src_fps, previous_locator_timestamp_ms
+                )
+                previous_locator_timestamp_ms = source_timestamp_ms
                 result = loc.detect_for_video(mp_image, int(round(source_timestamp_ms)))
                 box = bbox_from_result(result, width, height)
                 boxes.append(box)
@@ -543,7 +610,32 @@ def main():
                 else:
                     box_confidences.append(0.0)
                 gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-                camera_transforms.append(estimate_background_transform(prev_gray, gray, prev_box, cv2, index))
+                step = estimate_background_transform(prev_gray, gray, prev_box, cv2, index)
+                camera_transforms.append(step)
+                # Phase 1 (camera_path.py): reuses the grayscale image already
+                # decoded above, no extra video read. Athlete-masked via the same
+                # helper the adjacent-frame path uses, so the runner never
+                # dominates relock matching either. Captured at: frame 0, a
+                # periodic stride (general keyframe-to-keyframe matching), and a
+                # short window right after any recovery from an unreliable step
+                # (guarantees a snapshot at wherever the relock candidate lands).
+                if cp is not None:
+                    this_step_ok = (
+                        step.get("confidence", 0.0) >= cp.MIN_STEP_CONFIDENCE
+                        and step.get("supportingFeatureCount", 0) >= cp.MIN_STEP_FEATURES
+                        and (step.get("residualPx") is None or step["residualPx"] <= cp.MAX_STEP_RESIDUAL_PX)
+                    )
+                    if this_step_ok and not prev_step_ok:
+                        recovery_capture_countdown = cp.RELOCK_CANDIDATE_STABILITY_FRAMES + 2
+                    capture_now = cp.should_capture_orb_snapshot(index) or recovery_capture_countdown > 0
+                    if recovery_capture_countdown > 0:
+                        recovery_capture_countdown -= 1
+                    if capture_now:
+                        mask = _mask_out_athlete(gray.shape, box)
+                        snapshot = cp.capture_orb_snapshot(gray, mask, cv2)
+                        if snapshot is not None:
+                            orb_snapshots[index] = snapshot
+                    prev_step_ok = this_step_ok
                 prev_gray = gray
                 prev_box = box
                 index += 1
@@ -564,6 +656,7 @@ def main():
     frames = []
     source_index = 0
     analysis_index = 0
+    previous_analysis_timestamp_ms = None
     try:
         while True:
             if args.max_frames is not None and analysis_index >= args.max_frames:
@@ -596,14 +689,17 @@ def main():
 
             rgb = cv2.cvtColor(sub, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            source_timestamp_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-            if source_timestamp_ms <= 0 and source_index > 0:
-                source_timestamp_ms = (source_index / src_fps) * 1000.0
+            source_timestamp_ms = monotonic_media_timestamp(
+                cap.get(cv2.CAP_PROP_POS_MSEC), source_index, src_fps, previous_analysis_timestamp_ms
+            )
             analysis_timestamp_ms = (
                 source_timestamp_ms if fps_classification in ("validated_60_fps_class", "experimental_30_fps_class")
                 else (analysis_index / fps) * 1000.0
             )
             timestamp_ms = int(round(analysis_timestamp_ms))
+            if previous_analysis_timestamp_ms is not None:
+                timestamp_ms = max(timestamp_ms, int(round(previous_analysis_timestamp_ms)) + 1)
+            previous_analysis_timestamp_ms = timestamp_ms
             result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
             landmarks = []
@@ -674,6 +770,112 @@ def main():
                            "trackingLossRanges": frame_ranges(missing),
                            "unstableFrameRanges": frame_ranges(unstable)}
 
+    camera_path = None
+    if cp is not None and camera_evidence is not None and camera_transforms:
+        def _log_camera_path(tag, payload):
+            if camera_path_diagnostics:
+                print(tag, json.dumps(payload, default=str), file=sys.stderr)
+        try:
+            # Pass 1: the automatic Phase 1 path alone — this is also the
+            # "before repair" baseline (Part 9) and, when repairs exist, the
+            # source of each repair's reference keyframe's CURRENT global
+            # anchor (never a stale/client-cached one, Part 11).
+            automatic_path = cp.build_camera_path(
+                camera_transforms, orb_snapshots, width, height, len(camera_transforms),
+                0, cv2, diagnostics_sink=_log_camera_path,
+            )
+            unavailable_before_repair = automatic_path["diagnostics"]["unavailableFrameRanges"]
+
+            manual_repairs_by_frame = {}
+            applied_repair_records = []
+            if rt is not None and pending_repairs:
+                automatic_frame_paths = {fp["frameIndex"]: fp for fp in automatic_path["framePaths"]}
+                for repair in pending_repairs:
+                    reference_frame_path = automatic_frame_paths.get(repair["referenceFrameIndex"])
+                    if reference_frame_path is None or reference_frame_path.get("frameToGlobalMatrix") is None:
+                        print("[world-lock-repair-apply] rejected: reference frame %s is not globally anchored in the current automatic path"
+                              % repair["referenceFrameIndex"], file=sys.stderr)
+                        continue
+                    pixel_pairs = [{
+                        "target": {"x": pair["targetPoint"]["x"] * width, "y": pair["targetPoint"]["y"] * height},
+                        "reference": {"x": pair["referencePoint"]["x"] * width, "y": pair["referencePoint"]["y"] * height},
+                    } for pair in repair["pointPairs"]]
+                    fit = rt.fit_partial_affine(pixel_pairs)
+                    if fit is None:
+                        print("[world-lock-repair-apply] rejected: non_invertible for repair %s" % repair["repairId"], file=sys.stderr)
+                        continue
+                    reference_to_global = cp._matrix_dict_to_np(reference_frame_path["frameToGlobalMatrix"], width, height)
+                    # Re-decompose the fitted (a,b,tx,ty) into the same
+                    # rotation/scale/translation form camera_path.py's numpy
+                    # matrices use, so composition goes through ONE consistent
+                    # matrix convention (this is exact — no information lost,
+                    # see repair_transform.py's module docstring).
+                    decomposed_fit = rt.affine_to_decomposed_similarity(fit)
+                    target_to_reference_np = cp.similarity_to_np(
+                        decomposed_fit["rotationDeg"], decomposed_fit["scale"],
+                        decomposed_fit["translationX"] / width, decomposed_fit["translationY"] / height,
+                        width, height,
+                    )
+                    target_to_global_np = cp.compose_np(reference_to_global, target_to_reference_np)
+                    errors = [rt._point_distance(rt.apply_fitted_affine(fit, pp["target"]), pp["reference"]) for pp in pixel_pairs]
+                    mean_error_px = sum(errors) / len(errors)
+                    max_error_px = max(errors)
+                    manual_repairs_by_frame[repair["targetFrameIndex"]] = {
+                        "repairId": repair["repairId"],
+                        "referenceFrameIndex": repair["referenceFrameIndex"],
+                        "pointPairs": repair["pointPairs"],
+                        "targetFrameToGlobalMatrix": cp.matrix_dict(
+                            target_to_global_np, width, height, 1.0, len(repair["pointPairs"]),
+                            len(repair["pointPairs"]), 1.0, mean_error_px,
+                        ),
+                        "meanErrorPx": mean_error_px,
+                    }
+                    applied_repair_records.append({
+                        "repairId": repair["repairId"], "createdAt": repair.get("createdAt", ""),
+                        "referenceFrameIndex": repair["referenceFrameIndex"], "targetFrameIndex": repair["targetFrameIndex"],
+                        "pointPairs": repair["pointPairs"],
+                        "targetFrameToReferenceMatrix": cp.matrix_dict(
+                            target_to_reference_np, width, height, 1.0, len(repair["pointPairs"]),
+                            len(repair["pointPairs"]), 1.0, mean_error_px,
+                        ),
+                        "targetFrameToGlobalMatrix": manual_repairs_by_frame[repair["targetFrameIndex"]]["targetFrameToGlobalMatrix"],
+                        "meanErrorPx": mean_error_px, "maxErrorPx": max_error_px,
+                        "scale": decomposed_fit["scale"], "rotationDeg": decomposed_fit["rotationDeg"],
+                        "acceptedBy": repair.get("acceptedBy", "unknown"),
+                        "status": "accepted", "version": repair.get("version", 0),
+                    })
+                    print(
+                        "[world-lock-repair-apply] repairId=%s target=%d reference=%d meanErrorPx=%.3f"
+                        % (repair["repairId"], repair["targetFrameIndex"], repair["referenceFrameIndex"], mean_error_px),
+                        file=sys.stderr,
+                    )
+
+            if manual_repairs_by_frame:
+                # Pass 2: the FINAL path, with repairs spliced in. Frames before
+                # each repair's target frame are unaffected (Part 8) since the
+                # loop in build_camera_path processes strictly in frame order
+                # and only frame_index-matching repairs alter its behavior.
+                camera_path = cp.build_camera_path(
+                    camera_transforms, orb_snapshots, width, height, len(camera_transforms),
+                    0, cv2, diagnostics_sink=_log_camera_path, manual_repairs=manual_repairs_by_frame,
+                )
+                camera_path["diagnostics"]["unavailableFrameRangesBeforeRepair"] = unavailable_before_repair
+                camera_path["repairs"] = applied_repair_records
+            else:
+                camera_path = automatic_path
+
+            camera_path["sourceFps"] = fps
+            print(
+                "camera path: %d keyframes, %d/%d frames globally covered, %d relock attempts (%d succeeded), %d repairs applied"
+                % (camera_path["diagnostics"]["keyframeCount"], camera_path["diagnostics"]["globallyCoveredFrameCount"],
+                   len(camera_transforms), camera_path["diagnostics"]["relockAttemptCount"],
+                   camera_path["diagnostics"]["relockSuccessCount"], len(manual_repairs_by_frame)),
+                file=sys.stderr,
+            )
+        except Exception as exc:  # noqa: BLE001 — Phase 1/2 path is additive; never fail the analysis
+            camera_path = None
+            print("camera path build failed, continuing without it: %s" % exc, file=sys.stderr)
+
     json.dump({"fps": fps, "sourceFps": src_fps,
                "coordinateSchemaVersion": WORLD_COORDINATE_SCHEMA_VERSION,
                "sourceAverageFps": evidence.get("averageFps"),
@@ -688,6 +890,7 @@ def main():
                "sourceDurationSeconds": source_duration_seconds, "sourceCodec": source_codec,
                "width": width, "height": height,
                **({"cameraEvidence": camera_evidence} if camera_evidence is not None else {}),
+               **({"cameraPath": camera_path} if camera_path is not None else {}),
                "frames": frames}, sys.stdout)
     sys.stdout.flush()
 

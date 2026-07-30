@@ -11,6 +11,10 @@ const out = path.join(root, ".viewport-transform-tmp");
 rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
 execFileSync("npx", ["tsc", "src/lib/calibration/viewportTransform.ts", "--outDir", out, "--module", "commonjs", "--target", "es2022", "--skipLibCheck"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
 const V = require(path.join(out, "viewportTransform.js"));
+const coordinatesOut = path.join(out, "coordinates");
+mkdirSync(coordinatesOut, { recursive: true });
+execFileSync("npx", ["tsc", "src/lib/video/coordinates.ts", "--outDir", coordinatesOut, "--module", "commonjs", "--target", "es2022", "--skipLibCheck"], { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
+const C = require(path.join(coordinatesOut, "coordinates.js"));
 
 let ok = true;
 const near = (a, b, t = 1e-9) => Math.abs(a - b) <= t;
@@ -69,6 +73,47 @@ const resized = V.resizeViewport(zoomedCentre, 900, 506);
 const cBefore = V.viewportToCanonical(640, 360, zoomedCentre);
 const cAfter = V.viewportToCanonical(450, 253, resized);
 check(`resize keeps the centred canonical point stable`, near(cBefore.x, cAfter.x, 1e-6) && near(cBefore.y, cAfter.y, 1e-6));
+
+// Regression: a stationary gate is always projected from its immutable original-source
+// coordinate. Athlete positions are deliberately not accepted by this API, so athlete
+// motion alone cannot move or accumulate error onto a gate.
+const source = { width: 1920, height: 1080 };
+const finish = Object.freeze({ x: 0.879884854403409, y: 0.6080552925084175 });
+const fullCrop = { x: 0, y: 0, width: source.width, height: source.height };
+const athletePositions = [0.07, 0.29, 0.51, 0.73, 0.96];
+const stationary = athletePositions.map(() => C.projectSourcePointToDisplay({
+  point: finish,
+  sourceWidth: source.width,
+  sourceHeight: source.height,
+  sourceCrop: fullCrop,
+  displayRect: { x: 0, y: 0, width: 1100, height: 618.75 },
+  fitMode: "contain",
+}));
+check("athlete movement cannot alter a stationary gate projection",
+  stationary.every((p) => near(p.x, stationary[0].x) && near(p.y, stationary[0].y)));
+check("stationary projection does not mutate the saved gate",
+  finish.x === 0.879884854403409 && finish.y === 0.6080552925084175);
+
+// Current-crop changes are resolved directly from the immutable source coordinate,
+// never from the previous projected point. These expected values also cover crop
+// offset sign and cropped-width normalization.
+const cropStates = [
+  { crop: fullCrop, expectedX: finish.x * 1100 },
+  { crop: { x: 480, y: 0, width: 960, height: 1080 }, expectedX: (finish.x * 1920 - 480) * (618.75 / 1080) + 275 },
+  { crop: { x: 960, y: 0, width: 960, height: 1080 }, expectedX: (finish.x * 1920 - 960) * (618.75 / 1080) + 275 },
+];
+const cropped = cropStates.map(({ crop }) => C.projectSourcePointToDisplay({
+  point: finish, sourceWidth: source.width, sourceHeight: source.height,
+  sourceCrop: crop, displayRect: { x: 0, y: 0, width: 1100, height: 618.75 }, fitMode: "contain",
+}));
+check("each crop projects from the immutable source point with the correct offset",
+  cropped.every((p, i) => near(p.x, cropStates[i].expectedX, 1e-6)));
+const replayed = [...cropStates].reverse().map(({ crop }) => C.projectSourcePointToDisplay({
+  point: finish, sourceWidth: source.width, sourceHeight: source.height,
+  sourceCrop: crop, displayRect: { x: 0, y: 0, width: 1100, height: 618.75 }, fitMode: "contain",
+})).reverse();
+check("forward/backward crop traversal has zero accumulated drift",
+  replayed.every((p, i) => near(p.x, cropped[i].x) && near(p.y, cropped[i].y)));
 
 rmSync(out, { recursive: true, force: true });
 console.log(ok ? "\nALL PASSED" : "\nFAILURES PRESENT");

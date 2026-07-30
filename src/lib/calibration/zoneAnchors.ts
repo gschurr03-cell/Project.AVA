@@ -3,9 +3,80 @@ import type { RawCameraEvidence } from "../video/recordingMode";
 
 export const GROUND_ANCHOR_SCHEMA_VERSION = "ava-ground-anchor-v1" as const;
 export const GROUND_ANCHOR_PROPAGATION_VERSION = "ava-background-affine-anchor-v1" as const;
+
+/**
+ * Minimum per-transform confidence (worker-reported, 0-1) a background camera
+ * transform must clear before it may move a ground anchor or gate a timing
+ * crossing. Controls: whether a single frame's estimated pan/rotate/scale is
+ * trusted at all. Conservative because this is the ONLY thing standing between
+ * a noisy transform and a silently-wrong timing crossing — the manifesto's
+ * "be conservative whenever uncertainty exists" applies directly. Basis:
+ * historical value carried over from the pre-panning-camera-mode static/world
+ * anchor work; it is an existing, independently-tested value (see
+ * `scripts/zone-anchor-sanity.mjs`, which asserts confidence `0.2` must be
+ * rejected), not a fresh derivation. It is NOT empirically fit to the real
+ * founder panning fixture — no measured confidence-vs-error curve exists in
+ * this repo. Treat as a temporary MVP safety default until real-video
+ * confidence/error pairs are collected and this comment is updated with them.
+ */
 export const MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE = 0.45;
-export const MAX_SAFE_ANCHOR_RESIDUAL_PX = 4;
-export const MIN_SAFE_ANCHOR_FEATURES = 12;
+
+/**
+ * Maximum median re-projection residual (px, in ORIGINAL source-frame pixels)
+ * a transform's inlier set may have. Controls: how tightly the fitted
+ * affine/homography must actually explain the matched background features.
+ * Conservative: halved from the pre-panning-camera-mode value (4px -> 2px)
+ * specifically for this MVP so a loosely-fit transform cannot silently pass.
+ * Basis: existing historical behavior for the first half of its lifetime (4px);
+ * the tighter 2px bound is a synthetic-test-only tightening (`panning-sanity.mjs`,
+ * `world-lock-sanity.mjs`) with no real-fixture residual distribution behind it
+ * yet — temporary MVP safety default.
+ */
+export const MAX_SAFE_ANCHOR_RESIDUAL_PX = 2;
+
+/**
+ * Minimum number of background (non-athlete) feature correspondences a
+ * transform must be fit from. Controls: whether there was enough independent
+ * evidence to trust the fitted motion at all (a transform from a handful of
+ * points can perfectly fit noise). Conservative: raised from the pre-panning
+ * value (12) to require roughly double the support before trusting a frame.
+ * Basis: synthetic tests only (`panning-sanity.mjs` exercises 80-feature
+ * fixtures well above this floor); no measured minimum-safe-feature-count
+ * study exists against the real founder video — temporary MVP safety default.
+ */
+export const MIN_SAFE_ANCHOR_FEATURES = 24;
+
+/**
+ * Minimum fraction of matched features RANSAC must keep as inliers. Controls:
+ * rejecting a transform that is technically well-supported in feature COUNT
+ * but mostly outliers (e.g. a moving crowd or the athlete dominating the
+ * match set) — this is what stops athlete motion from leaking into the
+ * "trusted" background estimate. Conservative: this check did not exist
+ * before the panning-camera-mode work; 0.2 is a deliberately low floor (most
+ * genuine background pans should clear 0.5+) chosen only to catch clearly
+ * degenerate fits without yet having real-video inlier-ratio data to set a
+ * tighter number safely. Basis: synthetic tests only — temporary MVP safety
+ * default, expected to tighten once real panning footage is measured.
+ */
+export const MIN_SAFE_ANCHOR_INLIER_RATIO = 0.2;
+
+/**
+ * Maximum consecutive degraded (present-but-unreliable) frames a propagation
+ * may tolerate — frozen at the last reliable position — before it is treated
+ * as a fatal tracking loss. Controls: how long a brief blip (motion blur,
+ * glare, a passing obstruction) may be tolerated without either (a) declaring
+ * total loss on a single bad frame or (b) accumulating unverified guessed
+ * movement. Conservative: 6 frames is a frame-rate-tolerance derivation, not a
+ * fitted value — at the validated 60 Hz analysis clock, 6 frames = 100 ms,
+ * judged short enough that no meaningful additional camera motion could have
+ * occurred undetected. It intentionally does NOT extend the anchor using the
+ * degraded frame's own (untrusted) numbers — see `propagateSourcePoint`,
+ * which contributes zero motion from a tolerated degraded frame (position
+ * freezes exactly where the last reliable frame left it) and still reports
+ * the true (low) confidence and `allFramesReliable: false` throughout, so a
+ * held frame can never silently read back as "safe" for a timing crossing.
+ */
+export const MAX_SAFE_ANCHOR_DEGRADED_FRAMES = 6;
 
 const pointSchema = z.object({ x: z.number(), y: z.number() });
 export type SourcePoint = z.infer<typeof pointSchema>;
@@ -93,10 +164,10 @@ export function sourceLineIntersectsViewport(c1: SourcePoint, c2: SourcePoint): 
   return true;
 }
 
-type Transform = RawCameraEvidence["transforms"][number];
+export type Transform = RawCameraEvidence["transforms"][number];
 
 /** Production camera evidence is previous source frame -> current source frame. */
-function applyForward(point: SourcePoint, transform: Transform, width: number, height: number): SourcePoint {
+export function applyForward(point: SourcePoint, transform: Transform, width: number, height: number): SourcePoint {
   if (transform.transformType === "homography" && transform.homography?.length === 9) {
     const [a, b, c, d, e, f, g, h, i] = transform.homography;
     const x = point.x * width;
@@ -116,7 +187,7 @@ function applyForward(point: SourcePoint, transform: Transform, width: number, h
 }
 
 /** Explicit inverse of the stored previous -> current partial-affine transform. */
-function applyInverse(point: SourcePoint, transform: Transform, width: number, height: number): SourcePoint {
+export function applyInverse(point: SourcePoint, transform: Transform, width: number, height: number): SourcePoint {
   if (transform.transformType === "homography" && transform.homography?.length === 9) {
     const m = transform.homography;
     const a = m[4] * m[8] - m[5] * m[7];
@@ -159,41 +230,84 @@ export function propagateSourcePoint(
   evidence: RawCameraEvidence,
   width: number,
   height: number,
-): { point: SourcePoint; confidence: number; safe: boolean; warnings: string[] } {
+): { point: SourcePoint; confidence: number; safe: boolean; allFramesReliable: boolean; warnings: string[] } {
   let current = point;
   let confidence = 1;
+  let degradedRunFrames = 0;
+  let fatalTrackingLoss = false;
+  // False the moment ANY inspected transform fails ANY reliability criterion —
+  // confidence, feature count, inlier ratio, or residual — even if that frame was
+  // only briefly tolerated and never became fatal. `confidence` alone cannot carry
+  // this: a transform can report high raw confidence while still failing on
+  // features/inliers/residual, and callers that gate a TIMING CROSSING must reject
+  // that case too (a merely "not fatal" propagation is not the same as "every frame
+  // was actually trustworthy").
+  let allFramesReliable = true;
   const warnings = new Set<string>();
-  const inspect = (transform: Transform | undefined) => {
+  /** Inspects one transform. Returns the transform to compose with (or null to
+   *  hold position for this frame) plus whether propagation must stop now. */
+  const inspect = (transform: Transform | undefined): { apply: Transform | null; stop: boolean } => {
     if (!transform) {
       confidence = 0;
+      fatalTrackingLoss = true;
+      allFramesReliable = false;
       warnings.add("missing_camera_transform");
-      return false;
+      return { apply: null, stop: true };
     }
+    // Confidence always reflects the worst transform this call actually touched,
+    // even during a tolerated brief hold — a degraded frame must never silently
+    // read back as full confidence to a downstream safety gate. This alone is NOT
+    // sufficient for crossing safety (see `allFramesReliable` above); it is what
+    // gates general rendering/projection tolerance.
     confidence = Math.min(confidence, transform.confidence);
-    if (transform.confidence < MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE) warnings.add("low_transform_confidence");
-    if (transform.supportingFeatureCount < MIN_SAFE_ANCHOR_FEATURES) warnings.add("insufficient_feature_support");
-    if (transform.residualPx == null || transform.residualPx > MAX_SAFE_ANCHOR_RESIDUAL_PX) warnings.add("unsafe_transform_residual");
-    return true;
+    const reliable = transform.confidence >= MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE
+      && transform.supportingFeatureCount >= MIN_SAFE_ANCHOR_FEATURES
+      && transform.inlierRatio >= MIN_SAFE_ANCHOR_INLIER_RATIO
+      && transform.residualPx != null
+      && transform.residualPx <= MAX_SAFE_ANCHOR_RESIDUAL_PX;
+    if (reliable) {
+      degradedRunFrames = 0;
+      return { apply: transform, stop: false };
+    }
+    allFramesReliable = false;
+    degradedRunFrames += 1;
+    warnings.add("brief_camera_transform_degradation");
+    if (degradedRunFrames > MAX_SAFE_ANCHOR_DEGRADED_FRAMES) {
+      fatalTrackingLoss = true;
+      if (transform.confidence < MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE) warnings.add("low_transform_confidence");
+      if (transform.supportingFeatureCount < MIN_SAFE_ANCHOR_FEATURES) warnings.add("insufficient_feature_support");
+      if (transform.inlierRatio < MIN_SAFE_ANCHOR_INLIER_RATIO) warnings.add("insufficient_inlier_ratio");
+      if (transform.residualPx == null || transform.residualPx > MAX_SAFE_ANCHOR_RESIDUAL_PX) warnings.add("unsafe_transform_residual");
+      return { apply: null, stop: true };
+    }
+    // Bounded hold: a tolerated degraded frame contributes NO motion at all (never
+    // the untrusted current transform, and never a re-application of a stale prior
+    // one) — position freezes exactly where the last reliable frame left it, so a
+    // run of brief blips can never accumulate guessed movement.
+    return { apply: null, stop: false };
   };
 
   if (targetFrameIndex > setupFrameIndex) {
     for (let frame = setupFrameIndex + 1; frame <= targetFrameIndex; frame += 1) {
-      const transform = transformAt(evidence, frame);
-      if (!inspect(transform)) break;
-      current = applyForward(current, transform!, width, height);
+      const { apply, stop } = inspect(transformAt(evidence, frame));
+      if (stop) break;
+      if (apply) current = applyForward(current, apply, width, height);
     }
   } else {
     for (let frame = setupFrameIndex; frame > targetFrameIndex; frame -= 1) {
-      const transform = transformAt(evidence, frame);
-      if (!inspect(transform)) break;
-      current = applyInverse(current, transform!, width, height);
+      const { apply, stop } = inspect(transformAt(evidence, frame));
+      if (stop) break;
+      if (apply) current = applyInverse(current, apply, width, height);
     }
   }
   const inUnsafeRange = evidence.unstableFrameRanges.some(
     (range) => targetFrameIndex >= range.startFrame && targetFrameIndex <= range.endFrame,
   );
-  if (inUnsafeRange) warnings.add("unstable_frame_range");
-  return { point: current, confidence, safe: warnings.size === 0, warnings: [...warnings] };
+  if (inUnsafeRange && degradedRunFrames > MAX_SAFE_ANCHOR_DEGRADED_FRAMES) {
+    fatalTrackingLoss = true;
+    warnings.add("unstable_frame_range");
+  }
+  return { point: current, confidence, safe: !fatalTrackingLoss, allFramesReliable, warnings: [...warnings] };
 }
 
 export function sourcePointToCompensated(
@@ -232,7 +346,11 @@ export function propagateAnchorFromSetupToFrame(
     c2: b.point,
     midpoint: { x: (a.point.x + b.point.x) / 2, y: (a.point.y + b.point.y) / 2 },
     confidence,
-    safe: a.safe && b.safe && confidence >= MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE,
+    // `allFramesReliable` (not just the confidence number) is required: a tolerated
+    // hold can carry a high raw transform.confidence while still failing on feature
+    // count, inlier ratio, or residual, and a timing crossing must reject that too.
+    safe: a.safe && b.safe && a.allFramesReliable && b.allFramesReliable
+      && confidence >= MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE,
     warnings,
   };
 }
@@ -266,7 +384,8 @@ export function reprojectSourceLineToFrame(
     c2: b.point,
     midpoint: { x: (a.point.x + b.point.x) / 2, y: (a.point.y + b.point.y) / 2 },
     confidence,
-    safe: a.safe && b.safe && confidence >= MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE,
+    safe: a.safe && b.safe && a.allFramesReliable && b.allFramesReliable
+      && confidence >= MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE,
     warnings: [...new Set([...a.warnings, ...b.warnings])],
   };
 }

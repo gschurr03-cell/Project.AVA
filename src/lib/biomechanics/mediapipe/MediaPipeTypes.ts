@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { rawCameraEvidenceSchema } from "../../video/recordingMode";
 import { WORLD_COORDINATE_SCHEMA_VERSION } from "../../video/worldProjection";
+import { cameraPathArtifactSchema } from "../../video/cameraPathSchema";
 
 /**
  * Shapes of the raw output a MediaPipe PoseLandmarker run produces, plus Zod
@@ -56,6 +57,11 @@ export const mediaPipeResultSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   cameraEvidence: rawCameraEvidenceSchema.optional(),
+  /** Phase 1 global keyframe camera path — must be listed here too, or Zod's
+   *  default unknown-key stripping silently drops it before it ever reaches
+   *  `buildPoseSequence`/`poseSequenceSchema` (the actual root cause of an
+   *  earlier real-run regression: the artifact schema had it, this one didn't). */
+  cameraPath: cameraPathArtifactSchema.optional(),
   coordinateSchemaVersion: z.literal(WORLD_COORDINATE_SCHEMA_VERSION).optional(),
   frames: z.array(mediaPipeFrameSchema),
 });

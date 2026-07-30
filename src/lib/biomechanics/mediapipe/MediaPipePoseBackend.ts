@@ -67,6 +67,7 @@ export function buildPoseSequence(raw: MediaPipePoseResult): PoseSequence {
           recordingAssessment: classifyRecordingMode(result.cameraEvidence),
         }
       : {}),
+    ...(result.cameraPath ? { cameraPath: result.cameraPath } : {}),
     ...(result.sourceFps != null
       ? {
           sourceMetadata: {

@@ -2,6 +2,7 @@ import { poseSequenceSchema, type JointName, type PoseSequence } from "@/lib/bio
 import type { createClient } from "@/lib/supabase/server";
 import { buildOverlayFrames, type OverlayFrame } from "./overlay";
 import type { RawCameraEvidence, RecordingAssessment } from "./recordingMode";
+import type { CameraPathArtifact } from "./cameraPathSchema";
 
 /**
  * Server-only loader that turns an analysis's stored pose artifact into overlay
@@ -98,6 +99,7 @@ export interface OverlayLoadResult {
     height: number;
     recordingAssessment?: RecordingAssessment;
     cameraEvidence?: RawCameraEvidence;
+    cameraPath?: CameraPathArtifact;
   } | null;
 }
 
@@ -138,6 +140,7 @@ export async function loadOverlayFrames(
         height: sequence.height,
         recordingAssessment: sequence.recordingAssessment,
         cameraEvidence: sequence.cameraEvidence,
+        cameraPath: sequence.cameraPath,
       },
     };
     overlayCache.set(keypointsPath, { expiresAt: Date.now() + CACHE_TTL_MS, result });

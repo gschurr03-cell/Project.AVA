@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { PoseEstimateOptions, VideoRef } from "../pose-backend";
@@ -49,7 +51,23 @@ export class PythonMediaPipePoseService implements MediaPipePoseService {
     if (opts.fps != null) args.push("--fps", String(opts.fps));
     if (opts.maxFrames != null) args.push("--max-frames", String(opts.maxFrames));
 
-    const stdout = await this.spawnRunner(args);
+    // Phase 2 (Part 11): accepted manual repairs are handed to the runner via
+    // a temp file (not argv — point-pair JSON can exceed comfortable arg-
+    // length limits) so it can rebuild the repaired global camera path.
+    let repairsDir: string | null = null;
+    if (opts.manualRepairs?.length) {
+      repairsDir = mkdtempSync(path.join(tmpdir(), "ava-world-lock-repairs-"));
+      const repairsFile = path.join(repairsDir, "repairs.json");
+      writeFileSync(repairsFile, JSON.stringify(opts.manualRepairs));
+      args.push("--repairs-file", repairsFile);
+    }
+
+    let stdout: string;
+    try {
+      stdout = await this.spawnRunner(args);
+    } finally {
+      if (repairsDir) rmSync(repairsDir, { recursive: true, force: true });
+    }
 
     let parsed: unknown;
     try {
