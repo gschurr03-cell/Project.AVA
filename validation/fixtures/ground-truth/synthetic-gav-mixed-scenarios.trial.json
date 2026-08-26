@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "ava-ground-truth-trial-v1",
+  "trialId": "synthetic-gav-mixed-scenarios",
+  "sourceVideo": "tmp/phase94/gav.pose.json (real Gav pose artifact, reused as the substrate)",
+  "fps": 60,
+  "zoneLengthMeters": 20,
+  "travelDirection": "left_to_right",
+  "athlete": "Gav",
+  "cameraPosition": "stationary, perpendicular",
+  "notes": "SYNTHETIC — Part X fixture. Ground-truth values here are HAND-CONSTRUCTED to exercise the validator's logic paths (small spatial error, a deliberately unmatched contact, a large out-of-uncertainty error, a missing uncertainty value, extra AVA contacts as false positives via partial GT coverage, and a small timing offset). They are NOT real physical measurements and must never be reported as scientific validation of either model. Real ground truth is collected per docs/ava-ground-truth-field-testing-protocol.md.",
+  "contacts": [
+    { "contactNumber": 1, "side": "left", "sGroundTruthM": 0.93, "timestampS": 0.3167, "measurementMethod": "synthetic — small spatial error case (+1cm vs AVA canonical)", "uncertaintyM": 0.02 },
+    { "contactNumber": 2, "side": "right", "sGroundTruthM": 3.003244, "timestampS": 0.5167, "measurementMethod": "synthetic — exact match case", "uncertaintyM": 0.02 },
+    { "contactNumber": 3, "side": "left", "sGroundTruthM": 5.151458, "timestampS": 0.5, "measurementMethod": "synthetic — deliberately mistimed by 0.233s (outside the 60ms match window) to exercise AVA_FALSE_NEGATIVE / AVA_FALSE_POSITIVE classification", "uncertaintyM": 0.02 },
+    { "contactNumber": 4, "side": "unknown", "sGroundTruthM": 7.38472, "timestampS": 0.9333, "measurementMethod": "synthetic — large 8cm error (outside declared uncertainty) with side deliberately left unknown", "uncertaintyM": 0.02 },
+    { "contactNumber": 5, "side": "left", "sGroundTruthM": 9.402504, "timestampS": 1.1667, "measurementMethod": "synthetic — exact match, uncertainty deliberately omitted to exercise UNCERTAINTY_UNKNOWN", "uncertaintyM": null },
+    { "contactNumber": 6, "side": "right", "sGroundTruthM": 11.633124, "timestampS": 1.3833, "measurementMethod": "synthetic — small spatial error case (+2cm)", "uncertaintyM": 0.02 }
+  ],
+  "timing": {
+    "entryTimeS": 0.21,
+    "exitTimeS": 2.14,
+    "zoneTimeS": 1.93,
+    "timingDeviceSource": "synthetic",
+    "uncertaintyS": 0.01
+  },
+  "peakVelocity": { "available": false, "valueMps": null, "method": null, "uncertaintyMps": null }
+}

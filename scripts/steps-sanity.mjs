@@ -97,6 +97,7 @@ try {
         target: "es2022",
         skipLibCheck: true,
         esModuleInterop: true,
+        resolveJsonModule: true,
         strict: true,
         moduleResolution: "node",
         baseUrl: root,

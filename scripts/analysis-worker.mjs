@@ -23,6 +23,8 @@ import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import {
   cleanupStaleTempDirs,
+  computeLeaseSeconds,
+  computeProcessingTimeoutSeconds,
   jobTempDir,
   loadWorkerConfig,
   removeJobTempDir,
@@ -126,6 +128,7 @@ try {
       "src/lib/analysis/resultContract.ts",
       "src/lib/analysis/experimental30.ts",
       "src/lib/calibration/zoneAnchors.ts",
+      "src/lib/calibration/gateLockDebug.ts",
       "src/lib/jobs/policy.ts",
       "src/lib/video/analysisFps.ts",
       "--outDir",
@@ -150,6 +153,9 @@ try {
     [
       "tsc",
       "src/lib/acceleration/metrics.ts",
+      "src/lib/acceleration/steps.ts",
+      "src/lib/acceleration/progression.ts",
+      "src/lib/acceleration/mechanicsPipeline.ts",
       "--outDir",
       accelerationBuildDir,
       "--rootDir",
@@ -197,15 +203,24 @@ const {
   EXPERIMENTAL_30_COMPATIBILITY_GROUP,
 } = loadCompiledModule(buildDir, "analysis/experimental30");
 const { detectWorldBoundaryCrossing } = loadCompiledModule(buildDir, "calibration/zoneAnchors");
-const { computeAccelerationMetrics } = loadCompiledModule(
+const { buildGateLockDebugArtifact } = loadCompiledModule(buildDir, "calibration/gateLockDebug");
+const { computeAccelerationMetrics, computeAccelerationAnalysis } = loadCompiledModule(
   accelerationBuildDir,
   "acceleration/metrics",
 );
-const { classifyWorkerFailure, retryDelaySeconds } = loadCompiledModule(buildDir, "jobs/policy");
-const { classifySourceFps, UNSUPPORTED_FPS_MESSAGE } = loadCompiledModule(
-  buildDir,
-  "video/analysisFps",
+const { computeAccelerationMechanics } = loadCompiledModule(
+  accelerationBuildDir,
+  "acceleration/mechanicsPipeline",
 );
+const { classifyWorkerFailure, retryDelaySeconds } = loadCompiledModule(buildDir, "jobs/policy");
+const {
+  classifySourceFps,
+  classifyFpsBand,
+  normalizeFpsDisplay,
+  UNSUPPORTED_FPS_MESSAGE,
+  MAX_SUPPORTED_FPS,
+  MINIMUM_60_FPS_CLASS,
+} = loadCompiledModule(buildDir, "video/analysisFps");
 const { CONSERVATIVE_TIMING_POLICY_V1 } = loadCompiledModule(
   buildDir,
   "measurement/timingPolicy",
@@ -456,14 +471,65 @@ async function setStage(job, status) {
   });
 }
 
-async function heartbeat(job) {
+async function heartbeatOnce(job, leaseSeconds, progress) {
   const { data, error } = await supabase.rpc("heartbeat_analysis_job", {
     p_job_id: job.id,
     p_claim_token: job.claim_token,
     p_worker_id: config.workerId,
-    p_lease_seconds: config.leaseSeconds,
+    p_lease_seconds: leaseSeconds,
+    // Day 104 (Part 8): the latest real progress snapshot, if any has
+    // arrived since the last heartbeat — `null` leaves the DB's existing
+    // value untouched (see the RPC's `coalesce`), so a job phase with no
+    // frame-level progress (downloading, validating, uploading) never wipes
+    // out the last real pass1/pass2 snapshot.
+    p_progress: progress ?? null,
   });
-  if (error || data !== true) throw new Error("stale job claim during heartbeat");
+  return { ok: !error && data === true, error };
+}
+
+/**
+ * Day 95 audit (Part 6): a single missed heartbeat (a transient network blip,
+ * a slow event-loop tick under load) used to be immediately fatal — the next
+ * interval tick would just find `lease_expires_at` already past and every
+ * following heartbeat would fail too, since the RPC only extends a
+ * still-live lease. One retry (a few seconds later) recovers a real
+ * transient miss while a GENUINELY stale/reclaimed job (another worker
+ * already took it, or the lease truly expired) still fails and is surfaced,
+ * not silently swallowed.
+ */
+async function heartbeat(job, leaseSeconds = config.leaseSeconds, progress = null) {
+  let result = await heartbeatOnce(job, leaseSeconds, progress);
+  if (!result.ok) {
+    structuredLog("warn", "heartbeat_miss", {
+      workerId: config.workerId,
+      jobId: job.id,
+      analysisId: job.analysis_id,
+      leaseSeconds,
+      error: result.error?.message ?? "lease already expired",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    result = await heartbeatOnce(job, leaseSeconds, progress);
+  }
+  if (!result.ok) {
+    structuredLog("error", "heartbeat_failed", {
+      workerId: config.workerId,
+      jobId: job.id,
+      analysisId: job.analysis_id,
+      leaseSeconds,
+      error: result.error?.message ?? "lease already expired",
+    });
+    throw new Error("stale job claim during heartbeat");
+  }
+}
+
+async function reportProgress(job, progress) {
+  const { data, error } = await supabase.rpc("report_analysis_job_progress", {
+    p_job_id: job.id,
+    p_claim_token: job.claim_token,
+    p_worker_id: config.workerId,
+    p_progress: progress,
+  });
+  if (error || data !== true) throw new Error("stale job claim while reporting progress");
 }
 
 function writeArtifacts(analysisId, sequence, analysis, warnings, tempDir) {
@@ -495,8 +561,19 @@ const FLY_METRIC_META = {
 function buildResultFoundation({ claimed, session, sequence, metrics, warnings, modelVersion }) {
   const source = sequence.sourceMetadata;
   const experimental = source?.fpsClassification === "experimental_30_fps_class";
-  const expectedFps = experimental ? 30 : VALIDATED_ANALYSIS_FPS;
-  if (!source || sequence.fps !== expectedFps) {
+  // Any general native source (24, 45, 75, 90, 144, 165, ... — everything
+  // outside the two precise named windows) keeps its own real rate as
+  // analysisFps instead of being forced into 30 or 60.
+  const isNativeSource =
+    source?.fpsClassification === "native_source_class" ||
+    source?.fpsClassification === "validated_high_speed_native_class";
+  const expectedFps = experimental ? 30 : isNativeSource ? source.fps : VALIDATED_ANALYSIS_FPS;
+  // Compare with a small tolerance for native rates since the Python side
+  // rounds the detected value to 3 decimal places.
+  const fpsMatches = isNativeSource
+    ? Math.abs(sequence.fps - expectedFps) < 0.01
+    : sequence.fps === expectedFps;
+  if (!source || !fpsMatches) {
     throw new Error("Required tier provenance is missing or analysis FPS does not match its source tier.");
   }
   const inputSnapshot = inputSnapshotSchema.parse(claimed.input_snapshot);
@@ -511,7 +588,9 @@ function buildResultFoundation({ claimed, session, sequence, metrics, warnings, 
     label: confidenceLabel(score),
     rationale: experimental
       ? "Pose-frame coverage over preserved real frames in the experimental 30 FPS profile."
-      : "Pose-frame coverage on the validated 60 FPS analysis timeline.",
+      : isNativeSource
+        ? `Pose-frame coverage on the native ${sequence.fps} FPS analysis timeline.`
+        : "Pose-frame coverage on the validated 60 FPS analysis timeline.",
   };
   const cameraAssessment = sequence.recordingAssessment ?? {
     recordingMode: "unsupported_recording",
@@ -550,6 +629,11 @@ function buildResultFoundation({ claimed, session, sequence, metrics, warnings, 
       variableFrameRate: source.variableFrameRate ?? false,
     },
     analysisFps: sequence.fps,
+    sourceFpsBand: classifyFpsBand(source.fps),
+    sourceFpsDisplay: normalizeFpsDisplay(source.fps),
+    // Every current classification analyzes every real source frame at its own
+    // native rate — resampling never silently happens, so this is always false.
+    wasResampled: Math.abs(sequence.fps - source.fps) > 0.05,
     experimental,
     experimentVersion: experimental ? EXPERIMENTAL_30_PROFILE_VERSION : null,
     validationStatus: experimental ? "experimental" : "validated",
@@ -689,7 +773,37 @@ async function uploadPoseArtifact(athleteId, sessionId, analysisId, sequence) {
  */
 function readWorkerCalibration(snapshot) {
   const gates = snapshot?.session?.calibrationInputs?.gates;
-  if (!gates || typeof gates !== "object" || !gates.startGate || !gates.finishGate) return null;
+  if (!gates || typeof gates !== "object") return null;
+  // Acceleration's multi-marker calibration (`ava-acceleration-calibration-v1`)
+  // is a distinct shape from fly's ground-anchor start/finish gates below — it
+  // was never recognized here, so every acceleration job logged
+  // `calibrationSource: "none"` regardless of whether real calibration existed.
+  // The worker's own metric computation always read `session.calibration_gates`
+  // directly and was unaffected; this only fixes the misleading diagnostic/
+  // provenance summary.
+  if (gates.schemaVersion === "ava-acceleration-calibration-v1") {
+    if (!Array.isArray(gates.markers) || gates.markers.length < 2) return null;
+    const source = gates.calibrationSource ?? (gates.confirmedAt ? "manual_confirmed" : "auto");
+    const lastMarker = gates.markers[gates.markers.length - 1];
+    return {
+      calibrationSource: source,
+      calibrationRevision: gates.revision ?? 0,
+      authoritySchemaVersion: gates.authoritySchemaVersion ?? null,
+      confirmedAt: gates.confirmedAt ?? null,
+      distanceM: lastMarker?.distanceM ?? null,
+      startC1: null,
+      startC2: null,
+      startTimeS: null,
+      finishC1: null,
+      finishC2: null,
+      finishTimeS: null,
+      cameraType: "stationary",
+      referenceFrameIndex: 0,
+      cameraTrackingSummary: null,
+      manualAuthoritative: source === "manual_confirmed",
+    };
+  }
+  if (!gates.startGate || !gates.finishGate) return null;
   const userPlaced =
     gates.startBoundary?.selectedByUser === true && gates.finishBoundary?.selectedByUser === true;
   const source = gates.calibrationSource ?? (userPlaced ? "manual_confirmed" : "auto");
@@ -723,9 +837,24 @@ async function processJob(claimed) {
   const tempDir = jobTempDir(config, claimed.id);
   let heartbeatError = null;
   let sequence;
+  // Day 95 audit (Part 6): starts at the operator-configured floor (enough to
+  // survive claim -> download -> validate), then is upgraded ONCE the
+  // session's own known duration/fps/resolution give a real cost estimate —
+  // see computeLeaseSeconds() below, right after `session` is fetched.
+  let currentLeaseSeconds = config.leaseSeconds;
+  // Day 104 (Part 8): the latest real progress snapshot from the pose
+  // subprocess, if any has arrived yet — set via `opts.onProgress` below,
+  // read by every heartbeat tick. Job-scoped (a fresh closure per
+  // `processJob` call), so a new attempt never inherits a stale snapshot
+  // from a previous one.
+  let latestProgress = null;
+  let previousMeasuredProgress = null;
+  let smoothedThroughput = null;
+  let lastProgressReportAt = 0;
+  let progressReportInFlight = Promise.resolve();
   const heartbeatTimer = setInterval(
     () =>
-      heartbeat(claimed).catch((error) => {
+      heartbeat(claimed, currentLeaseSeconds, latestProgress).catch((error) => {
         heartbeatError = error;
       }),
     config.heartbeatSeconds * 1000,
@@ -737,7 +866,10 @@ async function processJob(claimed) {
     attemptNumber: claimed.attempt_count,
     processingStage: "claimed",
   });
-  await supabase.from("sessions").update({ status: "analyzing" }).eq("id", claimed.session_id);
+  // Phase 7.2B: analysis_jobs.status is the sole lifecycle authority. The
+  // database transition trigger projects `claimed` and every active stage to
+  // the parent analysis/session atomically; the worker must not race it through
+  // a second session-status RPC.
 
   const { data: analysisRow } = await supabase
     .from("analyses")
@@ -769,6 +901,49 @@ async function processJob(claimed) {
     )
     .eq("id", claimed.session_id)
     .single();
+
+  // Day 95 audit (Part 6): upgrade the lease NOW, before the long MediaPipe
+  // call begins, using whatever duration/fps/resolution is already known for
+  // this session (from a prior successful run) — a long-but-healthy job must
+  // not be reclaimed as stale just because the fixed default lease was sized
+  // for a typical clip, not this one. A brand-new session with no prior
+  // metadata simply keeps the configured floor (computeLeaseSeconds' fallback).
+  currentLeaseSeconds = computeLeaseSeconds(session, config.leaseSeconds);
+  if (currentLeaseSeconds !== config.leaseSeconds) {
+    log("lease_scaled", {
+      jobId: claimed.id,
+      analysisId: claimed.analysis_id,
+      sessionId: claimed.session_id,
+      configuredLeaseSeconds: config.leaseSeconds,
+      scaledLeaseSeconds: currentLeaseSeconds,
+      knownDurationS: session?.duration_s ?? null,
+      knownFps: session?.fps ?? null,
+    });
+    await heartbeat(claimed, currentLeaseSeconds, latestProgress).catch((error) => {
+      heartbeatError = error;
+    });
+  }
+  // Day 96 audit (Part 9): scale the MediaPipe subprocess's hard-kill timeout
+  // the same way, and independently of, the lease above — see
+  // computeProcessingTimeoutSeconds' docstring for why it needs a wider
+  // margin than the lease. A real rerun of this exact session during this
+  // audit was SIGKILLed by the flat 900s default before this fix existed.
+  const scaledProcessingTimeoutSeconds = computeProcessingTimeoutSeconds(
+    session,
+    config.processingTimeoutSeconds,
+  );
+  if (scaledProcessingTimeoutSeconds !== config.processingTimeoutSeconds) {
+    log("processing_timeout_scaled", {
+      jobId: claimed.id,
+      analysisId: claimed.analysis_id,
+      sessionId: claimed.session_id,
+      configuredProcessingTimeoutSeconds: config.processingTimeoutSeconds,
+      scaledProcessingTimeoutSeconds,
+      knownDurationS: session?.duration_s ?? null,
+      knownFps: session?.fps ?? null,
+    });
+  }
+
   // Phase 2 (Part 11): accepted manual World-Lock Repairs travel with the
   // session's calibration_gates jsonb (see saveWorldLockRepair in actions.ts)
   // — never discarded on rerun, and never overridden by automatic ORB output
@@ -831,10 +1006,76 @@ async function processJob(claimed) {
     // All production biomechanics run on AVA's validated 60 Hz clock. The Python
     // runner samples high-speed source footage onto this clock; it never relabels
     // every 120/240 FPS frame as 60 FPS. The original object remains untouched.
+    // The stationary athlete tracker (Day 95 audit) uses the coach's own
+    // configured sprint direction for acquisition (expected entry side) and
+    // identity-continuity (direction-consistency) checks — read straight from
+    // the same calibration snapshot the timing/zone math already trusts, so
+    // there is exactly one source of truth for "which way is the athlete
+    // running." Absent/unset gates -> "auto" (no direction preference; the
+    // tracker still works, just without that safeguard).
+    const configuredTravelDirection =
+      analysisClaim.input_snapshot?.session?.calibrationInputs?.gates?.travelDirection ?? "auto";
+    // Day 103 audit: the athlete tracker's pre-zone acquisition corridor is
+    // built around the coach's own CALIBRATED start gate — the same gate bar
+    // (cone-to-cone) the timing/zone math already trusts — instead of a raw
+    // frame-edge fraction. Reduced to its midpoint here exactly like
+    // `gateMidpoint()`/`gatesToManualPoints()` (src/lib/calibration/gates.ts)
+    // already do for the measurement engine, so there is exactly one
+    // definition of "where the start gate is." Absent when no gate has been
+    // confirmed yet (the tracker falls back to the frame-edge band).
+    const startGateBar = analysisClaim.input_snapshot?.session?.calibrationInputs?.gates?.startGate;
+    const entryGate =
+      startGateBar?.c1 && startGateBar?.c2
+        ? {
+            x: (startGateBar.c1.x + startGateBar.c2.x) / 2,
+            y: (startGateBar.c1.y + startGateBar.c2.y) / 2,
+          }
+        : undefined;
     const opts = {
       fps: VALIDATED_ANALYSIS_FPS,
+      travelDirection: configuredTravelDirection,
+      timeoutMs: scaledProcessingTimeoutSeconds * 1000,
+      ...(entryGate ? { entryGate } : {}),
       ...(MAX_FRAMES ? { maxFrames: MAX_FRAMES } : {}),
       ...(acceptedManualRepairs.length ? { manualRepairs: acceptedManualRepairs } : {}),
+      // Day 104 (Part 8): captured into the job-scoped `latestProgress`,
+      // which every heartbeat tick relays to the DB — the only write path,
+      // no separate timer/poll.
+      onProgress: (snapshot) => {
+        const passOffset = snapshot.stage === "pass2" ? snapshot.totalFrames : 0;
+        const processedUnits = passOffset + snapshot.framesCompleted;
+        const totalUnits = snapshot.totalFrames * 2;
+        if (previousMeasuredProgress && processedUnits > previousMeasuredProgress.processedUnits) {
+          const elapsedS = (snapshot.capturedAtMs - previousMeasuredProgress.capturedAtMs) / 1000;
+          if (elapsedS > 0) {
+            const observed = (processedUnits - previousMeasuredProgress.processedUnits) / elapsedS;
+            smoothedThroughput = smoothedThroughput == null
+              ? observed
+              : (0.3 * observed) + (0.7 * smoothedThroughput);
+          }
+        }
+        latestProgress = {
+          ...snapshot,
+          processedUnits,
+          totalUnits,
+          progressPercent: 18 + 54 * (processedUnits / totalUnits),
+          throughputUnitsPerSecond: smoothedThroughput,
+          etaSeconds: smoothedThroughput && smoothedThroughput > 0
+            ? (totalUnits - processedUnits) / smoothedThroughput
+            : null,
+          method: "measured_work_units_v1",
+          updatedAt: new Date(snapshot.capturedAtMs).toISOString(),
+        };
+        previousMeasuredProgress = { processedUnits, capturedAtMs: snapshot.capturedAtMs };
+        // Persist promptly but bounded; heartbeats remain the lease authority.
+        if (snapshot.capturedAtMs - lastProgressReportAt >= 2000 || processedUnits === 0 || processedUnits === totalUnits) {
+          lastProgressReportAt = snapshot.capturedAtMs;
+          const report = latestProgress;
+          progressReportInFlight = progressReportInFlight
+            .then(() => reportProgress(claimed, report))
+            .catch((error) => { heartbeatError = error; });
+        }
+      },
     };
     if (acceptedManualRepairs.length) {
       log(`applying ${acceptedManualRepairs.length} accepted manual world-lock repair(s)`);
@@ -918,31 +1159,71 @@ async function processJob(claimed) {
       });
     if (sourceClassification === "unsupported_source_fps")
       throw new Error(UNSUPPORTED_FPS_MESSAGE);
+    // Acceleration has no experimental-tier completion path of its own (that
+    // pipeline — event detection, zone timing model, etc. — is fly-only and
+    // never built out here; `experimentalResult` always stays null on the
+    // acceleration branch below). The validated completion RPC hard-requires a
+    // matching identity — silently proceeding on a sub-60fps acceleration clip
+    // previously crashed at the "completing" stage with a confusing "invalid
+    // experimental result identity or provenance" error instead of a clear,
+    // actionable one. Fail closed here instead. This is a capability check on
+    // the exact detected rate, not a classification allowlist: a native 75,
+    // 90, 144, or 165 FPS source is eligible for exactly the same reason a
+    // validated 59.94/60 FPS source is — its real rate clears the threshold.
+    // It is also a precise-contact-timing accuracy requirement, not a
+    // file-acceptance rule — the source video itself is still accepted,
+    // stored, and reviewable at any supported FPS; only acceleration's
+    // contact-timing metrics require 60+.
+    const accelerationEligible =
+      sourceClassification !== "unsupported_source_fps" &&
+      sourceClassification !== "experimental_30_fps_class" &&
+      sequence.sourceMetadata.fps >= MINIMUM_60_FPS_CLASS;
+    if (session.analysis_type === "acceleration" && !accelerationEligible) {
+      throw new Error(
+        `Acceleration analysis requires 60 fps or higher source video (this clip was classified "${sourceClassification}", ~${sequence.sourceMetadata.fps} fps). Re-record at 60 fps or higher.`,
+      );
+    }
     sequence.sourceMetadata.fpsClassification = sourceClassification;
+    const fpsBand = classifyFpsBand(sequence.sourceMetadata.fps);
+    const fpsDisplay = normalizeFpsDisplay(sequence.sourceMetadata.fps);
+    const wasResampled = Math.abs(sequence.fps - sequence.sourceMetadata.fps) > 0.05;
     log("source_fps_classified", {
       jobId: claimed.id,
       analysisId: claimed.analysis_id,
-      sourceFps: sequence.sourceMetadata.fps,
+      sourceFpsExact: sequence.sourceMetadata.fps,
+      sourceFpsDisplay: fpsDisplay,
       averageFps: sequence.sourceMetadata.averageFps,
       nominalFps: sequence.sourceMetadata.nominalFps,
       realFps: sequence.sourceMetadata.realFps,
       timestampFps: sequence.sourceMetadata.timestampFps,
       variableFrameRate: sequence.sourceMetadata.variableFrameRate,
       sourceFpsClassification: sourceClassification,
+      fpsBand,
       analysisFps: sequence.fps,
+      wasResampled,
+      accelerationEligible,
     });
     if (
       sequence.sourceMetadata.durationSeconds > config.maxDurationSeconds ||
       sequence.sourceMetadata.frameCount > config.maxSourceFrames
     )
       throw new Error("source video exceeded duration or frame limit");
+    await progressReportInFlight;
     if (heartbeatError) throw heartbeatError;
-    await supabase
-      .from("sessions")
-      .update({
-        fps: sequence.sourceMetadata.fps,
-        fps_classification: sourceClassification,
-        fps_metadata: {
+    // `service_role` deliberately has no UPDATE grant on `sessions` (a real
+    // lockdown — see migrations 0058/0060), so this can't be a raw table
+    // update: a raw `.update()` here would fail permission-denied on every
+    // single run, and — until this was found during the FPS runtime audit —
+    // did, SILENTLY, because the result was never checked. `sessions.fps` was
+    // consequently never actually persisted by this code path. Route through
+    // the narrow SECURITY DEFINER RPC (0069) instead, and check its result.
+    const { data: sessionMetadataUpdated, error: sessionMetadataError } = await supabase.rpc(
+      "update_session_source_metadata",
+      {
+        p_session_id: claimed.session_id,
+        p_fps: sequence.sourceMetadata.fps,
+        p_fps_classification: sourceClassification,
+        p_fps_metadata: {
           averageFps: sequence.sourceMetadata.averageFps ?? null,
           nominalFps: sequence.sourceMetadata.nominalFps ?? null,
           realFps: sequence.sourceMetadata.realFps ?? null,
@@ -950,13 +1231,21 @@ async function processJob(claimed) {
           variableFrameRate: sequence.sourceMetadata.variableFrameRate ?? false,
           tierReason: sequence.sourceMetadata.fpsTierReason ?? null,
           tierPolicyVersion: sequence.sourceMetadata.fpsTierPolicyVersion ?? null,
+          fpsBand,
+          fpsDisplay,
+          wasResampled,
         },
-        duration_s: sequence.sourceMetadata.durationSeconds,
-        width: sequence.width,
-        height: sequence.height,
-        codec: sequence.sourceMetadata.codec,
-      })
-      .eq("id", claimed.session_id);
+        p_duration_s: sequence.sourceMetadata.durationSeconds,
+        p_width: sequence.width,
+        p_height: sequence.height,
+        p_codec: sequence.sourceMetadata.codec,
+      },
+    );
+    if (sessionMetadataError || sessionMetadataUpdated !== true) {
+      throw new Error(
+        `failed to persist detected source video metadata: ${sessionMetadataError?.message ?? "session not found"}`,
+      );
+    }
 
     await setStage(claimed, "generating_results");
     let persistedMetrics;
@@ -972,10 +1261,103 @@ async function processJob(claimed) {
             finishDistanceM,
           }
         : null;
+      // Always compute the proven single-finish-gate engine first — this
+      // guarantees every legacy-required field (splits.m10S/m20S/m30S,
+      // finishDistanceM, segmentVelocities, runTime, ...) is populated and
+      // schema-valid even when the richer marker-based analysis below cannot
+      // run. The multi-marker engine only ADDS detail; it never replaces this.
       persistedMetrics = computeAccelerationMetrics(
         accelerationOverlayFrames(sequence),
         calibration,
       );
+
+      // Multi-marker Acceleration Analysis (Part 2 of the MVP): only runs when
+      // the coach has calibrated distance markers via the new workflow. Reads
+      // accepted calibration straight from `calibration_gates` — the same
+      // authoritative jsonb the coach's save action wrote, so a rerun can never
+      // silently diverge from what was confirmed (Part 11).
+      const accelCalibration = session.calibration_gates;
+      const markers = Array.isArray(accelCalibration?.markers) ? accelCalibration.markers : null;
+      if (accelCalibration?.schemaVersion === "ava-acceleration-calibration-v1" && markers?.length >= 2) {
+        const analysis = computeAccelerationAnalysis({
+          frames: accelerationOverlayFrames(sequence),
+          poseSequence: sequence,
+          markers,
+          travelDirection: accelCalibration.travelDirection ?? "left_to_right",
+          manualStartOverride: accelCalibration.manualStartOverride ?? null,
+          fps: sequence.fps,
+        });
+        persistedMetrics = {
+          ...persistedMetrics,
+          // The manually confirmed start frame (if any) is authoritative (Part
+          // 5) — it overrides the legacy engine's automatic-only startEvent for
+          // display. The legacy numeric splits/runTime above were computed
+          // against the AUTOMATIC start only (that engine has no override
+          // hook); flag that explicitly rather than silently mixing bases.
+          startEvent: analysis.startEvent,
+          warnings:
+            analysis.startEvent.provenance === "manual"
+              ? [
+                  ...persistedMetrics.warnings,
+                  "Legacy 0-10/20/30 m splits above were computed against the automatic start estimate, not the manually confirmed frame — use markerSplits/intervalMetrics for the corrected values.",
+                ]
+              : persistedMetrics.warnings,
+          analysisSchemaVersion: analysis.schemaVersion,
+          analysisZone: analysis.analysisZone,
+          calibratedMarkers: analysis.calibratedMarkers,
+          markerSplits: analysis.splits,
+          intervalMetrics: analysis.intervalMetrics,
+          steps: analysis.steps,
+          stepsStatus: analysis.stepsStatus,
+          stepsReason: analysis.stepsReason,
+          peakVelocityDetail: analysis.peakVelocity,
+          asymmetries: analysis.asymmetries,
+          progression: analysis.progression,
+          technicalProgression: analysis.technicalProgression,
+          quality: analysis.quality,
+        };
+
+        // Phase 3 (Part 4/17) — mechanical observations require the raw pose
+        // sequence, which only the worker has; the UI derives progression
+        // charts, strategy classification, and mechanics-driven limiting
+        // factors from these PERSISTED fields at render time (same split as
+        // the existing step-level limiting-factor engine). Never fabricates
+        // a result: returns null (and stays unset) when there are no steps.
+        const mechanics = computeAccelerationMechanics({
+          analysis,
+          poseSequence: sequence,
+          travelDirection: accelCalibration.travelDirection ?? "left_to_right",
+          legLengthM: null,
+        });
+        if (mechanics) {
+          persistedMetrics = { ...persistedMetrics, mechanics };
+          log(
+            "[acceleration-mechanics-apply] " +
+              JSON.stringify({
+                sessionId: claimed.session_id,
+                contactsWithMechanics: mechanics.quality.contactsWithMechanics,
+                contactsTotal: mechanics.quality.contactsTotal,
+                averageConfidence: Number(mechanics.quality.averageConfidence.toFixed(2)),
+                strategyLabel: mechanics.strategyClassification.label,
+              }),
+          );
+        }
+
+        log(
+          "[acceleration-analysis-apply] " +
+            JSON.stringify({
+              sessionId: claimed.session_id,
+              markerCount: markers.length,
+              coverageMinM: analysis.quality.calibratedCoverageMinM,
+              coverageMaxM: analysis.quality.calibratedCoverageMaxM,
+              stepsStatus: analysis.stepsStatus,
+              stepCount: analysis.steps.length,
+              startProvenance: analysis.quality.startEventProvenance,
+              status: analysis.status,
+            }),
+        );
+      }
+
       artifactAnalysis = { metrics: persistedMetrics, source: "acceleration-v1" };
       warnings = persistedMetrics.warnings;
       const splitCount = Object.values(persistedMetrics.splits).filter(
@@ -1072,6 +1454,26 @@ async function processJob(claimed) {
       );
     }
     if (warnings.length) log(`warnings: ${warnings.join(" | ")}`);
+
+    // Gate-lock visualization/debug artifact (Part 3, Day 94 audit): only when
+    // this session actually has world-anchored gates + camera evidence to
+    // diagnose — additive, never blocks the job if it can't be built.
+    const gates = analysisClaim.input_snapshot?.session?.calibrationInputs?.gates;
+    if (gates?.startBoundary && gates?.finishBoundary && sequence.cameraEvidence) {
+      try {
+        sequence.gateLockDebug = buildGateLockDebugArtifact(
+          sequence.cameraEvidence,
+          gates.startBoundary,
+          gates.finishBoundary,
+          sequence.width,
+          sequence.height,
+          sequence.frames.length,
+          sequence.fps,
+        );
+      } catch (err) {
+        log(`gate_lock_debug_artifact_failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
 
     writeArtifacts(claimed.analysis_id, sequence, artifactAnalysis, warnings, tempDir);
     await setStage(claimed, "uploading_artifacts");
@@ -1194,18 +1596,57 @@ async function processJob(claimed) {
 async function tick() {
   const job = await claim();
   if (job) await processJob(job);
+  return job !== null;
 }
 
-async function refreshOperationalMetrics(state) {
+const ACTIVE_PROCESSING_STATUSES = [
+  "claimed",
+  "downloading",
+  "validating",
+  "processing",
+  "generating_results",
+  "uploading_artifacts",
+  "completing",
+];
+
+// A worker whose tick() finds nothing to claim looks identical, from the logs
+// alone, whether the queue is genuinely empty or a job is sitting in an
+// active-processing status under a still-valid lease held by a worker that
+// has since died. `claim_analysis_job`'s own expired-lease recovery already
+// handles the latter case correctly once the lease actually expires (see
+// migration 0018) — this just makes the wait visible so it isn't mistaken for
+// a stuck queue while it's happening. Throttled to avoid a log line every
+// poll for leases that legitimately last up to LEASE_MAX_SECONDS (900s).
+let lastLeaseWaitLogAt = 0;
+const LEASE_WAIT_LOG_INTERVAL_MS = 30_000;
+
+async function refreshOperationalMetrics(state, { claimedJob } = {}) {
   const { data } = await supabase
     .from("analysis_jobs")
     .select(
-      "status, created_at, started_at, completed_at, failure_category, last_error_stage, worker_version",
+      "status, created_at, started_at, completed_at, failure_category, last_error_stage, worker_version, claimed_by, lease_expires_at",
     )
     .order("created_at", { ascending: false })
     .limit(500);
   if (!data) return;
   const count = (status) => data.filter((job) => job.status === status).length;
+  if (!claimedJob && Date.now() - lastLeaseWaitLogAt >= LEASE_WAIT_LOG_INTERVAL_MS) {
+    const waiting = data
+      .filter((job) => ACTIVE_PROCESSING_STATUSES.includes(job.status) && job.lease_expires_at)
+      .sort((a, b) => new Date(a.lease_expires_at) - new Date(b.lease_expires_at))[0];
+    if (waiting) {
+      lastLeaseWaitLogAt = Date.now();
+      log("queue_idle_lease_held", {
+        heldByWorker: waiting.claimed_by,
+        status: waiting.status,
+        leaseExpiresAt: waiting.lease_expires_at,
+        secondsUntilRecoverable: Math.max(
+          0,
+          Math.round((new Date(waiting.lease_expires_at).getTime() - Date.now()) / 1000),
+        ),
+      });
+    }
+  }
   const durations = data
     .filter((job) => job.started_at && job.completed_at)
     .map(
@@ -1222,17 +1663,7 @@ async function refreshOperationalMetrics(state) {
     oldestQueuedAgeSeconds: queued.length
       ? Math.max(...queued.map((job) => (Date.now() - new Date(job.created_at).getTime()) / 1000))
       : 0,
-    activeJobs: data.filter((job) =>
-      [
-        "claimed",
-        "downloading",
-        "validating",
-        "processing",
-        "generating_results",
-        "uploading_artifacts",
-        "completing",
-      ].includes(job.status),
-    ).length,
+    activeJobs: data.filter((job) => ACTIVE_PROCESSING_STATUSES.includes(job.status)).length,
     completedJobs: count("completed"),
     failedJobs: count("failed"),
     retries: count("retry_scheduled"),
@@ -1267,8 +1698,8 @@ log("worker_ready", { processingStage: "idle", healthPort: config.healthPort });
 while (running) {
   healthState.lastLoopAt = Date.now();
   try {
-    await tick();
-    await refreshOperationalMetrics(healthState);
+    const claimedJob = await tick();
+    await refreshOperationalMetrics(healthState, { claimedJob });
   } catch (error) {
     structuredLog("error", "worker_loop_error", {
       workerId: config.workerId,

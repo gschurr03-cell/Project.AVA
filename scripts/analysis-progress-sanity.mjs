@@ -115,7 +115,7 @@ const now = 1_000_000;
 const proc = M.normalizeJobProgress({ status: "processing", updatedAtMs: now - 5000, nowMs: now, attemptCount: 1, userMessage: null });
 check("normalize: processing lifecycle", proc.lifecycle === "processing");
 check("normalize: processing active stage is tracking_movement", proc.activeStageId === "tracking_movement");
-check("normalize: processing progress within band", proc.overallProgress > 18 && proc.overallProgress < 72);
+check("normalize: processing without measured work holds at the real stage floor", proc.overallProgress === 18);
 check("normalize: processing not terminal", !proc.isTerminal && !proc.isFailure);
 check("normalize: processing has an ETA label", typeof proc.etaLabel === "string");
 
@@ -138,6 +138,59 @@ check("normalize: retry lifecycle + attempt count", retry.lifecycle === "retryin
 const a = M.normalizeJobProgress({ status: "generating_results", updatedAtMs: now - 3000, nowMs: now });
 const b = M.normalizeJobProgress({ status: "generating_results", updatedAtMs: now - 3000, nowMs: now });
 check("normalize is deterministic for identical inputs", a.overallProgressRaw === b.overallProgressRaw && near(a.overallProgressRaw, b.overallProgressRaw));
+
+// --- Day 104 (Part 8): real frame-throughput ETA ----------------------------
+
+// 17. Countdown calculation from frame throughput.
+const midPass1 = M.estimateFrameThroughputRemainingMs(
+  { stage: "pass1", framesCompleted: 1000, totalFrames: 2348 },
+  10, // 10 frames/sec measured
+);
+check("17. a real measured rate yields a positive, finite remaining estimate", Number.isFinite(midPass1) && midPass1 > 0);
+check("17. pass1 ETA accounts for the measured remaining current pass plus one full future pass", near(midPass1, ((1348 + 2348) / 10) * 1000, 1));
+const midPass2 = M.estimateFrameThroughputRemainingMs(
+  { stage: "pass2", framesCompleted: 1000, totalFrames: 2348 },
+  20,
+);
+check("17. pass2 (the final stage) carries NO extra post-stage buffer, unlike pass1", near(midPass2, (1348 / 20) * 1000, 1));
+const realWork = M.normalizeJobProgress({ status: "processing", updatedAtMs: now, nowMs: now, frame: { stage: "pass2", framesCompleted: 500, totalFrames: 1000 }, recentFramesPerSecond: 20 });
+check("measured pass2 work maps deterministically into the processing band", near(realWork.overallProgressRaw, 18 + 54 * 0.75));
+check("no measured rate yet → null, never a fabricated countdown", M.estimateFrameThroughputRemainingMs({ stage: "pass1", framesCompleted: 5, totalFrames: 2348 }, null) === null);
+check("a zero/negative rate is treated the same as no evidence", M.estimateFrameThroughputRemainingMs({ stage: "pass1", framesCompleted: 5, totalFrames: 2348 }, 0) === null);
+
+const preciseEta = M.estimateEta("processing", 5000, { stage: "pass2", framesCompleted: 500, totalFrames: 1000 }, 25);
+check("processing status WITH frame evidence returns a precise (not provisional) ETA", preciseEta.kind === "ready" && preciseEta.precise === true);
+const provisionalEta = M.estimateEta("processing", 5000, null, null);
+check("processing status WITHOUT frame evidence still falls back to the provisional band estimate (imprecise)", provisionalEta.kind === "ready" && provisionalEta.precise === false);
+const nonProcessingEta = M.estimateEta("downloading", 1000, { stage: "pass1", framesCompleted: 1, totalFrames: 10 }, 5);
+check("frame evidence is only used for the 'processing' status — other statuses ignore it entirely", nonProcessingEta.precise === false);
+
+// 18/19 covered by AnalysisProgressCard.tsx's refresh-safe design + existing
+// queued/retrying lifecycle labels — see the Day 104 report; not re-tested
+// here since this file only unit-tests the pure model, not the component.
+
+check("countdown format matches the exact requested shape (M:SS remaining)", M.formatCountdown(222000) === "3:42 remaining");
+check("countdown format pads seconds under 10", M.formatCountdown(65000) === "1:05 remaining");
+check("countdown format hits zero cleanly", M.formatCountdown(0) === "0:00 remaining");
+check("countdown format handles an hour-plus estimate", M.formatCountdown(3661000) === "1:01:01 remaining");
+
+check(
+  "formatEta uses the precise mm:ss countdown only when the estimate is REAL frame-throughput-backed",
+  M.formatEta({ kind: "ready", ms: 222000, precise: true }, "processing") === "3:42 remaining",
+);
+check(
+  "formatEta shows 'Estimating…' for 'processing' before real frame evidence exists — never a fabricated number",
+  M.formatEta({ kind: "ready", ms: 45000, precise: false }, "processing") === "Estimating…",
+);
+check(
+  "formatEta keeps the existing coarse bucket text for short, non-frame-tracked statuses",
+  M.formatEta({ kind: "ready", ms: 20000, precise: false }, "downloading") === "Under a minute left",
+);
+check(
+  "formatEta never claims precision it doesn't have even at ms<=0 (still 'Almost done', not '0:00 remaining', unless precise)",
+  M.formatEta({ kind: "ready", ms: 0, precise: false }, "processing") === "Estimating…"
+    && M.formatEta({ kind: "ready", ms: 0, precise: true }, "processing") === "Almost done",
+);
 
 console.log(ok ? "\nAll analysis-progress checks passed." : "\nFAILURES present.");
 rmSync(out, { recursive: true, force: true });

@@ -24,9 +24,10 @@
  */
 
 import type { OverlayFrame, OverlayPoint } from "@/lib/video/overlay";
-import { type StepMark, type StepSide, type StepDistanceScale } from "@/lib/video/steps";
+import { type StepMark, type StepSide, type StepDistanceScale, stripUnstableLandmarks } from "@/lib/video/steps";
 import { summariseContactFlight, type ContactFlightSummary } from "@/lib/video/contacts";
 import { buildFullRunEvents } from "@/lib/video/events";
+import { evaluateStepInterval, evaluateAggregateStepLength, type StepIntegrityReason } from "@/lib/video/stepIntegrity";
 import { computePeakStrideLengthM, computeStrideRetentionPct } from "@/lib/benchmark/strideMetrics";
 import {
   CONSERVATIVE_TIMING_POLICY_V1,
@@ -54,6 +55,11 @@ import {
   type CameraConfidence,
   type CameraTrack,
 } from "@/lib/video/camera";
+import {
+  MEASUREMENT_MODEL_CANONICAL_LONGITUDINAL,
+  DEFAULT_MEASUREMENT_MODEL_VERSION,
+  type MeasurementModelVersion,
+} from "@/lib/benchmark/measurementModel";
 
 export type MeasurementConfidence = "high" | "medium" | "low";
 
@@ -78,11 +84,64 @@ export interface MeasurementDiagnostics {
   lastContactTimeS: number | null;
   /** Contacts counted toward the zone metrics. */
   includedContacts: number;
-  /** Contacts dropped from the zone, with the reason (for honest diagnosis). */
-  excludedContacts: { time: number; side: StepSide; reason: string }[];
+  /** Contacts dropped from the zone, with a structured reason code (Day 99
+   *  Part 6) plus the existing human-readable reason (for honest diagnosis).
+   *  `reasonCode` is one of the documented rejection taxonomy: today only
+   *  "before_start_crossing" / "outside_zone" are actually produced (the only
+   *  two exclusion causes this engine currently has); the remaining
+   *  documented codes (missing_opposite_foot, insufficient_landmarks,
+   *  low_pose_score, identity_not_verified, invalid_world_coordinate,
+   *  boundary_step_not_supported, duplicate_contact, cadence_outlier) are
+   *  reserved for exclusion causes that do not currently exist in this
+   *  engine's logic — they are not fabricated here. */
+  excludedContacts: {
+    time: number;
+    side: StepSide;
+    sourceFrameIndex?: number;
+    reasonCode: "before_start_crossing" | "outside_zone";
+    reason: string;
+  }[];
   /** Contact/flight timing transparency + the frame-rate precision floor (Day 68). */
   timing: TimingDiagnostics | null;
   notes: string[];
+  /** Day 99 (Part 8) — how much of the calibrated zone the eligible steps
+   *  actually span, so partial-zone coverage is always disclosed. */
+  zoneCoverage: ZoneCoverage;
+}
+
+/** Zone-coverage provenance (Day 99, Part 8). All distances are metres along
+ *  the travel direction from the START gate; null whenever the run isn't
+ *  calibrated or has zero valid in-zone contacts. */
+export interface ZoneCoverage {
+  zoneDistanceM: number | null;
+  measuredDistanceM: number | null;
+  measuredZoneFraction: number | null;
+  firstMeasuredPositionM: number | null;
+  lastMeasuredPositionM: number | null;
+  eligibleStepCount: number;
+  missingEarlyZoneReason: string | null;
+  missingLateZoneReason: string | null;
+  /**
+   * Day 100 — the "progressive measurement window": the same facts above,
+   * named/shaped for a coverage-visualization consumer. Aliases, not a
+   * second computation — `measurementStartPositionM`/`measurementEndPositionM`
+   * are exactly `firstMeasuredPositionM`/`lastMeasuredPositionM`,
+   * `coveragePercent` is `measuredZoneFraction * 100`. This window is
+   * recomputed from whatever real contacts exist on every run — there is no
+   * stored/cached boundary to go stale, so it "expands automatically" simply
+   * because it is never anything other than a live function of current
+   * evidence.
+   */
+  measurementStartPositionM: number | null;
+  measurementEndPositionM: number | null;
+  coveragePercent: number | null;
+  /** One consolidated, human-readable reason covering whichever end(s) of
+   *  the zone are missing evidence; null when coverage is effectively full. */
+  coverageReason: string | null;
+  /** Internal-only quality signal for the measured window itself (distinct
+   *  from `stepLengthConfidence`, which grades the length VALUES) — reflects
+   *  how much evidence backs the window boundary, not the numbers inside it. */
+  coverageConfidence: MeasurementConfidence;
 }
 
 /** Contact/flight timing evidence: what was measured and the fps quantization floor. */
@@ -102,6 +161,56 @@ export interface TimingDiagnostics {
   groundContactRightMs: number | null;
   flightLeftMs: number | null;
   flightRightMs: number | null;
+}
+
+/**
+ * Evidence for the zone start/finish crossings — added Day 94 after a session
+ * with heavy athlete-tracking loss reported a fabricated ~8s zone time from an
+ * extrapolated/clamped crossing pair. `verified` is the single source of truth
+ * for whether `zoneTimeS` (and anything derived from it — average velocity,
+ * step frequency's time base) may be presented as measured; when false, the
+ * caller must show the metric unavailable with `timingAvailabilityReason`, not
+ * substitute clip duration, pose-track duration, or contact span.
+ */
+export interface TimingCrossingProvenance {
+  /** True only when BOTH crossings were directly bracketed/detected with
+   *  sufficient confidence — never from extrapolation or a fallback span. */
+  verified: boolean;
+  startCrossingFrame: number | null;
+  finishCrossingFrame: number | null;
+  startCrossingTimestampS: number | null;
+  finishCrossingTimestampS: number | null;
+  crossingDetectionMethod: "world_anchored" | "screen_fixed_interpolated" | null;
+  /** Always "automatic" today — no manual crossing-override UI exists yet. */
+  timingAuthority: "automatic" | "manual";
+  startCrossingExtrapolated: boolean;
+  finishCrossingExtrapolated: boolean;
+  /** Structured reason zone time is unavailable, e.g. "start_crossing_unavailable",
+   *  "crossing_confidence_below_threshold", "crossing_extrapolated_not_verified",
+   *  "athlete_tracking_unavailable", "not_calibrated". Null when verified. */
+  timingAvailabilityReason: string | null;
+  /**
+   * Day 96 audit (Part 7) — the minimum crossing-evidence contract. A
+   * crossing may be a genuine bracket (`verified` above already requires
+   * that) and still occur immediately after/before a long fragmented
+   * tracking gap, with almost no surrounding continuity to corroborate it —
+   * `"verified"` requires BOTH a genuine bracket AND sufficient consecutive
+   * tracked frames on both sides of both crossings; `"provisionally_verified"`
+   * is evidence-backed but thin; `"unavailable"` is the existing gate.
+   */
+  timingStatus: "verified" | "provisionally_verified" | "unavailable";
+  /** Consecutive tracked source frames immediately before/after each crossing
+   *  (capped at 30) — the surrounding-continuity evidence `timingStatus` is
+   *  derived from. */
+  startContinuityFramesBefore: number;
+  startContinuityFramesAfter: number;
+  finishContinuityFramesBefore: number;
+  finishContinuityFramesAfter: number;
+  /** True when the crossing frame and the immediately-preceding source frame
+   *  both have real torso pose evidence (not merely two tracked samples with
+   *  a gap between them). */
+  startBracketedByConsecutiveFrames: boolean;
+  finishBracketedByConsecutiveFrames: boolean;
 }
 
 /** The measurement zone the two calibration points bound, in the athlete's travel direction. */
@@ -134,14 +243,44 @@ export interface VelocityEstimate {
 export interface ZoneStep {
   /** 1-based step number within the zone. */
   index: number;
+  /** This contact's stable identity (`contact-${sourceFrameIndex}-${side}-${index}`),
+   *  identical to the id `contactId()` below and every other consumer (e.g.
+   *  VideoOverlay.tsx) already derive from the same underlying StepMark — so a
+   *  display consumer can look up this exact authoritative step length by
+   *  contact identity instead of recomputing it (Phase 8.0B). */
+  contactId: string;
   /** Landing foot of this contact. */
   side: StepSide;
   /** Contact time (s). */
   timeS: number;
   /** World x of the contact (normalized), camera-compensated. */
   worldX: number;
-  /** Step length from the previous contact, metres (null for the first, uncalibrated). */
+  /** Step length from the previous contact, metres (null for the first, uncalibrated).
+   *  Scientifically ACCEPTED value only — eligible for Average/Peak Step Length,
+   *  Step Frequency, and every other aggregate metric. Never broadened by Phase
+   *  R1B; unchanged in semantics and value from every prior phase. */
   stepLengthM: number | null;
+  /** Phase R1B — the same already-computed, already-authoritative calibrated
+   *  physical distance (`WorldMark.distanceMetersFromPrev` on the legacy path,
+   *  `ZoneStepInterval.rawLongitudinalDisplacementM` on the canonical path) for
+   *  a contact-to-contact interval that represents a LEGITIMATE single step
+   *  (no proven missing intermediate contact, no same-foot/non-alternating
+   *  sequence, no non-forward/non-finite geometry, no low-confidence
+   *  projection) — regardless of whether the interval also clears the
+   *  cruise-phase-calibrated plausibility ceiling `stepLengthM` requires.
+   *  PRESENTATION EVIDENCE ONLY: never read by any aggregate metric, zone
+   *  summary, or evidence-eligibility computation. Whenever `stepLengthM` is
+   *  non-null, `physicalStepLengthM` is always the identical value (accepted
+   *  intervals are a strict subset of physically-legitimate ones) — see
+   *  `docs/phase-r1b-presentation-only-physical-step-length-recovery.md`. */
+  physicalStepLengthM: number | null;
+  /** Why `physicalStepLengthM` does or doesn't equal `stepLengthM`, for
+   *  forensic/debugging use only (never rendered to the coach). */
+  physicalStepLengthState:
+    | "accepted_for_metrics" // stepLengthM and physicalStepLengthM are equal and non-null
+    | "presentation_only" // physicalStepLengthM exists but was rejected from aggregation (Phase R1A Case 1)
+    | "missing_contact" // proven evidence gap (same-foot/non-alternating/missing-intermediate) -- Phase R1A Case 2
+    | "invalid_interval"; // no candidate interval at all (e.g. the run's first-ever contact) or non-finite/non-forward geometry
   /** The previous contact's foot (the step is fromSide → side), or null. */
   fromSide: StepSide | null;
   /** Contact position along the start→finish sprint axis. */
@@ -152,11 +291,59 @@ export interface ZoneStep {
   qualityFlags?: string[];
 }
 
+/** Phase R1B — integrity reasons that prove a genuine evidence gap (no
+ *  legitimate single physical step exists), shared between the legacy
+ *  two-point path's `StepIntegrityReason`s and the canonical path's
+ *  `ZoneStepQualityFlag`s (which include the same reasons plus its own
+ *  `non_alternating_sequence`/`non_forward_interval`/`low_projection_confidence`,
+ *  each an equally disqualifying geometric/evidence problem, never a mere
+ *  cruise-phase-ceiling miss). `implausible_step_duration`,
+ *  `implausible_step_distance`, and `implausible_step_length` are
+ *  deliberately EXCLUDED from this set -- those are the aggregate-only
+ *  plausibility-ceiling reasons Phase R1A proved can reject a real,
+ *  legitimate physical interval (Case 1). */
+const PHYSICAL_STEP_EVIDENCE_GAP_REASONS = new Set([
+  "missing_intermediate_contact",
+  "contact_sequence_gap",
+  "foot_sequence_discontinuity",
+  "non_alternating_sequence",
+  "non_forward_interval",
+  "low_projection_confidence",
+]);
+
+/** True when `reasons` proves a genuine evidence gap that must never be
+ *  presented as a physical step length, even for display only. */
+function hasPhysicalStepEvidenceGap(reasons: readonly string[] | undefined): boolean {
+  return (reasons ?? []).some((reason) => PHYSICAL_STEP_EVIDENCE_GAP_REASONS.has(reason));
+}
+
 export interface SprintMeasurements {
   timingPolicyVersion: typeof CONSERVATIVE_TIMING_POLICY_V1;
+  /** Phase R4B — which scientific step-length/Peak-Velocity-distance model
+   *  actually produced this result. Reflects what ACTUALLY ran, not merely
+   *  the caller's request: a caller may ask for CANONICAL_LONGITUDINAL, but
+   *  if the calibration/evidence needed to compute it is unavailable, this
+   *  field honestly reports LEGACY_2D — never silently promise a model that
+   *  didn't run. Developer/scientific provenance only, never a consumer
+   *  confidence percentage. */
+  measurementModelVersion: MeasurementModelVersion;
   calibrated: boolean;
   /** Metres-per-pixel scale used, if any. */
   metersPerPixel: number | null;
+  /** Phase R1C — the SAME authoritative, already-computed full-run contact
+   *  list (`buildFullRunEvents(frames).contacts`, Stage 1) every scientific
+   *  quantity below (contacts, zone steps, timing) derives from — frames
+   *  already stripped of predicted/invalid/frozen_suspect landmarks (with
+   *  the Phase 4.2K/9.1B `independent_corroborated` exception), across the
+   *  WHOLE visible run, not just the calibrated zone. Exposed so presentation
+   *  consumers (the overlay's contact markers/step numbers) can render
+   *  directly from the authoritative contact set instead of independently
+   *  re-detecting contacts on differently-filtered input, which previously
+   *  produced a real, measured contact-set divergence (see
+   *  docs/phase-r1c-authoritative-contact-render-alignment.md). Read-only:
+   *  nothing here is derived FROM this field, it is exposed AFTER every
+   *  other computation already used it internally. */
+  fullRunContacts: StepMark[];
 
   // Contacts (one true ground contact = one step)
   totalContacts: number;
@@ -176,6 +363,9 @@ export interface SprintMeasurements {
   /** Torso start/finish gate crossing times (s) — the raw zone-timer endpoints. */
   zoneEntryTimeS: number | null;
   zoneExitTimeS: number | null;
+  /** Evidence for whether the zone crossings — and therefore `zoneTimeS` — are
+   *  verified, plus structured provenance for the timing result. */
+  timingProvenance: TimingCrossingProvenance;
 
   // Step frequency (steps/s) — combined is the primary value
   combinedStepFrequencyHz: number | null;
@@ -247,6 +437,15 @@ export interface SprintMeasurements {
 
 const EPS = 1e-9;
 
+/**
+ * Minimum combined confidence (transform × body × boundary) a world-anchored
+ * gate crossing must carry to count as VERIFIED. Matches the long-standing
+ * `MIN_SAFE_ANCHOR_TRANSFORM_CONFIDENCE` threshold already used to gate whether
+ * a propagated gate line itself is safe to render (zoneAnchors.ts) — a crossing
+ * built on a line that wouldn't be safe to draw must not be treated as measured.
+ */
+const MIN_VERIFIED_CROSSING_CONFIDENCE = 0.45;
+
 function mean(values: number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((a, b) => a + b, 0) / values.length;
@@ -285,17 +484,17 @@ function torsoPoint(f: OverlayFrame): OverlayPoint | null {
   return f.centerOfMass ?? shoulder ?? hip ?? null;
 }
 
-/** Torso (x, time) samples in frame order, dropping frames without a tracked torso. */
-function torsoSeries(frames: OverlayFrame[]): { t: number; x: number }[] {
-  const out: { t: number; x: number }[] = [];
+/** Torso (x, time, source frame) samples in frame order, dropping frames without a tracked torso. */
+function torsoSeries(frames: OverlayFrame[]): { t: number; x: number; frame: number }[] {
+  const out: { t: number; x: number; frame: number }[] = [];
   for (const f of frames) {
     const p = torsoPoint(f);
-    if (p) out.push({ t: f.time, x: p.x });
+    if (p) out.push({ t: f.time, x: p.x, frame: f.sourceFrameIndex ?? f.frame });
   }
   return out;
 }
 
-type Sample = { t: number; x: number };
+type Sample = { t: number; x: number; frame: number };
 
 /** Least-squares slope dx/dt over a time window at the start or end of the series. */
 function boundarySlope(series: Sample[], atStart: boolean, windowS = 0.5): number | null {
@@ -316,23 +515,37 @@ function boundarySlope(series: Sample[], atStart: boolean, windowS = 0.5): numbe
   return (k * stx - st * sx) / denom;
 }
 
-/** A zone gate crossing time, plus whether it was extrapolated past the tracked span. */
+/**
+ * A zone gate crossing time. `verified` is true only for a genuine bracketing
+ * crossing — the tracked torso path was seen on both sides of the gate and the
+ * time is a direct interpolation between two real tracked samples. Extrapolated
+ * crossings (torso never actually seen crossing the gate; the time is inferred
+ * from a constant-velocity projection) are reported for diagnostics but are
+ * NEVER verified — an inferred instant is not an evidence-backed crossing, and
+ * must never be silently reported as a measured zone time (Day 94 audit).
+ */
 interface Crossing {
   time: number;
+  /** Nearest tracked source frame index to `time` (before/after the bracket, or
+   *  the nearest tracked sample when extrapolated). For provenance only. */
+  frame: number;
   extrapolated: boolean;
+  verified: boolean;
 }
 
 /**
  * Time the torso reaches normalized x-position `target`, travelling in `direction`
  * (+1 rightwards, -1 leftwards). Interpolated between bracketing frames when the
- * tracked path spans the gate. When the athlete was ALREADY PAST the gate at the
- * first tracked sample (entry, far-end runner untracked) — or hadn't yet REACHED
- * it at the last sample (exit) — the crossing is EXTRAPOLATED to the gate at the
- * torso's boundary velocity (constant-velocity assumption, valid over the small
- * gap in a max-velocity fly zone). This recovers the true zone-entry instant that
- * clamping to the first tracked frame would otherwise lose. Null when the target
- * can't be reached even by extrapolation (no motion toward it). `maxExtrapS` caps
- * how far outside the tracked span we'll estimate.
+ * tracked path spans the gate — this is the ONLY verified case. When the athlete
+ * was ALREADY PAST the gate at the first tracked sample (entry, far-end runner
+ * untracked) — or hadn't yet REACHED it at the last sample (exit) — the crossing
+ * is EXTRAPOLATED to the gate at the torso's boundary velocity (constant-velocity
+ * assumption). This is reported for diagnostics but marked `verified: false`: it
+ * is an inference, not a measurement, and must not be presented as a verified
+ * zone time. Null when the target can't be reached even by extrapolation (no
+ * motion toward it) — this NEVER falls back to clamping at the first/last sample;
+ * a crossing that cannot be established is reported as unavailable, not guessed.
+ * `maxExtrapS` caps how far outside the tracked span we'll estimate.
  */
 function crossingTime(
   series: Sample[],
@@ -348,7 +561,8 @@ function crossingTime(
     if (reached && wasBefore) {
       const span = cur.x - prev.x;
       const frac = Math.abs(span) < EPS ? 0 : (target - prev.x) / span;
-      return { time: prev.t + frac * (cur.t - prev.t), extrapolated: false };
+      const frame = Math.abs(target - cur.x) <= Math.abs(target - prev.x) ? cur.frame : prev.frame;
+      return { time: prev.t + frac * (cur.t - prev.t), frame, extrapolated: false, verified: true };
     }
   }
   if (!series.length) return null;
@@ -356,14 +570,17 @@ function crossingTime(
   const last = series[series.length - 1];
 
   // Already past the gate at the first sample → back-extrapolate to the gate.
+  // NEVER clamp to the first sample as if that were the crossing: an athlete
+  // already past the gate with no usable velocity estimate has an UNKNOWN
+  // crossing instant, not one equal to the first tracked frame.
   const pastAtStart = direction >= 0 ? first.x >= target : first.x <= target;
   if (pastAtStart) {
     const v = boundarySlope(series, true);
     if (v != null && direction * v > 0) {
       const dt = (first.x - target) / v; // > 0: the gate was crossed dt seconds earlier
-      if (dt <= maxExtrapS) return { time: first.t - dt, extrapolated: true };
+      if (dt <= maxExtrapS) return { time: first.t - dt, frame: first.frame, extrapolated: true, verified: false };
     }
-    return { time: first.t, extrapolated: false };
+    return null;
   }
 
   // Never reached the gate by the last sample → forward-extrapolate to the gate.
@@ -372,7 +589,7 @@ function crossingTime(
     const v = boundarySlope(series, false);
     if (v != null && direction * v > 0) {
       const dt = (target - last.x) / v; // > 0: the gate is crossed dt seconds later
-      if (dt <= maxExtrapS) return { time: last.t + dt, extrapolated: true };
+      if (dt <= maxExtrapS) return { time: last.t + dt, frame: last.frame, extrapolated: true, verified: false };
     }
   }
   return null;
@@ -385,13 +602,57 @@ function crossingTime(
  * of inventing numbers.
  */
 export function computeSprintMeasurements(
-  frames: OverlayFrame[],
+  rawFrames: OverlayFrame[],
   points: ManualCalibrationPoints | null | undefined,
   frameWidth: number | null | undefined,
   frameHeight: number | null | undefined,
-  anchorOptions?: { gates: CalibrationGates | null; cameraEvidence?: RawCameraEvidence },
+  anchorOptions?: {
+    gates: CalibrationGates | null;
+    cameraEvidence?: RawCameraEvidence;
+    /** Phase R4B — explicit scientific model request. Omitted/undefined
+     *  callers (every call site prior to this phase, and every historical
+     *  artifact) get LEGACY_2D — byte-identical to pre-R4B behavior. See
+     *  `@/lib/benchmark/measurementModel` for the full contract. */
+    measurementModelVersion?: MeasurementModelVersion;
+  },
 ): SprintMeasurements {
+  const requestedModelVersion = anchorOptions?.measurementModelVersion ?? DEFAULT_MEASUREMENT_MODEL_VERSION;
   const warnings: string[] = [];
+
+  // Day 96 audit (Part 7): a "predicted"/"invalid" boxOrigin means the crop
+  // that frame's landmarks came from was guided by extrapolation, not
+  // verified box tracking/detection — even if MediaPipe found something
+  // there, it is not independently confirmed to be the same athlete. Strip
+  // those frames' landmarks (never their existence/diagnostics) BEFORE any
+  // contact, crossing, or torso-position computation below, so a predicted
+  // box can never generate a contact, crossing, or biomechanics value.
+  // Frames without a boxOrigin at all (legacy artifacts, pre-Day-96) are
+  // unaffected — absence of the field is not evidence of a prediction.
+  //
+  // Phase 4.2/4.2B (2026-08-05) — "frozen_suspect" joins this same gate.
+  // box_tracker.py's stationary-lock detector retroactively applies this
+  // origin only once a LATER identity-verified detection proved the box had
+  // settled onto near-static structure instead of the real, moving athlete
+  // (see box_tracker.py's `_resolve_freeze_run`) — i.e. it is evidence of a
+  // wrong localization, not merely low confidence, and must be withheld
+  // exactly like "predicted"/"invalid": never a contact, crossing, or
+  // biomechanics value from a frame this project has actively disproven.
+  //
+  // Phase 4.2K (2026-08-07) — a narrow, evidence-gated EXCEPTION: a
+  // "frozen_suspect" frame whose real box position independently agrees
+  // (bidirectional-trajectory-verified, `independentLocalizationState ===
+  // "independent_corroborated"`, mediapipe_pose_runner.py's
+  // `verify_independent_localization`) with trusted evidence BOTH before AND
+  // after the uncertain run is no longer withheld. This never applies to
+  // "predicted"/"invalid" (those never carry a real detector-anchored box to
+  // verify in the first place), and never promotes a frame whose independent
+  // verification is merely absent/disagreeing — see that function's own
+  // contract for the full, all-conditions-required authority chain.
+  // Phase R1C: this stripping pass is now the shared `stripUnstableLandmarks`
+  // helper (src/lib/video/steps.ts) so the render-side overlay applies the
+  // identical eligibility gate before its own contact detection — see that
+  // helper's docstring and docs/phase-r1c-authoritative-contact-render-alignment.md.
+  const frames = stripUnstableLandmarks(rawFrames);
 
   // Camera-motion compensation (Day 64): estimate the camera pan so every SPATIAL
   // quantity below can be computed in stabilized WORLD coordinates. When the track
@@ -418,6 +679,16 @@ export function computeSprintMeasurements(
     cameraTrack.available && timeS != null ? frameX + off(timeS).x : frameX;
   const gateAX = points ? gateWorldX(points.ax, points.aTimeS) : 0;
   const gateBX = points ? gateWorldX(points.bx, points.bTimeS) : 0;
+  // Phase R4B — the same camera-offset compensation, applied to Y, so the
+  // CANONICAL_LONGITUDINAL axis (which needs the gates' full 2D position,
+  // not just x) is built from the identical already-existing `off()`
+  // function every other world position in this file already uses — no new
+  // camera-motion estimation, just applying the same one symmetrically.
+  // Unused by the legacy scalar scale above (which is deliberately x-only,
+  // per R4A's own finding) — computing it unconditionally costs nothing and
+  // keeps this pure/deterministic like everything else here.
+  const gateWorldY = (frameY: number, timeS: number | null | undefined): number =>
+    cameraTrack.available && timeS != null ? frameY + off(timeS).y : frameY;
 
   const scale: StepDistanceScale | null =
     points && frameWidth && frameHeight
@@ -462,16 +733,26 @@ export function computeSprintMeasurements(
   // Torso path in WORLD x (for zone-crossing timing under pan). The torso/chest
   // crossing each gate bar is what starts/stops the timer (Day 66), matching a
   // physical timing beam rather than the lower hip-only centre of mass.
-  const worldSeries = torsoSeries(frames).map((s) => ({ t: s.t, x: s.x + off(s.t).x }));
+  const worldSeries = torsoSeries(frames).map((s) => ({ t: s.t, x: s.x + off(s.t).x, frame: s.frame }));
   const minZoneX = Math.min(gateAX, gateBX);
   const maxZoneX = Math.max(gateAX, gateBX);
   const netTravel = worldSeries.length >= 2 ? worldSeries[worldSeries.length - 1].x - worldSeries[0].x : 1;
+  // Direction of travel: prefer the coach-configured `travelDirection` (set once,
+  // at calibration time, from the physical setup) over inferring it from the
+  // torso track's net displacement. Net-travel inference is fragile with sparse
+  // or unreliable tracking — a handful of stray/misidentified samples can flip
+  // its sign and silently swap which gate is "entry" vs "exit" (Day 94 audit:
+  // this produced an inverted zone on a session with heavy tracking loss).
+  const configuredDirection = anchorOptions?.gates?.travelDirection;
+  const travelsRightward = configuredDirection
+    ? configuredDirection === "left_to_right"
+    : netTravel >= 0;
   const zone: SprintZone | null = points
     ? {
         minX: minZoneX,
         maxX: maxZoneX,
-        entryX: netTravel >= 0 ? minZoneX : maxZoneX,
-        exitX: netTravel >= 0 ? maxZoneX : minZoneX,
+        entryX: travelsRightward ? minZoneX : maxZoneX,
+        exitX: travelsRightward ? maxZoneX : minZoneX,
         distanceM: points.distanceM,
       }
     : null;
@@ -479,10 +760,21 @@ export function computeSprintMeasurements(
   // Canonical zone membership (Day 93): classify each contact against the
   // world-locked start→finish axis. This is deliberately spatial only; timing
   // remains the independent torso/gate-crossing measurement below.
+  // Phase R4B (Part D): whether the canonical longitudinal coordinate may be
+  // computed no longer depends on `cameraType === "panning"` (i.e. merely on
+  // whether `cameraEvidence` happens to be supplied) — a session may reach
+  // the canonical path either because real camera-motion evidence exists
+  // (unchanged from before this phase) OR because the caller explicitly
+  // requested CANONICAL_LONGITUDINAL for a stationary camera (new this
+  // phase). Camera-type-specific input eligibility (whether cameraEvidence
+  // itself is trustworthy/available) is preserved exactly as-is; only the
+  // SCIENTIFIC MODEL decision is now explicit, not inferred from it.
+  const canUseCanonicalForStationary =
+    requestedModelVersion === MEASUREMENT_MODEL_CANONICAL_LONGITUDINAL && !anchorOptions?.cameraEvidence;
   const anchoredGates =
     anchorOptions?.gates?.startBoundary &&
     anchorOptions.gates.finishBoundary &&
-    anchorOptions.cameraEvidence &&
+    (anchorOptions.cameraEvidence || canUseCanonicalForStationary) &&
     frameWidth &&
     frameHeight
       ? anchorOptions.gates
@@ -490,62 +782,98 @@ export function computeSprintMeasurements(
   const contactId = (mark: StepMark) =>
     `contact-${mark.sourceFrameIndex}-${mark.side}-${mark.index}`;
   const zoneStepSummary: ZoneStepSummary | null = (() => {
-    if (!anchoredGates || !anchorOptions?.cameraEvidence || !frameWidth || !frameHeight) return null;
+    if (!anchoredGates || !frameWidth || !frameHeight) return null;
     const startBoundary = anchoredGates.startBoundary!;
     const finishBoundary = anchoredGates.finishBoundary!;
-    const startLine = sourceLineToCanonicalWorld(
-      startBoundary.sourceFrameLine.c1,
-      startBoundary.sourceFrameLine.c2,
-      startBoundary.setupFrameIndex,
-      "start",
-      anchorOptions.cameraEvidence,
-      frameWidth,
-      frameHeight,
-    );
-    const finishLine = sourceLineToCanonicalWorld(
-      finishBoundary.sourceFrameLine.c1,
-      finishBoundary.sourceFrameLine.c2,
-      finishBoundary.setupFrameIndex,
-      "finish",
-      anchorOptions.cameraEvidence,
-      frameWidth,
-      frameHeight,
-    );
-    const start = {
-      x: (startLine.c1.x + startLine.c2.x) / 2,
-      y: (startLine.c1.y + startLine.c2.y) / 2,
-    };
-    const finish = {
-      x: (finishLine.c1.x + finishLine.c2.x) / 2,
-      y: (finishLine.c1.y + finishLine.c2.y) / 2,
-    };
-    const confidenceByFrame = new Map(
-      frames.map((frame) => [
-        frame.sourceFrameIndex ?? frame.frame,
-        frame.trackingConfidence ?? 1,
-      ]),
-    );
-    const contacts = detected.map((mark) => {
-      const world = sourcePointToCanonicalWorld(
-        { x: mark.x, y: mark.y },
-        mark.sourceFrameIndex,
-        anchorOptions.cameraEvidence!,
+    let start: { x: number; y: number };
+    let finish: { x: number; y: number };
+    let contacts: { id: string; side: StepSide; timeS: number; sourceFrameIndex: number; x: number; y: number; confidence: number }[];
+    if (anchorOptions?.cameraEvidence) {
+      // UNCHANGED from before Phase R4B — real camera-motion-compensated
+      // projection, byte-identical code path, still the only path used
+      // whenever real cameraEvidence is supplied (panning cameras).
+      const startLine = sourceLineToCanonicalWorld(
+        startBoundary.sourceFrameLine.c1,
+        startBoundary.sourceFrameLine.c2,
+        startBoundary.setupFrameIndex,
+        "start",
+        anchorOptions.cameraEvidence,
         frameWidth,
         frameHeight,
       );
-      return {
-        id: contactId(mark),
-        side: mark.side,
-        timeS: mark.time,
-        sourceFrameIndex: mark.sourceFrameIndex,
-        x: world.x,
-        y: world.y,
-        confidence: Math.min(
-          world.projectionConfidence,
-          confidenceByFrame.get(mark.sourceFrameIndex) ?? 1,
-        ),
+      const finishLine = sourceLineToCanonicalWorld(
+        finishBoundary.sourceFrameLine.c1,
+        finishBoundary.sourceFrameLine.c2,
+        finishBoundary.setupFrameIndex,
+        "finish",
+        anchorOptions.cameraEvidence,
+        frameWidth,
+        frameHeight,
+      );
+      start = { x: (startLine.c1.x + startLine.c2.x) / 2, y: (startLine.c1.y + startLine.c2.y) / 2 };
+      finish = { x: (finishLine.c1.x + finishLine.c2.x) / 2, y: (finishLine.c1.y + finishLine.c2.y) / 2 };
+      const confidenceByFrame = new Map(
+        frames.map((frame) => [frame.sourceFrameIndex ?? frame.frame, frame.trackingConfidence ?? 1]),
+      );
+      contacts = detected.map((mark) => {
+        const world = sourcePointToCanonicalWorld(
+          { x: mark.x, y: mark.y },
+          mark.sourceFrameIndex,
+          anchorOptions.cameraEvidence!,
+          frameWidth,
+          frameHeight,
+        );
+        return {
+          id: contactId(mark),
+          side: mark.side,
+          timeS: mark.time,
+          sourceFrameIndex: mark.sourceFrameIndex,
+          x: world.x,
+          y: world.y,
+          confidence: Math.min(world.projectionConfidence, confidenceByFrame.get(mark.sourceFrameIndex) ?? 1),
+        };
+      });
+    } else {
+      // NEW this phase — no real camera-motion evidence (or none supplied),
+      // reached only when the caller explicitly requested
+      // CANONICAL_LONGITUDINAL. Reuses the SAME already-computed world
+      // positions the legacy path itself uses (`gateWorldX/Y`, `off()`,
+      // `WorldMark.wx/wy`) — for a genuinely stationary camera `off()` is
+      // always {0,0}, so this is exactly the raw frame coordinate; for a
+      // panning camera that simply wasn't given cameraEvidence, it degrades
+      // to the same graceful frame-coordinate fallback the legacy path has
+      // always used. No new camera-motion estimation, no
+      // `propagateSourcePoint`/reliability-gated projection — those remain
+      // exclusively the real-camera-evidence path above, unchanged.
+      // Inline midpoint (not `gates.ts`'s `gateMidpoint()`, which expects a
+      // full `GateBar` with `timeS` — `sourceFrameLine` is just the two
+      // corner points) — identical arithmetic, `(c1+c2)/2`.
+      const startMidFrame = {
+        x: (startBoundary.sourceFrameLine.c1.x + startBoundary.sourceFrameLine.c2.x) / 2,
+        y: (startBoundary.sourceFrameLine.c1.y + startBoundary.sourceFrameLine.c2.y) / 2,
       };
-    });
+      const finishMidFrame = {
+        x: (finishBoundary.sourceFrameLine.c1.x + finishBoundary.sourceFrameLine.c2.x) / 2,
+        y: (finishBoundary.sourceFrameLine.c1.y + finishBoundary.sourceFrameLine.c2.y) / 2,
+      };
+      start = {
+        x: gateWorldX(startMidFrame.x, startBoundary.setupTimestampS),
+        y: gateWorldY(startMidFrame.y, startBoundary.setupTimestampS),
+      };
+      finish = {
+        x: gateWorldX(finishMidFrame.x, finishBoundary.setupTimestampS),
+        y: gateWorldY(finishMidFrame.y, finishBoundary.setupTimestampS),
+      };
+      contacts = worldPositions.map((m) => ({
+        id: contactId(m),
+        side: m.side,
+        timeS: m.time,
+        sourceFrameIndex: m.sourceFrameIndex,
+        x: m.wx,
+        y: m.wy,
+        confidence: frames.find((f) => (f.sourceFrameIndex ?? f.frame) === m.sourceFrameIndex)?.trackingConfidence ?? 1,
+      }));
+    }
     return analyzeZoneSteps({
       contacts,
       start,
@@ -555,16 +883,27 @@ export function computeSprintMeasurements(
   })();
 
   // Times the TORSO crosses the entry / exit gates (world x) — the zone timer.
-  // Extrapolated to the gate when the far-end runner wasn't yet tracked at entry
-  // (or had left the tracked span at exit), so the timer reflects the true crossing
-  // instant rather than the first/last frame the athlete happened to be tracked.
+  // A crossing is only VERIFIED when the tracked torso path was actually seen on
+  // both sides of the gate (or, for the world-anchored path, detected with
+  // adequate transform/body confidence) — never from extrapolation, a clamp to
+  // the first/last tracked frame, or the span between unrelated contacts. Zone
+  // TIME is reported ONLY when both the start and finish crossings are verified
+  // (Day 94 audit: a session with heavy athlete-tracking loss previously reported
+  // a fabricated ~8s zone time from an extrapolated/clamped crossing pair).
   let tEntry: number | null = null;
   let tExit: number | null = null;
   let entryExtrapolated = false;
   let exitExtrapolated = false;
+  let entryVerified = false;
+  let exitVerified = false;
+  let startCrossingFrame: number | null = null;
+  let finishCrossingFrame: number | null = null;
+  let crossingDetectionMethod: "world_anchored" | "screen_fixed_interpolated" | null = null;
+  let timingAvailabilityReason: string | null = null;
   const anchoredZone = anchorOptions?.gates?.startBoundary && anchorOptions.gates.finishBoundary
     && anchorOptions.cameraEvidence && frameWidth && frameHeight ? anchorOptions.gates : null;
   if (anchoredZone && anchorOptions?.cameraEvidence && frameWidth && frameHeight) {
+    crossingDetectionMethod = "world_anchored";
     const samples = frames.flatMap((frame) => {
       const body = torsoPoint(frame);
       return body ? [{
@@ -581,21 +920,99 @@ export function computeSprintMeasurements(
       anchorOptions.cameraEvidence, frameWidth, frameHeight, direction);
     tEntry = entry?.timestampS ?? null;
     tExit = exit?.timestampS ?? null;
-    if (!entry || !exit) warnings.push(
-      "Physical timing was withheld because a world-anchored boundary could not be propagated or crossed confidently.",
-    );
+    startCrossingFrame = entry?.afterFrame ?? null;
+    finishCrossingFrame = exit?.afterFrame ?? null;
+    entryVerified = entry != null && entry.confidence >= MIN_VERIFIED_CROSSING_CONFIDENCE;
+    exitVerified = exit != null && exit.confidence >= MIN_VERIFIED_CROSSING_CONFIDENCE;
+    if (!entry || !exit) {
+      timingAvailabilityReason = !entry && !exit
+        ? "start_and_finish_crossings_unavailable"
+        : !entry ? "start_crossing_unavailable" : "finish_crossing_unavailable";
+      warnings.push(
+        "Physical timing was withheld because a world-anchored boundary could not be propagated or crossed confidently.",
+      );
+    } else if (!entryVerified || !exitVerified) {
+      timingAvailabilityReason = "crossing_confidence_below_threshold";
+      warnings.push(
+        "Physical timing was withheld because a world-anchored crossing was detected with insufficient confidence.",
+      );
+    }
   } else if (zone && worldSeries.length >= 2) {
-    const dir = netTravel >= 0 ? 1 : -1;
+    crossingDetectionMethod = "screen_fixed_interpolated";
+    const dir = travelsRightward ? 1 : -1;
     const entryCross = crossingTime(worldSeries, zone.entryX, dir);
     const exitCross = crossingTime(worldSeries, zone.exitX, dir);
     if (entryCross) {
       tEntry = entryCross.time;
       entryExtrapolated = entryCross.extrapolated;
+      entryVerified = entryCross.verified;
+      startCrossingFrame = entryCross.frame;
     }
     if (exitCross) {
       tExit = exitCross.time;
       exitExtrapolated = exitCross.extrapolated;
+      exitVerified = exitCross.verified;
+      finishCrossingFrame = exitCross.frame;
     }
+    if (!entryCross || !exitCross) {
+      timingAvailabilityReason = !entryCross && !exitCross
+        ? "start_and_finish_crossings_unavailable"
+        : !entryCross ? "start_crossing_unavailable" : "finish_crossing_unavailable";
+    } else if (!entryVerified || !exitVerified) {
+      timingAvailabilityReason = "crossing_extrapolated_not_verified";
+      warnings.push(
+        "Physical timing was withheld because the athlete's tracked path did not directly bracket both calibration gates — the closest estimate was an extrapolation, not a verified crossing.",
+      );
+    }
+  } else {
+    timingAvailabilityReason = zone ? "athlete_tracking_unavailable" : "not_calibrated";
+  }
+  const zoneTimingVerified = entryVerified && exitVerified && tEntry != null && tExit != null && tExit > tEntry;
+  if (zone && !zoneTimingVerified && timingAvailabilityReason == null) {
+    timingAvailabilityReason = "crossing_order_invalid";
+  }
+
+  // Day 96 audit (Part 7) — the minimum crossing-evidence contract. A crossing
+  // can be a genuine bracket (zoneTimingVerified above) and STILL sit right
+  // after/before a long fragmented gap with almost nothing around it — that
+  // is real evidence, but thin evidence, and must not be reported with the
+  // same confidence as a crossing surrounded by dense, continuous tracking.
+  const MIN_SURROUNDING_CONTINUITY_FRAMES = 3;
+  const framesByIndex = new Map(frames.map((f) => [f.sourceFrameIndex ?? f.frame, f]));
+  const countConsecutiveTracked = (centerIndex: number | null, direction: 1 | -1): number => {
+    if (centerIndex == null) return 0;
+    let count = 0;
+    let i = centerIndex + direction;
+    while (count < 30) {
+      const f = framesByIndex.get(i);
+      if (!f || !torsoPoint(f)) break;
+      count += 1;
+      i += direction;
+    }
+    return count;
+  };
+  const startContinuityBefore = countConsecutiveTracked(startCrossingFrame, -1);
+  const startContinuityAfter = countConsecutiveTracked(startCrossingFrame, 1);
+  const finishContinuityBefore = countConsecutiveTracked(finishCrossingFrame, -1);
+  const finishContinuityAfter = countConsecutiveTracked(finishCrossingFrame, 1);
+  const sufficientSurroundingContinuity =
+    Math.min(startContinuityBefore, startContinuityAfter, finishContinuityBefore, finishContinuityAfter)
+    >= MIN_SURROUNDING_CONTINUITY_FRAMES;
+  // Bracketed by consecutive SOURCE frames (not merely two tracked samples
+  // that happen to straddle the gate with a large gap in source-frame terms).
+  const startBracketedConsecutively =
+    startCrossingFrame != null && framesByIndex.has(startCrossingFrame) && framesByIndex.has(startCrossingFrame - 1)
+    && torsoPoint(framesByIndex.get(startCrossingFrame - 1)!) != null;
+  const finishBracketedConsecutively =
+    finishCrossingFrame != null && framesByIndex.has(finishCrossingFrame) && framesByIndex.has(finishCrossingFrame - 1)
+    && torsoPoint(framesByIndex.get(finishCrossingFrame - 1)!) != null;
+  const timingStatus: "verified" | "provisionally_verified" | "unavailable" = !zoneTimingVerified
+    ? "unavailable"
+    : (sufficientSurroundingContinuity && !entryExtrapolated && !exitExtrapolated)
+      ? "verified"
+      : "provisionally_verified";
+  if (timingStatus === "provisionally_verified" && timingAvailabilityReason == null) {
+    timingAvailabilityReason = "insufficient_surrounding_continuity";
   }
 
   // Valid steps: a contact counts when it sits spatially between the two gates
@@ -607,8 +1024,21 @@ export function computeSprintMeasurements(
     tEntry != null && tExit != null && tExit > tEntry && m.time >= tEntry - EPS && m.time <= tExit + EPS;
   const inZone = (m: WorldMark) =>
     !zone || (m.wx >= zone.minX - EPS && m.wx <= zone.maxX + EPS) || inWindow(m);
-  const canonicalInZoneIds = zoneStepSummary
-    ? new Set(zoneStepSummary.contacts.filter((contact) => contact.countedInZone).map((contact) => contact.id))
+  // Phase R4B (Part T): zoneStepSummary now activates for TWO different
+  // reasons — real camera evidence (unchanged, pre-existing panning path)
+  // or an explicit CANONICAL_LONGITUDINAL request with no camera evidence
+  // (new, stationary path). Valid-contact zone membership and Step
+  // Frequency must NOT change under the new path (R4A explicitly proved
+  // Frequency already reconstructs correctly; this phase's scope is step
+  // length + Peak Velocity's distance term ONLY) — so those two metrics
+  // keep deferring to zoneStepSummary ONLY when it was reached the
+  // pre-existing way. Under the new stationary-canonical path,
+  // zoneStepSummary exists (for step-length/Peak-Velocity sourcing below)
+  // but does not drive membership/frequency — those fall through to the
+  // exact same legacy computation as before this phase.
+  const zoneStepSummaryGovernsLegacyMetrics = zoneStepSummary != null && anchorOptions?.cameraEvidence != null;
+  const canonicalInZoneIds = zoneStepSummaryGovernsLegacyMetrics
+    ? new Set(zoneStepSummary!.contacts.filter((contact) => contact.countedInZone).map((contact) => contact.id))
     : null;
   const validMarks = canonicalInZoneIds
     ? marks.filter((mark) => canonicalInZoneIds.has(contactId(mark)))
@@ -630,25 +1060,22 @@ export function computeSprintMeasurements(
     }
   }
 
-  // Elapsed time. Primary: the COM's traversal of the zone (world x). Fallback (no
-  // zone or COM never spans it): the span between the first and last VALID contact.
+  // Elapsed time — the COM's traversal of the zone (world x) between the start
+  // and finish crossings, and ONLY that. There is deliberately no fallback to the
+  // span between the first/last valid contact, the pose-track duration, or the
+  // clip/video duration: a zone time is either a verified crossing pair or it is
+  // unavailable (Day 94 audit — see `timingAvailabilityReason`). `rawZoneTimeS`
+  // is retained for diagnostics even when NOT verified (e.g. one extrapolated
+  // endpoint); only `zoneTimeS`/`reportedZoneTimeS` — the reported figures — are
+  // gated on `zoneTimingVerified`.
   let rawZoneTimeS: number | null = null;
   if (tEntry != null && tExit != null && tExit > tEntry) rawZoneTimeS = tExit - tEntry;
-  // Fallback elapsed for velocity (distance ÷ time) when the COM path doesn't
-  // cleanly cross both gates: the time span of the valid in-zone contacts.
-  const contactSpanSource = zone ? validMarks : marks;
-  const contactSpan =
-    contactSpanSource.length >= 2
-      ? contactSpanSource[contactSpanSource.length - 1].time - contactSpanSource[0].time
-      : null;
-  const rawZoneElapsedS = rawZoneTimeS ?? (!anchoredZone && contactSpan && contactSpan > 0 ? contactSpan : null);
+  const rawZoneElapsedS = zoneTimingVerified ? rawZoneTimeS : null;
   const reportedZoneElapsedS =
     rawZoneElapsedS == null ? null : reportTimeSeconds(rawZoneElapsedS);
-  if (zone && rawZoneTimeS == null) {
+  if (zone && !zoneTimingVerified) {
     warnings.push(
-      anchoredZone
-        ? "World-anchored timing is unavailable; no screen-fixed or contact-span fallback was used."
-        : "Athlete's tracked path didn't cleanly cross both calibration gates — zone time falls back to the valid-contact time span.",
+      `Zone time is unavailable: ${timingAvailabilityReason ?? "crossings could not be verified"}.`,
     );
   }
 
@@ -665,11 +1092,11 @@ export function computeSprintMeasurements(
     combined: combinedStepFrequencyHz,
     left: leftStepFrequencyHz,
     right: rightStepFrequencyHz,
-  } = zoneStepSummary
+  } = zoneStepSummaryGovernsLegacyMetrics
     ? {
-        combined: zoneStepSummary.summaries.stepFrequencyHz,
-        left: zoneStepSummary.summaries.leftStepFrequencyHz,
-        right: zoneStepSummary.summaries.rightStepFrequencyHz,
+        combined: zoneStepSummary!.summaries.stepFrequencyHz,
+        left: zoneStepSummary!.summaries.leftStepFrequencyHz,
+        right: zoneStepSummary!.summaries.rightStepFrequencyHz,
       }
     : legacyFrequency;
 
@@ -685,7 +1112,11 @@ export function computeSprintMeasurements(
   // average only full events. Partial boundary events remain visible as evidence.
   const contactPhases = fullRun.contactPhases.filter((p) => zoneFrameSet.has(p.frame));
   let contactFlight: ContactFlightSummary = summariseContactFlight(contactPhases);
-  if (zoneStepSummary) {
+  // Phase R4B: ground-contact/flight time are out of this phase's scope
+  // (design-only per R4A Part J) — keep them on the pre-existing computation
+  // under the new stationary-canonical path exactly like validMarks/frequency
+  // above; unchanged (zoneStepSummary-driven) for the pre-existing panning path.
+  if (zoneStepSummaryGovernsLegacyMetrics) {
     const markByFrameSide = new Map(
       detected.map((mark) => [`${mark.frame}:${mark.side}`, mark]),
     );
@@ -768,34 +1199,75 @@ export function computeSprintMeasurements(
   // calibrations retain their legacy gap behaviour as an explicit fallback.
   const gapMarks = zone ? validMarks : marks;
   const canonicalIntervals = zoneStepSummary?.intervals ?? null;
+  const intervalByLandingId = new Map(
+    (canonicalIntervals ?? []).map((interval) => [interval.toContactId, interval]),
+  );
+
+  // Day 103 (Part 7): the legacy (unanchored) gap path had NO missing-contact
+  // integrity check at all — `distanceMetersFromPrev` was reported as a step
+  // length however large the underlying gap. Real production evidence: a
+  // 425ms/102-frame gap between two otherwise-valid contacts (a real
+  // intermediate foot-strike went undetected) was reported as a 7.19m single
+  // step. Evaluate every legacy gap the same way `zoneStepAnalysis.ts` now
+  // does canonical intervals, BEFORE deriving any average/individual/per-side
+  // number from it, so a merged-contact gap is marked unavailable instead of
+  // displayed as a step.
+  interface LegacyInterval {
+    mark: WorldMark;
+    distanceM: number | null;
+    valid: boolean;
+    reasons: StepIntegrityReason[];
+  }
+  const legacyCandidates: Array<{ mark: WorldMark; prev: WorldMark; distanceM: number; durationS: number }> = [];
+  if (!canonicalIntervals) {
+    for (const m of gapMarks) {
+      const globalIdx = marks.indexOf(m);
+      const prev = globalIdx > 0 ? marks[globalIdx - 1] : null;
+      const distanceM = m.distanceMetersFromPrev;
+      if (prev && distanceM != null && distanceM > 0) {
+        legacyCandidates.push({ mark: m, prev, distanceM, durationS: m.time - prev.time });
+      }
+    }
+  }
+  const legacyIntervals: LegacyInterval[] = canonicalIntervals
+    ? []
+    : gapMarks.map((m) => {
+        const candidate = legacyCandidates.find((c) => c.mark === m);
+        if (!candidate) return { mark: m, distanceM: null, valid: false, reasons: [] };
+        const neighborDistancesM = legacyCandidates
+          .filter((other) => other.mark !== m)
+          .map((other) => other.distanceM);
+        const integrity = evaluateStepInterval({
+          fromSide: candidate.prev.side, toSide: candidate.mark.side,
+          durationS: candidate.durationS, distanceM: candidate.distanceM, neighborDistancesM,
+        });
+        return { mark: m, distanceM: candidate.distanceM, valid: integrity.valid, reasons: integrity.reasons };
+      });
+  const legacyIntervalByMark = new Map(legacyIntervals.map((entry) => [entry.mark, entry]));
+
   const individualStepLengthsM = canonicalIntervals
     ? canonicalIntervals
         .map((interval) => interval.longitudinalLengthM)
         .filter((value): value is number => value != null)
-    : gapMarks
-        .map((m) => m.distanceMetersFromPrev)
-        .filter((v): v is number => v != null && v > 0);
-  const intervalByLandingId = new Map(
-    (canonicalIntervals ?? []).map((interval) => [interval.toContactId, interval]),
-  );
+    : legacyIntervals
+        .filter((entry) => entry.valid && entry.distanceM != null)
+        .map((entry) => entry.distanceM as number);
   const leftGaps = canonicalIntervals
     ? canonicalIntervals
         .filter((interval) => interval.toSide === "left")
         .map((interval) => interval.longitudinalLengthM)
         .filter((value): value is number => value != null)
-    : gapMarks
-        .filter((m) => m.side === "left")
-        .map((m) => m.distanceMetersFromPrev)
-        .filter((v): v is number => v != null && v > 0);
+    : legacyIntervals
+        .filter((entry) => entry.valid && entry.mark.side === "left" && entry.distanceM != null)
+        .map((entry) => entry.distanceM as number);
   const rightGaps = canonicalIntervals
     ? canonicalIntervals
         .filter((interval) => interval.toSide === "right")
         .map((interval) => interval.longitudinalLengthM)
         .filter((value): value is number => value != null)
-    : gapMarks
-        .filter((m) => m.side === "right")
-        .map((m) => m.distanceMetersFromPrev)
-        .filter((v): v is number => v != null && v > 0);
+    : legacyIntervals
+        .filter((entry) => entry.valid && entry.mark.side === "right" && entry.distanceM != null)
+        .map((entry) => entry.distanceM as number);
 
   // Step-by-step sequence through the zone (Day 73): each valid in-zone contact with
   // its step length from the previous contact + which foot that was. Pure exposure of
@@ -805,31 +1277,78 @@ export function computeSprintMeasurements(
     const prev = globalIdx > 0 ? marks[globalIdx - 1] : null;
     const canonical = zoneStepSummary?.contacts.find((contact) => contact.id === contactId(m));
     const interval = intervalByLandingId.get(contactId(m));
+    const legacy = legacyIntervalByMark.get(m);
+    const stepLengthM = canonicalIntervals
+      ? interval?.longitudinalLengthM ?? null
+      : usableScale && legacy?.valid
+        ? (legacy.distanceM ?? null)
+        : null;
+    // Phase R1B: the SAME already-computed calibrated physical distance
+    // (never a second formula) -- `interval.rawLongitudinalDisplacementM`
+    // (canonical) or `legacy.distanceM` (legacy two-point; already scale-
+    // converted, already null when unscaled since it derives from
+    // `WorldMark.distanceMetersFromPrev`) -- shown whenever the interval
+    // represents a legitimate single step, even if it also carries a
+    // cruise-phase-ceiling-only rejection reason `stepLengthM` requires.
+    const physicalCandidateM = canonicalIntervals
+      ? interval?.rawLongitudinalDisplacementM ?? null
+      : legacy?.distanceM ?? null;
+    const evidenceReasons = canonicalIntervals ? canonical?.qualityFlags : legacy?.reasons;
+    const hasEvidenceGap = hasPhysicalStepEvidenceGap(evidenceReasons);
+    const physicalStepLengthM = physicalCandidateM != null && Number.isFinite(physicalCandidateM) && physicalCandidateM > 0 && !hasEvidenceGap
+      ? physicalCandidateM
+      : null;
+    const physicalStepLengthState: ZoneStep["physicalStepLengthState"] =
+      stepLengthM != null
+        ? "accepted_for_metrics"
+        : physicalStepLengthM != null
+          ? "presentation_only"
+          : hasEvidenceGap
+            ? "missing_contact"
+            : "invalid_interval";
     return {
       index: i + 1,
+      contactId: contactId(m),
       side: m.side,
       timeS: m.time,
       worldX: m.wx,
-      stepLengthM: canonicalIntervals
-        ? interval?.longitudinalLengthM ?? null
-        : usableScale
-          ? m.distanceMetersFromPrev
-          : null,
+      stepLengthM,
+      physicalStepLengthM,
+      physicalStepLengthState,
       fromSide: interval ? interval.fromSide : prev ? prev.side : null,
       longitudinalM: canonical?.longitudinalM,
       lateralM: canonical?.lateralM,
       classification: canonical?.classification,
-      qualityFlags: canonical?.qualityFlags,
+      qualityFlags: canonical?.qualityFlags ?? (legacy && legacy.reasons.length ? legacy.reasons : undefined),
     };
   });
 
   const avgIndividualStepLengthM = mean(individualStepLengthsM);
   const leftStepLengthM = zoneStepSummary?.summaries.leftStepAverageM ?? median(leftGaps);
   const rightStepLengthM = zoneStepSummary?.summaries.rightStepAverageM ?? median(rightGaps);
+  // Day 104 (Part 6): this naive "zone distance ÷ contact count" aggregate
+  // (Method 1, used only when the canonical per-interval `zoneStepSummary`
+  // isn't available) implicitly assumes every real step in the zone was
+  // detected — when pose evidence is fragmented (missed contacts, e.g. the
+  // real Vanni 60fps clip), `validContacts` under-counts true steps and this
+  // silently inflates the implied average. Guarded with the exact same
+  // evidence-based ceiling `evaluateStepInterval` already applies to
+  // individual intervals, rather than displaying an unprotected number.
+  const avgZoneStepLengthNaive =
+    !zoneStepSummary && zone && validContacts > 0 && usableScale ? zone.distanceM / validContacts : null;
+  const zoneStepLengthIntegrity =
+    avgZoneStepLengthNaive != null ? evaluateAggregateStepLength(avgZoneStepLengthNaive, individualStepLengthsM) : null;
+  if (avgZoneStepLengthNaive != null && zoneStepLengthIntegrity && !zoneStepLengthIntegrity.valid) {
+    warnings.push(
+      `Zone-average step length unavailable: ${validContacts} contact(s) across ${zone!.distanceM}m implies ` +
+        `${avgZoneStepLengthNaive.toFixed(2)}m/step, beyond the evidence-based ceiling ` +
+        `(${zoneStepLengthIntegrity.ceilingM.toFixed(2)}m) — contact evidence is too sparse to trust (sparse_contact_evidence).`,
+    );
+  }
   const avgZoneStepLengthM = zoneStepSummary
     ? zoneStepSummary.summaries.averageStepLengthM
-    : zone && validContacts > 0 && usableScale
-      ? zone.distanceM / validContacts
+    : zoneStepLengthIntegrity?.valid
+      ? avgZoneStepLengthNaive
       : null;
 
   // AVA Peak Stride Length (Day 82): average of the best-4 opposite-foot contact
@@ -889,6 +1408,17 @@ export function computeSprintMeasurements(
   // stays consistent under FPS normalization. With too few contacts, top speed is
   // withheld rather than inferred from an averaged length×frequency estimate.
   const strideMarks = zone ? validMarks : marks;
+  // Phase R4B (Part H): Peak Velocity's DISTANCE TERM only — same window
+  // definition (2-interval/full-stride, same `strideMarks`, same `dt`
+  // computation) as before this phase, unconditionally. Under
+  // CANONICAL_LONGITUDINAL (zoneStepSummary active), the distance is
+  // `s(b) - s(a)` — the SAME longitudinal coordinate Step Length already
+  // uses, sourced from the SAME `zoneStepSummary.contacts` (no second
+  // physical-position calculation). Under LEGACY_2D (zoneStepSummary null),
+  // behavior is byte-identical to every prior phase: full 2D Euclidean.
+  const longitudinalByContactId = zoneStepSummary
+    ? new Map(zoneStepSummary.contacts.map((c) => [c.id, c.longitudinalM]))
+    : null;
   const rawStrideWindows: Array<{
     startContactIndex: number;
     endContactIndex: number;
@@ -901,7 +1431,19 @@ export function computeSprintMeasurements(
       const b = strideMarks[i + 2];
       const dt = b.time - a.time;
       if (dt <= 0) continue;
-      const distM = Math.hypot((b.wx - a.wx) * w, (b.wy - a.wy) * h) * usableScale.metersPerPixel;
+      let distM: number;
+      if (longitudinalByContactId) {
+        const sa = longitudinalByContactId.get(contactId(a));
+        const sb = longitudinalByContactId.get(contactId(b));
+        // A mark without a canonical longitudinal position (e.g. outside the
+        // classified zone) has no legitimate longitudinal distance to report
+        // — skip the window rather than silently falling back to a
+        // different (2D) formula for only some windows.
+        if (sa == null || sb == null) continue;
+        distM = sb - sa;
+      } else {
+        distM = Math.hypot((b.wx - a.wx) * w, (b.wy - a.wy) * h) * usableScale.metersPerPixel;
+      }
       rawStrideWindows.push({
         startContactIndex: i,
         endContactIndex: i + 2,
@@ -945,13 +1487,30 @@ export function computeSprintMeasurements(
     return (la && (la.visibility ?? 1) >= 0.4) || (ra && (ra.visibility ?? 1) >= 0.4);
   };
   const trackedFrames = frames.filter(footVisible).length;
+  // Day 99 (Part 6) — structured, non-silent rejection reasons for every
+  // full-run contact NOT counted toward the zone metrics. `inZone` itself is
+  // unchanged (this only labels its existing decision); a contact excluded
+  // for being on the entry side of the start gate gets a different reason
+  // than one past the finish gate, so "why was this contact dropped" is
+  // always answerable from the artifact, never silent.
   const excludedContacts = marks
     .filter((m) => !inZone(m))
-    .map((m) => ({
-      time: m.time,
-      side: m.side,
-      reason: "outside the calibration gates (world x beyond the zone)",
-    }));
+    .map((m) => {
+      const beforeStart = zone
+        ? (travelsRightward ? m.wx < zone.minX - EPS : m.wx > zone.maxX + EPS)
+        : false;
+      return {
+        time: m.time,
+        side: m.side,
+        sourceFrameIndex: m.sourceFrameIndex,
+        reasonCode: (beforeStart ? "before_start_crossing" : "outside_zone") as
+          | "before_start_crossing"
+          | "outside_zone",
+        reason: beforeStart
+          ? "before the calibration start gate (world x on the entry side of the zone)"
+          : "outside the calibration gates (world x beyond the zone)",
+      };
+    });
   const diagNotes: string[] = [];
   const firstContactTimeS = marks.length ? marks[0].time : null;
   if (frames.length && firstContactTimeS != null) {
@@ -1032,6 +1591,71 @@ export function computeSprintMeasurements(
       `Timing precision floor: at ${activeFps?.toFixed(0)} fps one frame = ${frameMs.toFixed(1)} ms. Ground contact (~${contactFlight.groundContactCombinedMs.toFixed(0)} ms ≈ ${(contactFlight.groundContactCombinedMs / frameMs).toFixed(1)} frames) carries a ±1-frame (~${frameMs.toFixed(0)} ms) floor; the L/R contact/flight spread near that size is quantization, not biomechanics. Capture at 120–240 fps to tighten.`,
     );
   }
+  // Day 99 (Part 8) — zone-coverage provenance: how much of the calibrated
+  // zone the eligible steps actually span, in real metres, so a partial-zone
+  // measurement is always disclosed rather than presented as if it covered
+  // the full distance. Positions are measured along the travel direction
+  // from the START gate; independent of, and never a substitute for, the
+  // step-length/velocity math itself.
+  const positionAlongZoneM = (wx: number): number | null => {
+    if (!zone || !usableScale || !w) return null;
+    const fromStartNorm = travelsRightward ? wx - zone.minX : zone.maxX - wx;
+    return fromStartNorm * w * usableScale.metersPerPixel;
+  };
+  const firstMeasuredPositionM = validMarks.length ? positionAlongZoneM(validMarks[0].wx) : null;
+  const lastMeasuredPositionM = validMarks.length
+    ? positionAlongZoneM(validMarks[validMarks.length - 1].wx)
+    : null;
+  const measuredDistanceM =
+    firstMeasuredPositionM != null && lastMeasuredPositionM != null
+      ? Math.abs(lastMeasuredPositionM - firstMeasuredPositionM)
+      : null;
+  const measuredZoneFraction =
+    measuredDistanceM != null && zone?.distanceM ? measuredDistanceM / zone.distanceM : null;
+  const COVERAGE_GAP_THRESHOLD_M = 0.5;
+  const missingEarlyZoneReason =
+    firstMeasuredPositionM != null && firstMeasuredPositionM > COVERAGE_GAP_THRESHOLD_M
+      ? `Step metrics were not measured for the first ${firstMeasuredPositionM.toFixed(1)} m of the ${zone?.distanceM ?? "?"} m zone — insufficient pose evidence to detect a ground contact there.`
+      : null;
+  const missingLateZoneReason =
+    lastMeasuredPositionM != null && zone?.distanceM != null && zone.distanceM - lastMeasuredPositionM > COVERAGE_GAP_THRESHOLD_M
+      ? `Step metrics were not measured for the last ${(zone.distanceM - lastMeasuredPositionM).toFixed(1)} m of the ${zone.distanceM} m zone — insufficient pose evidence to detect a ground contact there.`
+      : null;
+  // Day 100 — coverage confidence: how much evidence backs the WINDOW
+  // boundary itself (contact count + internal consistency), independent of
+  // `stepLengthConfidence` (which grades the length values, not the window).
+  // No manual tuning: purely a function of how many eligible steps exist and
+  // whether the engine's own step-length consistency check is high.
+  const eligibleStepCount = individualStepLengthsM.length;
+  const coverageConfidence: MeasurementConfidence =
+    eligibleStepCount === 0
+      ? "low"
+      : eligibleStepCount >= 3 && stepLengthConfidence === "high"
+        ? "high"
+        : eligibleStepCount >= 2
+          ? "medium"
+          : "low";
+  const coverageReason =
+    missingEarlyZoneReason && missingLateZoneReason
+      ? `${missingEarlyZoneReason} ${missingLateZoneReason}`
+      : missingEarlyZoneReason ?? missingLateZoneReason;
+
+  const zoneCoverage: ZoneCoverage = {
+    zoneDistanceM: zone?.distanceM ?? null,
+    measuredDistanceM,
+    measuredZoneFraction,
+    firstMeasuredPositionM,
+    lastMeasuredPositionM,
+    eligibleStepCount,
+    missingEarlyZoneReason,
+    missingLateZoneReason,
+    measurementStartPositionM: firstMeasuredPositionM,
+    measurementEndPositionM: lastMeasuredPositionM,
+    coveragePercent: measuredZoneFraction != null ? measuredZoneFraction * 100 : null,
+    coverageReason,
+    coverageConfidence,
+  };
+
   const diagnostics: MeasurementDiagnostics = {
     totalFrames: frames.length,
     trackedFrames,
@@ -1042,12 +1666,20 @@ export function computeSprintMeasurements(
     excludedContacts,
     timing,
     notes: diagNotes,
+    zoneCoverage,
   };
 
   return {
     timingPolicyVersion: CONSERVATIVE_TIMING_POLICY_V1,
+    // Phase R4B: reports what ACTUALLY ran (zoneStepSummary non-null means
+    // the longitudinal path produced this session's step length/Peak
+    // Velocity distance), not merely the caller's request — a
+    // CANONICAL_LONGITUDINAL request with no usable calibration/gates still
+    // honestly reports LEGACY_2D.
+    measurementModelVersion: zoneStepSummary != null ? MEASUREMENT_MODEL_CANONICAL_LONGITUDINAL : DEFAULT_MEASUREMENT_MODEL_VERSION,
     calibrated: !!usableScale,
     metersPerPixel: usableScale ? usableScale.metersPerPixel : null,
+    fullRunContacts: fullRun.contacts,
     totalContacts,
     leftContacts,
     rightContacts,
@@ -1061,6 +1693,25 @@ export function computeSprintMeasurements(
     reportedZoneTimeS: reportedZoneElapsedS,
     zoneEntryTimeS: tEntry,
     zoneExitTimeS: tExit,
+    timingProvenance: {
+      verified: zoneTimingVerified,
+      startCrossingFrame,
+      finishCrossingFrame,
+      startCrossingTimestampS: tEntry,
+      finishCrossingTimestampS: tExit,
+      crossingDetectionMethod,
+      timingAuthority: "automatic",
+      startCrossingExtrapolated: entryExtrapolated,
+      finishCrossingExtrapolated: exitExtrapolated,
+      timingAvailabilityReason: timingStatus === "verified" ? null : timingAvailabilityReason,
+      timingStatus,
+      startContinuityFramesBefore: startContinuityBefore,
+      startContinuityFramesAfter: startContinuityAfter,
+      finishContinuityFramesBefore: finishContinuityBefore,
+      finishContinuityFramesAfter: finishContinuityAfter,
+      startBracketedByConsecutiveFrames: startBracketedConsecutively,
+      finishBracketedByConsecutiveFrames: finishBracketedConsecutively,
+    },
     combinedStepFrequencyHz,
     leftStepFrequencyHz,
     rightStepFrequencyHz,

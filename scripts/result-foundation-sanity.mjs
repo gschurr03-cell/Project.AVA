@@ -109,7 +109,9 @@ try {
   const confidence = { score: 0.8, label: "high", rationale: "fixture" };
   const provenance = {
     originalSourceFps: 240,
-    sourceFpsClassification: "high_speed_source_normalized_to_60",
+    // General native source: a 240 FPS source keeps its own real rate as
+    // analysisFps instead of being forced onto a 60 FPS identity.
+    sourceFpsClassification: "native_source_class",
     sourceFpsMetadata: {
       averageFps: 240,
       nominalFps: 240,
@@ -117,10 +119,13 @@ try {
       timestampFps: 240,
       variableFrameRate: false,
     },
-    analysisFps: 60,
+    analysisFps: 240,
+    sourceFpsBand: "ultra_high",
+    sourceFpsDisplay: 240,
+    wasResampled: false,
     timingPolicyVersion: "CONSERVATIVE_TIMING_POLICY_V1",
     sourceFrameCount: 240,
-    analyzedFrameCount: 60,
+    analyzedFrameCount: 240,
     originalVideoWidth: 1920,
     originalVideoHeight: 1080,
     sourceDurationSeconds: 1,

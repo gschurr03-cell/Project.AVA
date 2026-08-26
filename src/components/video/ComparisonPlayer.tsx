@@ -55,6 +55,8 @@ export default function ComparisonPlayer({ left, right }: Props) {
     currentTime: 0,
     isPlaying: false,
     speed: 1,
+    sourcePlaybackStartSeconds: 0,
+    duration: 0,
   });
   const [locks, setLocks] = useState<Record<LockKey, boolean>>({
     playback: true,

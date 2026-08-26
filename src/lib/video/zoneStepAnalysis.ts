@@ -1,3 +1,5 @@
+import { evaluateStepInterval, type StepIntegrityReason } from "./stepIntegrity";
+
 export const ZONE_STEP_MEASUREMENT_VERSION = "zone-step-metrics-v1" as const;
 export type ZoneStepSide = "left" | "right";
 
@@ -14,7 +16,8 @@ export type ZoneStepQualityFlag =
   | "insufficient_bilateral_samples"
   | "non_alternating_sequence"
   | "non_forward_interval"
-  | "implausible_step_length";
+  | "implausible_step_length"
+  | StepIntegrityReason;
 
 export interface ZoneAxisPoint {
   x: number;
@@ -222,12 +225,29 @@ export function analyzeZoneSteps(input: ZoneStepInput): ZoneStepSummary {
     : null;
 
   const intervalContacts = firstPost ? [...inZone, firstPost] : inZone;
-  const intervals: ZoneStepInterval[] = [];
+  // Day 103 (Part 7): a missing-contact integrity pass needs each interval's
+  // OTHER already-plausible neighbors as evidence for the distance ceiling —
+  // computed in a first pass over raw deltas/durations, before any flags are
+  // decided, so the ceiling never uses an interval to judge itself.
+  const rawIntervals: Array<{
+    from: ClassifiedZoneContact;
+    to: ClassifiedZoneContact;
+    delta: number;
+    lateral: number;
+    durationS: number;
+  }> = [];
   for (let i = 1; i < intervalContacts.length; i++) {
     const from = intervalContacts[i - 1];
     const to = intervalContacts[i];
-    const delta = to.longitudinalM - from.longitudinalM;
-    const lateral = to.lateralM - from.lateralM;
+    rawIntervals.push({
+      from, to,
+      delta: to.longitudinalM - from.longitudinalM,
+      lateral: to.lateralM - from.lateralM,
+      durationS: to.timeS - from.timeS,
+    });
+  }
+  const intervals: ZoneStepInterval[] = rawIntervals.map((raw, i) => {
+    const { from, to, delta, lateral, durationS } = raw;
     const flags: ZoneStepQualityFlag[] = [];
     if (from.side === to.side) flags.push("non_alternating_sequence");
     if (delta <= 0) flags.push("non_forward_interval");
@@ -235,27 +255,40 @@ export function analyzeZoneSteps(input: ZoneStepInput): ZoneStepSummary {
     if (from.qualityFlags.includes("low_projection_confidence") || to.qualityFlags.includes("low_projection_confidence")) {
       flags.push("low_projection_confidence");
     }
+    const neighborDistancesM = rawIntervals
+      .filter((_, j) => j !== i)
+      .map((other) => other.delta)
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const integrity = evaluateStepInterval({
+      fromSide: from.side, toSide: to.side, durationS, distanceM: delta, neighborDistancesM,
+    });
+    for (const reason of integrity.reasons) if (!flags.includes(reason)) flags.push(reason);
     const valid = !flags.some((flag) =>
       flag === "non_alternating_sequence" ||
       flag === "non_forward_interval" ||
-      flag === "implausible_step_length"
+      flag === "implausible_step_length" ||
+      flag === "missing_intermediate_contact" ||
+      flag === "contact_sequence_gap" ||
+      flag === "implausible_step_duration" ||
+      flag === "implausible_step_distance" ||
+      flag === "foot_sequence_discontinuity"
     );
-    intervals.push({
+    return {
       id: `interval-${from.id}--${to.id}`,
-      index: intervals.length + 1,
+      index: i + 1,
       fromContactId: from.id,
       toContactId: to.id,
       fromSide: from.side,
       toSide: to.side,
-      kind: i === intervalContacts.length - 1 && firstPost ? "trailing_exit" : "internal",
+      kind: i === rawIntervals.length - 1 && firstPost ? "trailing_exit" : "internal",
       longitudinalLengthM: valid ? rounded(delta) : null,
       rawLongitudinalDisplacementM: rounded(delta),
       lateralDisplacementM: rounded(lateral),
-      durationS: rounded(to.timeS - from.timeS),
+      durationS: rounded(durationS),
       valid,
       qualityFlags: flags,
-    });
-  }
+    };
+  });
 
   const qualityFlags = new Set<ZoneStepQualityFlag>();
   for (const contact of contacts) for (const flag of contact.qualityFlags) qualityFlags.add(flag);

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "ava-human-contact-windows-v1",
+  "immutable": true,
+  "annotationSource": "human-reviewed",
+  "clip": {"path": "tmp/phase50e/sources/vanni_fly_60.mov", "sha256": "ff61af9a638ec5c36ba1c42ff778ea9119d605c9b3692ec629c800f992bc2111", "verifiedFps": 60, "frameCount": 233, "resolution": "1920x1080"},
+  "protocol": {"contactOn": "First frame where visible pressure/load is actually being applied through the foot/leg into the ground.", "contactOff": "First frame where the foot is visually completely off the ground; touching toes remain active."},
+  "contacts": [{"index":1,"onFrame":7,"offFrame":13,"foot":"unknown","confidence":"HIGH"},{"index":2,"onFrame":21,"offFrame":28,"foot":"unknown","confidence":"HIGH"},{"index":3,"onFrame":34,"offFrame":40,"foot":"unknown","confidence":"HIGH"},{"index":4,"onFrame":48,"offFrame":53,"foot":"unknown","confidence":"HIGH"},{"index":5,"onFrame":60,"offFrame":67,"foot":"unknown","confidence":"HIGH"},{"index":6,"onFrame":74,"offFrame":78,"foot":"unknown","confidence":"HIGH"},{"index":7,"onFrame":87,"offFrame":92,"foot":"unknown","confidence":"HIGH"},{"index":8,"onFrame":99,"offFrame":109,"foot":"unknown","confidence":"HIGH"},{"index":9,"onFrame":112,"offFrame":118,"foot":"unknown","confidence":"HIGH"},{"index":10,"onFrame":125,"offFrame":130,"foot":"unknown","confidence":"HIGH"},{"index":11,"onFrame":138,"offFrame":144,"foot":"unknown","confidence":"HIGH"}]
+}

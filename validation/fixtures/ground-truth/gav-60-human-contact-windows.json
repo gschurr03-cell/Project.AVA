@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "ava-human-contact-windows-v1",
+  "immutable": true,
+  "annotationSource": "human-reviewed",
+  "clip": {"path": "tmp/phase50e/sources/gav_stationary_reference.mov", "sha256": "f8807192697c1e37d8c2c414307a84a81f197af660f41d4d7db76701bb57d56f", "verifiedFps": 60, "frameCount": 142, "resolution": "1920x1080"},
+  "protocol": {"contactOn": "First frame where visible pressure/load is actually being applied through the foot/leg into the ground.", "contactOff": "First frame where the foot is visually completely off the ground; touching toes remain active."},
+  "contacts": [{"index":1,"onFrame":6,"offFrame":11,"foot":"unknown","confidence":"HIGH"},{"index":2,"onFrame":19,"offFrame":23,"foot":"unknown","confidence":"HIGH"},{"index":3,"onFrame":31,"offFrame":35,"foot":"unknown","confidence":"HIGH"},{"index":4,"onFrame":44,"offFrame":48,"foot":"unknown","confidence":"HIGH"},{"index":5,"onFrame":56,"offFrame":61,"foot":"unknown","confidence":"HIGH"},{"index":6,"onFrame":69,"offFrame":73,"foot":"unknown","confidence":"HIGH"},{"index":7,"onFrame":81,"offFrame":85,"foot":"unknown","confidence":"HIGH"},{"index":8,"onFrame":93,"offFrame":97,"foot":"unknown","confidence":"HIGH"},{"index":9,"onFrame":106,"offFrame":110,"foot":"unknown","confidence":"HIGH"},{"index":10,"onFrame":118,"offFrame":121,"foot":"unknown","confidence":"HIGH"},{"index":11,"onFrame":131,"offFrame":135,"foot":"unknown","confidence":"HIGH"}]
+}

@@ -22,7 +22,14 @@ try {
   const require = createRequire(import.meta.url);
   const { analyzeZoneSteps } = require(path.join(out, "zoneStepAnalysis.js"));
 
-  const c = (id, x, side = id.endsWith("L") ? "left" : "right", timeS = Number(id.replace(/\D/g, "")) || 0) => ({
+  // Day 103: default timeS is the contact's sequence number scaled to a
+  // realistic ~200ms step cadence (matches this file's own explicit choice
+  // in check 21, `c("1L", 1, "left", 1)` .. `1.2` .. `1.4`) rather than raw
+  // seconds-per-unit — the old 1-second-per-contact default made every
+  // multi-contact fixture here trip the new missing-contact integrity check
+  // (Part 7) on unrealistic timing that was never the point of these tests,
+  // which are about spatial zone-boundary/interval logic, not cadence.
+  const c = (id, x, side = id.endsWith("L") ? "left" : "right", timeS = (Number(id.replace(/\D/g, "")) || 0) * 0.2) => ({
     id, x, y: 0, side, timeS, sourceFrameIndex: Math.round(timeS * 100), confidence: 0.9,
   });
   const run = (contacts, extra = {}) => analyzeZoneSteps({

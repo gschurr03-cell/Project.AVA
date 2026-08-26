@@ -13,7 +13,9 @@
  */
 
 import type { OverlayFrame } from "./overlay";
-import { classifySourceFps } from "./analysisFps";
+import { STANDARD_FPS, FPS_SNAP_TOLERANCE, normalizeFpsDisplay } from "./analysisFps";
+
+export { STANDARD_FPS, FPS_SNAP_TOLERANCE };
 
 /** Accepted FPS bounds (mirrors the DB CHECK on sessions.fps_override). */
 export const MIN_FPS = 1;
@@ -24,26 +26,22 @@ export function isValidFps(fps: number | null | undefined): fps is number {
   return typeof fps === "number" && Number.isFinite(fps) && fps >= MIN_FPS && fps <= MAX_FPS;
 }
 
-/** Canonical capture rates AVA supports (Day 73). */
+/** Canonical capture rates AVA supports (Day 73). Kept for back-compat call sites. */
 export const SUPPORTED_FPS = [60, 120, 240] as const;
 
 /**
- * Fractional tolerance used only for high-speed canonical display rates. The minimum
- * 60 FPS capture class is governed by the centralized evidence policy instead.
- */
-export const FPS_SNAP_TOLERANCE = 0.025;
-
-/**
- * Normalize a detected frame rate for UI/trust classification. This does not rewrite
- * worker artifact timestamps; nominal-60 footage retains its real source clock.
+ * Normalize a detected frame rate for display. This does not rewrite worker
+ * artifact timestamps or the stored exact FPS; nominal-60 (and native high-speed)
+ * footage retains its real source clock for all timing math — this only decides
+ * what camera-friendly label to show. A 120 FPS or 240 FPS source is never
+ * collapsed onto 60: the STANDARD_FPS table treats them as distinct rates.
+ * Delegates to the dependency-free `analysisFps.ts` implementation (the single
+ * authoritative FPS contract) — this wrapper only adds this module's own
+ * bounds check for back-compat with existing callers.
  */
 export function normalizeFps(fps: number | null | undefined): number | null {
   if (!isValidFps(fps)) return fps ?? null;
-  if (classifySourceFps({ detectedFps: fps }) === "validated_60_fps_class") return 60;
-  for (const canonical of SUPPORTED_FPS.filter((value) => value > 60)) {
-    if (Math.abs(fps - canonical) <= FPS_SNAP_TOLERANCE * canonical) return canonical;
-  }
-  return fps;
+  return normalizeFpsDisplay(fps);
 }
 
 /**

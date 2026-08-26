@@ -28,6 +28,10 @@ next-env.d.ts
 /supabase/.branches
 /supabase/.temp
 
+# local-only manifests/scratch data (never committed — may reference real
+# session/athlete/storage identifiers)
+/tmp/
+
 # misc
 .DS_Store
 *.pem
@@ -72,6 +76,7 @@ worker.log
 
 # Python
 .venv-rtmpose/
+.venv-rtmpose-phase50e/
 __pycache__/
 *.pyc
 
@@ -82,3 +87,4 @@ ios/AVASprint/Configuration/*.xcconfig
 !ios/AVASprint/Configuration/*.xcconfig.example
 *.xcuserstate
 xcuserdata/
+.ava-runtime/

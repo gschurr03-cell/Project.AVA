@@ -15,11 +15,16 @@ try {
   const exp = require(path.join(out, "analysis/experimental30.js"));
   for (const value of [29.97, 30, 30.03]) assert.equal(fps.classifySourceFps({ detectedFps: value }), "experimental_30_fps_class");
   assert.equal(fps.classifySourceFps({ detectedFps: 28.8, averageFps: 28.8, nominalFps: 30, realFps: 29.98, timestampFps: 29.97, variableFrameRate: true }), "experimental_30_fps_class");
-  assert.equal(fps.classifySourceFps({ detectedFps: 24, nominalFps: 24, timestampFps: 24 }), "unsupported_source_fps");
-  assert.equal(fps.classifySourceFps({ detectedFps: 50, nominalFps: 50, timestampFps: 50 }), "unsupported_source_fps");
+  // 24 and 50 FPS are real, supported rates outside the experimental-30 window —
+  // they get the general native-source path (accepted, own exact rate), not a
+  // hard rejection (variable-frame-rate audit, follow-up).
+  assert.equal(fps.classifySourceFps({ detectedFps: 24, nominalFps: 24, timestampFps: 24 }), "native_source_class");
+  assert.equal(fps.classifySourceFps({ detectedFps: 50, nominalFps: 50, timestampFps: 50 }), "native_source_class");
+  assert.equal(fps.classifySourceFps({ detectedFps: 15 }), "unsupported_source_fps", "still genuinely below the supported floor");
   assert.equal(fps.classifySourceFps({ detectedFps: 59.94 }), "validated_60_fps_class");
-  assert.equal(fps.classifySourceFps({ detectedFps: 120 }), "high_speed_source_normalized_to_60");
-  assert.equal(fps.classifySourceFps({ detectedFps: 240 }), "high_speed_source_normalized_to_60");
+  // Native high-speed sources keep their own real rate — never forced to 60.
+  assert.equal(fps.classifySourceFps({ detectedFps: 120 }), "native_source_class");
+  assert.equal(fps.classifySourceFps({ detectedFps: 240 }), "native_source_class");
   const timestamps = Array.from({ length: 91 }, (_, index) => index / 30);
   const events = [0.4, 0.62, 0.84, 1.06, 1.28, 1.5].map((time, index) => ({
     type: "contact", side: index % 2 ? "right" : "left", sourceFrameIndex: Math.round(time * 30),

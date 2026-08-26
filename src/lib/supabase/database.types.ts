@@ -33,29 +33,182 @@ export type Database = {
         }
         Relationships: []
       }
-      beta_audit_events: {
-        Row: { action: string; actor_user_id: string; created_at: string; id: string; metadata: Json; target_id: string | null; target_type: string }
-        Insert: { action: string; actor_user_id: string; created_at?: string; id?: string; metadata?: Json; target_id?: string | null; target_type: string }
-        Update: { action?: string; actor_user_id?: string; created_at?: string; id?: string; metadata?: Json; target_id?: string | null; target_type?: string }
-        Relationships: []
+      active_coaching_states: {
+        Row: {
+          athlete_id: string
+          state_snapshot_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          athlete_id: string
+          state_snapshot_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          athlete_id?: string
+          state_snapshot_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_coaching_states_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: true
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_coaching_states_state_snapshot_id_fkey"
+            columns: ["state_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "coaching_state_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      feedback_submissions: {
-        Row: { analysis_id: string | null; category: string; comment: string | null; created_at: string; current_route: string | null; id: string; may_contact: boolean; session_id: string | null; usefulness: string | null; user_id: string }
-        Insert: { analysis_id?: string | null; category: string; comment?: string | null; created_at?: string; current_route?: string | null; id?: string; may_contact?: boolean; session_id?: string | null; usefulness?: string | null; user_id: string }
-        Update: { analysis_id?: string | null; category?: string; comment?: string | null; created_at?: string; current_route?: string | null; id?: string; may_contact?: boolean; session_id?: string | null; usefulness?: string | null; user_id?: string }
-        Relationships: []
+      active_intelligence_pipelines: {
+        Row: {
+          athlete_id: string
+          pipeline_snapshot_id: string
+          updated_at: string
+        }
+        Insert: {
+          athlete_id: string
+          pipeline_snapshot_id: string
+          updated_at?: string
+        }
+        Update: {
+          athlete_id?: string
+          pipeline_snapshot_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_intelligence_pipelines_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: true
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_intelligence_pipelines_pipeline_snapshot_id_fkey"
+            columns: ["pipeline_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_pipeline_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      onboarding_states: {
-        Row: { completed_at: string | null; current_step: number; onboarding_version: string; scientific_boundary_acknowledged: boolean; state: string; updated_at: string; user_id: string }
-        Insert: { completed_at?: string | null; current_step?: number; onboarding_version: string; scientific_boundary_acknowledged?: boolean; state?: string; updated_at?: string; user_id: string }
-        Update: { completed_at?: string | null; current_step?: number; onboarding_version?: string; scientific_boundary_acknowledged?: boolean; state?: string; updated_at?: string; user_id?: string }
-        Relationships: []
+      active_performance_optimizations: {
+        Row: {
+          athlete_id: string
+          snapshot_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          athlete_id: string
+          snapshot_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          athlete_id?: string
+          snapshot_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_performance_optimizations_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: true
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_performance_optimizations_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "performance_optimization_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      support_requests: {
-        Row: { analysis_id: string | null; category: string; created_at: string; diagnostic_context: Json; id: string; message: string; safe_reference_id: string; session_id: string | null; status: string; subject: string; updated_at: string; user_id: string }
-        Insert: { analysis_id?: string | null; category: string; created_at?: string; diagnostic_context?: Json; id?: string; message: string; safe_reference_id: string; session_id?: string | null; status?: string; subject: string; updated_at?: string; user_id: string }
-        Update: { analysis_id?: string | null; category?: string; created_at?: string; diagnostic_context?: Json; id?: string; message?: string; safe_reference_id?: string; session_id?: string | null; status?: string; subject?: string; updated_at?: string; user_id?: string }
-        Relationships: []
+      active_root_cause_recommendation_contexts: {
+        Row: {
+          athlete_id: string
+          snapshot_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          athlete_id: string
+          snapshot_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          athlete_id?: string
+          snapshot_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_root_cause_recommendation_contexts_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: true
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_root_cause_recommendation_contexts_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "root_cause_recommendation_context_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      active_root_cause_states: {
+        Row: {
+          athlete_id: string
+          snapshot_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          athlete_id: string
+          snapshot_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          athlete_id?: string
+          snapshot_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_root_cause_states_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: true
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_root_cause_states_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "root_cause_state_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       analyses: {
         Row: {
@@ -292,6 +445,7 @@ export type Database = {
           next_attempt_at: string
           output_artifact_paths: Json
           priority: number
+          progress: Json | null
           session_id: string
           source_video_path: string
           started_at: string | null
@@ -325,6 +479,7 @@ export type Database = {
           next_attempt_at?: string
           output_artifact_paths?: Json
           priority?: number
+          progress?: Json | null
           session_id: string
           source_video_path: string
           started_at?: string | null
@@ -358,6 +513,7 @@ export type Database = {
           next_attempt_at?: string
           output_artifact_paths?: Json
           priority?: number
+          progress?: Json | null
           session_id?: string
           source_video_path?: string
           started_at?: string | null
@@ -391,11 +547,221 @@ export type Database = {
           },
         ]
       }
+      athlete_digital_twin_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          athlete_id: string
+          created_at: string
+          id: string
+          previous_snapshot_id: string | null
+          reason: string
+          selected_snapshot_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          athlete_id: string
+          created_at?: string
+          id?: string
+          previous_snapshot_id?: string | null
+          reason: string
+          selected_snapshot_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          athlete_id?: string
+          created_at?: string
+          id?: string
+          previous_snapshot_id?: string | null
+          reason?: string
+          selected_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "athlete_digital_twin_audit_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "athlete_digital_twin_audit_previous_snapshot_id_fkey"
+            columns: ["previous_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "athlete_digital_twin_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "athlete_digital_twin_audit_selected_snapshot_id_fkey"
+            columns: ["selected_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "athlete_digital_twin_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      athlete_digital_twin_snapshots: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          engine_version: string
+          id: string
+          previous_snapshot_id: string | null
+          reason: string
+          schema_version: string
+          snapshot_id: string
+          snapshot_version: string
+          source_event_count: number
+          twin_id: string
+          twin_snapshot: Json
+        }
+        Insert: {
+          athlete_id: string
+          created_at?: string
+          created_by: string
+          engine_version: string
+          id?: string
+          previous_snapshot_id?: string | null
+          reason: string
+          schema_version: string
+          snapshot_id: string
+          snapshot_version: string
+          source_event_count: number
+          twin_id: string
+          twin_snapshot: Json
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          created_by?: string
+          engine_version?: string
+          id?: string
+          previous_snapshot_id?: string | null
+          reason?: string
+          schema_version?: string
+          snapshot_id?: string
+          snapshot_version?: string
+          source_event_count?: number
+          twin_id?: string
+          twin_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "athlete_digital_twin_snapshots_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "athlete_digital_twin_snapshots_previous_snapshot_id_fkey"
+            columns: ["previous_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "athlete_digital_twin_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      athlete_digital_twin_state: {
+        Row: {
+          active_snapshot_id: string
+          athlete_id: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          active_snapshot_id: string
+          athlete_id: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          active_snapshot_id?: string
+          athlete_id?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "athlete_digital_twin_state_active_snapshot_id_fkey"
+            columns: ["active_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "athlete_digital_twin_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "athlete_digital_twin_state_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: true
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      athlete_timeline_events: {
+        Row: {
+          athlete_id: string
+          compatibility_key: string | null
+          confidence: number
+          created_at: string
+          created_by: string
+          event_id: string
+          event_type: string
+          id: string
+          occurred_at: string
+          payload: Json
+          recorded_at: string
+          source_version: string
+        }
+        Insert: {
+          athlete_id: string
+          compatibility_key?: string | null
+          confidence: number
+          created_at?: string
+          created_by: string
+          event_id: string
+          event_type: string
+          id?: string
+          occurred_at: string
+          payload: Json
+          recorded_at: string
+          source_version: string
+        }
+        Update: {
+          athlete_id?: string
+          compatibility_key?: string | null
+          confidence?: number
+          created_at?: string
+          created_by?: string
+          event_id?: string
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          payload?: Json
+          recorded_at?: string
+          source_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "athlete_timeline_events_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       athletes: {
         Row: {
+          age_group: string | null
           coach_id: string
+          competition_level: string | null
           created_at: string
           date_of_birth: string | null
+          dominant_leg: string | null
           full_name: string
           goal_100m: number | null
           goal_200m: number | null
@@ -408,15 +774,21 @@ export type Database = {
           personal_best_60m: number | null
           photo_url: string | null
           primary_event: string | null
-          age_group: string | null
           sex: string | null
+          spikes_used: string | null
+          surface: string | null
           trochanter_height_m: number | null
+          user_id: string | null
           weight_kg: number | null
+          wingspan_cm: number | null
         }
         Insert: {
+          age_group?: string | null
           coach_id: string
+          competition_level?: string | null
           created_at?: string
           date_of_birth?: string | null
+          dominant_leg?: string | null
           full_name: string
           goal_100m?: number | null
           goal_200m?: number | null
@@ -429,15 +801,21 @@ export type Database = {
           personal_best_60m?: number | null
           photo_url?: string | null
           primary_event?: string | null
-          age_group?: string | null
           sex?: string | null
+          spikes_used?: string | null
+          surface?: string | null
           trochanter_height_m?: number | null
+          user_id?: string | null
           weight_kg?: number | null
+          wingspan_cm?: number | null
         }
         Update: {
+          age_group?: string | null
           coach_id?: string
+          competition_level?: string | null
           created_at?: string
           date_of_birth?: string | null
+          dominant_leg?: string | null
           full_name?: string
           goal_100m?: number | null
           goal_200m?: number | null
@@ -450,10 +828,13 @@ export type Database = {
           personal_best_60m?: number | null
           photo_url?: string | null
           primary_event?: string | null
-          age_group?: string | null
           sex?: string | null
+          spikes_used?: string | null
+          surface?: string | null
           trochanter_height_m?: number | null
+          user_id?: string | null
           weight_kg?: number | null
+          wingspan_cm?: number | null
         }
         Relationships: [
           {
@@ -463,7 +844,112 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "athletes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      benchmark_dataset_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          dataset_id: string
+          details: Json
+          id: string
+          reason: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          dataset_id: string
+          details?: Json
+          id?: string
+          reason: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          dataset_id?: string
+          details?: Json
+          id?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "benchmark_dataset_audit_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "benchmark_population_datasets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      benchmark_population_datasets: {
+        Row: {
+          active: boolean
+          archived_at: string | null
+          comparison_level: string
+          contract: Json
+          created_at: string
+          created_by: string
+          dataset_key: string
+          dataset_name: string
+          dataset_version: string
+          id: string
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          schema_version: string
+          source_ids: string[]
+          updated_at: string
+          verified: boolean
+        }
+        Insert: {
+          active?: boolean
+          archived_at?: string | null
+          comparison_level: string
+          contract: Json
+          created_at?: string
+          created_by: string
+          dataset_key: string
+          dataset_name: string
+          dataset_version: string
+          id?: string
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          schema_version: string
+          source_ids: string[]
+          updated_at?: string
+          verified?: boolean
+        }
+        Update: {
+          active?: boolean
+          archived_at?: string | null
+          comparison_level?: string
+          contract?: Json
+          created_at?: string
+          created_by?: string
+          dataset_key?: string
+          dataset_name?: string
+          dataset_version?: string
+          id?: string
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          schema_version?: string
+          source_ids?: string[]
+          updated_at?: string
+          verified?: boolean
+        }
+        Relationships: []
       }
       benchmarks: {
         Row: {
@@ -504,6 +990,120 @@ export type Database = {
         }
         Relationships: []
       }
+      beta_audit_events: {
+        Row: {
+          action: string
+          actor_user_id: string
+          created_at: string
+          id: string
+          metadata: Json
+          target_id: string | null
+          target_type: string
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          target_id?: string | null
+          target_type: string
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          target_id?: string | null
+          target_type?: string
+        }
+        Relationships: []
+      }
+      coach_athlete_preferences: {
+        Row: {
+          athlete_id: string
+          coach_id: string
+          favorite: boolean
+          last_viewed_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          athlete_id: string
+          coach_id: string
+          favorite?: boolean
+          last_viewed_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          athlete_id?: string
+          coach_id?: string
+          favorite?: boolean
+          last_viewed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_athlete_preferences_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_athlete_preferences_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coach_note_revisions: {
+        Row: {
+          body: string
+          edited_at: string
+          editor_id: string
+          id: number
+          note_id: string
+          pinned: boolean
+          tags: string[]
+        }
+        Insert: {
+          body: string
+          edited_at?: string
+          editor_id: string
+          id?: never
+          note_id: string
+          pinned: boolean
+          tags: string[]
+        }
+        Update: {
+          body?: string
+          edited_at?: string
+          editor_id?: string
+          id?: never
+          note_id?: string
+          pinned?: boolean
+          tags?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coach_note_revisions_editor_id_fkey"
+            columns: ["editor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_note_revisions_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "coach_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       coach_notes: {
         Row: {
           athlete_id: string
@@ -541,49 +1141,1711 @@ export type Database = {
           tags?: string[]
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "coach_notes_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coach_notes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coaching_state_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          athlete_id: string
+          created_at: string
+          id: string
+          input_fingerprint: string
+          previous_state_id: string | null
+          selected_state_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          athlete_id: string
+          created_at?: string
+          id?: string
+          input_fingerprint: string
+          previous_state_id?: string | null
+          selected_state_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          athlete_id?: string
+          created_at?: string
+          id?: string
+          input_fingerprint?: string
+          previous_state_id?: string | null
+          selected_state_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_state_audit_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_state_audit_previous_state_id_fkey"
+            columns: ["previous_state_id"]
+            isOneToOne: false
+            referencedRelation: "coaching_state_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_state_audit_selected_state_id_fkey"
+            columns: ["selected_state_id"]
+            isOneToOne: false
+            referencedRelation: "coaching_state_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coaching_state_invalidations: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          id: string
+          occurred_at: string
+          processed_at: string | null
+          processed_state_id: string | null
+          source_id: string
+          status: string
+          trigger_id: string
+          trigger_type: string
+        }
+        Insert: {
+          athlete_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          occurred_at: string
+          processed_at?: string | null
+          processed_state_id?: string | null
+          source_id: string
+          status?: string
+          trigger_id: string
+          trigger_type: string
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          occurred_at?: string
+          processed_at?: string | null
+          processed_state_id?: string | null
+          source_id?: string
+          status?: string
+          trigger_id?: string
+          trigger_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_state_invalidations_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coaching_state_invalidations_processed_state_id_fkey"
+            columns: ["processed_state_id"]
+            isOneToOne: false
+            referencedRelation: "coaching_state_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      coaching_state_snapshots: {
+        Row: {
+          athlete_id: string
+          coaching_state_id: string
+          created_at: string
+          created_by: string
+          engine_version: string
+          id: string
+          input_fingerprint: string
+          schema_version: string
+          state_snapshot: Json
+          twin_updated_at: string
+        }
+        Insert: {
+          athlete_id: string
+          coaching_state_id: string
+          created_at: string
+          created_by: string
+          engine_version: string
+          id?: string
+          input_fingerprint: string
+          schema_version: string
+          state_snapshot: Json
+          twin_updated_at: string
+        }
+        Update: {
+          athlete_id?: string
+          coaching_state_id?: string
+          created_at?: string
+          created_by?: string
+          engine_version?: string
+          id?: string
+          input_fingerprint?: string
+          schema_version?: string
+          state_snapshot?: Json
+          twin_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coaching_state_snapshots_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feedback_submissions: {
+        Row: {
+          analysis_id: string | null
+          category: string
+          comment: string | null
+          created_at: string
+          current_route: string | null
+          id: string
+          may_contact: boolean
+          session_id: string | null
+          usefulness: string | null
+          user_id: string
+        }
+        Insert: {
+          analysis_id?: string | null
+          category: string
+          comment?: string | null
+          created_at?: string
+          current_route?: string | null
+          id?: string
+          may_contact?: boolean
+          session_id?: string | null
+          usefulness?: string | null
+          user_id: string
+        }
+        Update: {
+          analysis_id?: string | null
+          category?: string
+          comment?: string | null
+          created_at?: string
+          current_route?: string | null
+          id?: string
+          may_contact?: boolean
+          session_id?: string | null
+          usefulness?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_submissions_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_submissions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_cutover_evaluations: {
+        Row: {
+          created_at: string
+          evaluated_at: string
+          gates: Json
+          id: string
+          ready: boolean
+        }
+        Insert: {
+          created_at?: string
+          evaluated_at: string
+          gates: Json
+          id?: string
+          ready: boolean
+        }
+        Update: {
+          created_at?: string
+          evaluated_at?: string
+          gates?: Json
+          id?: string
+          ready?: boolean
+        }
         Relationships: []
       }
-      coach_note_revisions: {
-        Row: { body: string; edited_at: string; editor_id: string; id: number; note_id: string; pinned: boolean; tags: string[] }
-        Insert: { body: string; edited_at?: string; editor_id: string; id?: never; note_id: string; pinned: boolean; tags: string[] }
-        Update: { body?: string; edited_at?: string; editor_id?: string; id?: never; note_id?: string; pinned?: boolean; tags?: string[] }
+      intelligence_dead_letters: {
+        Row: {
+          adapter_version: string
+          athlete_id: string
+          attempts: number
+          created_at: string
+          dependency_states: Json
+          engine_id: string
+          engine_version: string
+          execution_job_id: string
+          execution_plan_id: string
+          failed_stage: string
+          failure_classification: string
+          first_failure_at: string
+          id: string
+          internal_note: string | null
+          recommended_action: string
+          replay_eligibility: string
+          replay_reason: string
+          review_state: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          staged_snapshots_exist: boolean
+          terminal_failure_at: string
+        }
+        Insert: {
+          adapter_version: string
+          athlete_id: string
+          attempts: number
+          created_at?: string
+          dependency_states: Json
+          engine_id: string
+          engine_version: string
+          execution_job_id: string
+          execution_plan_id: string
+          failed_stage: string
+          failure_classification: string
+          first_failure_at: string
+          id?: string
+          internal_note?: string | null
+          recommended_action: string
+          replay_eligibility: string
+          replay_reason: string
+          review_state?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          staged_snapshots_exist: boolean
+          terminal_failure_at: string
+        }
+        Update: {
+          adapter_version?: string
+          athlete_id?: string
+          attempts?: number
+          created_at?: string
+          dependency_states?: Json
+          engine_id?: string
+          engine_version?: string
+          execution_job_id?: string
+          execution_plan_id?: string
+          failed_stage?: string
+          failure_classification?: string
+          first_failure_at?: string
+          id?: string
+          internal_note?: string | null
+          recommended_action?: string
+          replay_eligibility?: string
+          replay_reason?: string
+          review_state?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          staged_snapshots_exist?: boolean
+          terminal_failure_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_dead_letters_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_dead_letters_execution_job_id_fkey"
+            columns: ["execution_job_id"]
+            isOneToOne: true
+            referencedRelation: "intelligence_execution_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_dead_letters_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_dead_letters_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_execution_jobs: {
+        Row: {
+          athlete_id: string
+          attempt_count: number
+          available_at: string
+          cache_hit: boolean | null
+          claim_token: string | null
+          claimed_by: string | null
+          created_at: string
+          dependencies: Json
+          engine_id: string
+          engine_version: string
+          execution_plan_id: string
+          failure_code: string | null
+          failure_kind: string | null
+          failure_message: string | null
+          finished_at: string | null
+          id: string
+          lease_expires_at: string | null
+          max_attempts: number
+          snapshot_id: string | null
+          started_at: string | null
+          state: Database["public"]["Enums"]["intelligence_execution_state"]
+          updated_at: string
+        }
+        Insert: {
+          athlete_id: string
+          attempt_count?: number
+          available_at?: string
+          cache_hit?: boolean | null
+          claim_token?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          dependencies?: Json
+          engine_id: string
+          engine_version: string
+          execution_plan_id: string
+          failure_code?: string | null
+          failure_kind?: string | null
+          failure_message?: string | null
+          finished_at?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          max_attempts?: number
+          snapshot_id?: string | null
+          started_at?: string | null
+          state?: Database["public"]["Enums"]["intelligence_execution_state"]
+          updated_at?: string
+        }
+        Update: {
+          athlete_id?: string
+          attempt_count?: number
+          available_at?: string
+          cache_hit?: boolean | null
+          claim_token?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          dependencies?: Json
+          engine_id?: string
+          engine_version?: string
+          execution_plan_id?: string
+          failure_code?: string | null
+          failure_kind?: string | null
+          failure_message?: string | null
+          finished_at?: string | null
+          id?: string
+          lease_expires_at?: string | null
+          max_attempts?: number
+          snapshot_id?: string | null
+          started_at?: string | null
+          state?: Database["public"]["Enums"]["intelligence_execution_state"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_execution_jobs_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_execution_jobs_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_execution_plans: {
+        Row: {
+          analysis_id: string
+          athlete_id: string
+          completed_at: string | null
+          created_at: string
+          dependency_graph: Json
+          engine_versions: Json
+          execution_order: Json
+          failure: Json | null
+          id: string
+          input_fingerprint: string
+          orchestration_version: string
+          pipeline_version: string
+          progress_percent: number
+          registry_version: string
+          request_idempotency_key: string | null
+          request_metadata: Json
+          shadow_execution: boolean
+          snapshot_targets: Json
+          started_at: string | null
+          state: Database["public"]["Enums"]["intelligence_execution_state"]
+        }
+        Insert: {
+          analysis_id: string
+          athlete_id: string
+          completed_at?: string | null
+          created_at?: string
+          dependency_graph: Json
+          engine_versions: Json
+          execution_order: Json
+          failure?: Json | null
+          id?: string
+          input_fingerprint: string
+          orchestration_version: string
+          pipeline_version: string
+          progress_percent?: number
+          registry_version?: string
+          request_idempotency_key?: string | null
+          request_metadata?: Json
+          shadow_execution?: boolean
+          snapshot_targets: Json
+          started_at?: string | null
+          state?: Database["public"]["Enums"]["intelligence_execution_state"]
+        }
+        Update: {
+          analysis_id?: string
+          athlete_id?: string
+          completed_at?: string | null
+          created_at?: string
+          dependency_graph?: Json
+          engine_versions?: Json
+          execution_order?: Json
+          failure?: Json | null
+          id?: string
+          input_fingerprint?: string
+          orchestration_version?: string
+          pipeline_version?: string
+          progress_percent?: number
+          registry_version?: string
+          request_idempotency_key?: string | null
+          request_metadata?: Json
+          shadow_execution?: boolean
+          snapshot_targets?: Json
+          started_at?: string | null
+          state?: Database["public"]["Enums"]["intelligence_execution_state"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_execution_plans_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_execution_plans_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_execution_traces: {
+        Row: {
+          athlete_id: string
+          cache_hit: boolean
+          duration_ms: number
+          engine_id: string
+          engine_version: string
+          execution_job_id: string
+          execution_plan_id: string
+          failure_reason: Json | null
+          finished_at: string
+          id: string
+          input_fingerprint: string
+          input_reference: Json
+          output_fingerprint: string | null
+          output_reference: Json
+          retry_count: number
+          started_at: string
+        }
+        Insert: {
+          athlete_id: string
+          cache_hit: boolean
+          duration_ms: number
+          engine_id: string
+          engine_version: string
+          execution_job_id: string
+          execution_plan_id: string
+          failure_reason?: Json | null
+          finished_at: string
+          id?: string
+          input_fingerprint: string
+          input_reference?: Json
+          output_fingerprint?: string | null
+          output_reference?: Json
+          retry_count?: number
+          started_at: string
+        }
+        Update: {
+          athlete_id?: string
+          cache_hit?: boolean
+          duration_ms?: number
+          engine_id?: string
+          engine_version?: string
+          execution_job_id?: string
+          execution_plan_id?: string
+          failure_reason?: Json | null
+          finished_at?: string
+          id?: string
+          input_fingerprint?: string
+          input_reference?: Json
+          output_fingerprint?: string | null
+          output_reference?: Json
+          retry_count?: number
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_execution_traces_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_execution_traces_execution_job_id_fkey"
+            columns: ["execution_job_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_execution_traces_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_health_evaluations: {
+        Row: {
+          evaluated_at: string
+          id: string
+          metrics: Json
+          reasons: Json
+          scope_id: string
+          state: string
+          thresholds: Json
+        }
+        Insert: {
+          evaluated_at?: string
+          id?: string
+          metrics: Json
+          reasons: Json
+          scope_id: string
+          state: string
+          thresholds: Json
+        }
+        Update: {
+          evaluated_at?: string
+          id?: string
+          metrics?: Json
+          reasons?: Json
+          scope_id?: string
+          state?: string
+          thresholds?: Json
+        }
         Relationships: []
       }
-      organizations: {
-        Row: { created_at: string; created_by: string; id: string; name: string; updated_at: string }
-        Insert: { created_at?: string; created_by: string; id?: string; name: string; updated_at?: string }
-        Update: { created_at?: string; created_by?: string; id?: string; name?: string; updated_at?: string }
+      intelligence_orchestration_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          actor_type: string
+          athlete_id: string
+          created_at: string
+          details: Json
+          execution_plan_id: string | null
+          id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          actor_type: string
+          athlete_id: string
+          created_at?: string
+          details?: Json
+          execution_plan_id?: string | null
+          id?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          actor_type?: string
+          athlete_id?: string
+          created_at?: string
+          details?: Json
+          execution_plan_id?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_orchestration_audit_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_orchestration_audit_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_orchestration_invalidations: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          id: string
+          invalidated_engine_ids: Json
+          processed_at: string | null
+          source_engine_id: string | null
+          source_reference: Json
+          trigger: string
+        }
+        Insert: {
+          athlete_id: string
+          created_at?: string
+          id?: string
+          invalidated_engine_ids: Json
+          processed_at?: string | null
+          source_engine_id?: string | null
+          source_reference?: Json
+          trigger: string
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          id?: string
+          invalidated_engine_ids?: Json
+          processed_at?: string | null
+          source_engine_id?: string | null
+          source_reference?: Json
+          trigger?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_orchestration_invalidations_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_pipeline_snapshots: {
+        Row: {
+          activated_at: string | null
+          activation_status: string
+          adapter_versions: Json
+          analysis_id: string
+          athlete_id: string
+          created_at: string
+          engine_versions: Json
+          execution_plan_id: string
+          id: string
+          input_fingerprint: string
+          input_provenance: Json
+          integrity_fingerprint: string | null
+          pipeline_version: string
+          previous_pipeline_snapshot_id: string | null
+          registry_version: string
+          rollback_metadata: Json | null
+          rolled_back_at: string | null
+          snapshot_ids: Json
+        }
+        Insert: {
+          activated_at?: string | null
+          activation_status?: string
+          adapter_versions?: Json
+          analysis_id: string
+          athlete_id: string
+          created_at?: string
+          engine_versions: Json
+          execution_plan_id: string
+          id?: string
+          input_fingerprint: string
+          input_provenance?: Json
+          integrity_fingerprint?: string | null
+          pipeline_version: string
+          previous_pipeline_snapshot_id?: string | null
+          registry_version?: string
+          rollback_metadata?: Json | null
+          rolled_back_at?: string | null
+          snapshot_ids: Json
+        }
+        Update: {
+          activated_at?: string | null
+          activation_status?: string
+          adapter_versions?: Json
+          analysis_id?: string
+          athlete_id?: string
+          created_at?: string
+          engine_versions?: Json
+          execution_plan_id?: string
+          id?: string
+          input_fingerprint?: string
+          input_provenance?: Json
+          integrity_fingerprint?: string | null
+          pipeline_version?: string
+          previous_pipeline_snapshot_id?: string | null
+          registry_version?: string
+          rollback_metadata?: Json | null
+          rolled_back_at?: string | null
+          snapshot_ids?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_pipeline_snapsho_previous_pipeline_snapshot_i_fkey"
+            columns: ["previous_pipeline_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_pipeline_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_pipeline_snapshots_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_pipeline_snapshots_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_pipeline_snapshots_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: true
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_progress_events: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          current_engine_id: string | null
+          execution_plan_id: string
+          id: number
+          progress_percent: number
+          remaining_engine_ids: Json
+        }
+        Insert: {
+          athlete_id: string
+          created_at?: string
+          current_engine_id?: string | null
+          execution_plan_id: string
+          id?: never
+          progress_percent: number
+          remaining_engine_ids?: Json
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          current_engine_id?: string | null
+          execution_plan_id?: string
+          id?: never
+          progress_percent?: number
+          remaining_engine_ids?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_progress_events_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_progress_events_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_replay_runs: {
+        Row: {
+          athlete_id: string
+          authoritative: boolean
+          cache_mode: string
+          completed_at: string | null
+          created_at: string
+          id: string
+          reason: string
+          replay_execution_plan_id: string | null
+          source_execution_plan_id: string
+          state: string
+          target_engine_ids: Json
+          version_availability: Json
+        }
+        Insert: {
+          athlete_id: string
+          authoritative?: boolean
+          cache_mode: string
+          completed_at?: string | null
+          created_at?: string
+          id: string
+          reason: string
+          replay_execution_plan_id?: string | null
+          source_execution_plan_id: string
+          state?: string
+          target_engine_ids: Json
+          version_availability: Json
+        }
+        Update: {
+          athlete_id?: string
+          authoritative?: boolean
+          cache_mode?: string
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          reason?: string
+          replay_execution_plan_id?: string | null
+          source_execution_plan_id?: string
+          state?: string
+          target_engine_ids?: Json
+          version_availability?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_replay_runs_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_replay_runs_replay_execution_plan_id_fkey"
+            columns: ["replay_execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_replay_runs_source_execution_plan_id_fkey"
+            columns: ["source_execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_retry_history: {
+        Row: {
+          athlete_id: string
+          attempt_number: number
+          created_at: string
+          delay_ms: number
+          execution_job_id: string
+          failure_code: string
+          failure_kind: string
+          id: string
+        }
+        Insert: {
+          athlete_id: string
+          attempt_number: number
+          created_at?: string
+          delay_ms: number
+          execution_job_id: string
+          failure_code: string
+          failure_kind: string
+          id?: string
+        }
+        Update: {
+          athlete_id?: string
+          attempt_number?: number
+          created_at?: string
+          delay_ms?: number
+          execution_job_id?: string
+          failure_code?: string
+          failure_kind?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_retry_history_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_retry_history_execution_job_id_fkey"
+            columns: ["execution_job_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_shadow_comparisons: {
+        Row: {
+          athlete_id: string
+          baseline_mode: string
+          blocker_reasons: Json
+          completed_at: string
+          created_at: string
+          execution_plan_fingerprint: string
+          execution_plan_id: string
+          id: string
+          per_engine_results: Json
+          readiness: string
+          report_version: string
+          shadow_manifest_id: string
+          started_at: string
+          summary: Json
+        }
+        Insert: {
+          athlete_id: string
+          baseline_mode: string
+          blocker_reasons?: Json
+          completed_at: string
+          created_at?: string
+          execution_plan_fingerprint: string
+          execution_plan_id: string
+          id?: string
+          per_engine_results: Json
+          readiness: string
+          report_version: string
+          shadow_manifest_id: string
+          started_at: string
+          summary: Json
+        }
+        Update: {
+          athlete_id?: string
+          baseline_mode?: string
+          blocker_reasons?: Json
+          completed_at?: string
+          created_at?: string
+          execution_plan_fingerprint?: string
+          execution_plan_id?: string
+          id?: string
+          per_engine_results?: Json
+          readiness?: string
+          report_version?: string
+          shadow_manifest_id?: string
+          started_at?: string
+          summary?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_shadow_comparisons_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_shadow_comparisons_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_shadow_comparisons_shadow_manifest_id_fkey"
+            columns: ["shadow_manifest_id"]
+            isOneToOne: true
+            referencedRelation: "intelligence_shadow_manifests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_shadow_manifests: {
+        Row: {
+          adapter_versions: Json
+          analysis_id: string
+          athlete_id: string
+          authoritative: boolean
+          created_at: string
+          engine_versions: Json
+          execution_plan_id: string
+          id: string
+          input_fingerprint: string
+          input_provenance: Json
+          integrity_fingerprint: string
+          pipeline_version: string
+          registry_version: string
+          snapshot_references: Json
+          source_replay_run_id: string | null
+          status: string
+        }
+        Insert: {
+          adapter_versions: Json
+          analysis_id: string
+          athlete_id: string
+          authoritative?: boolean
+          created_at?: string
+          engine_versions: Json
+          execution_plan_id: string
+          id?: string
+          input_fingerprint: string
+          input_provenance?: Json
+          integrity_fingerprint: string
+          pipeline_version: string
+          registry_version: string
+          snapshot_references: Json
+          source_replay_run_id?: string | null
+          status?: string
+        }
+        Update: {
+          adapter_versions?: Json
+          analysis_id?: string
+          athlete_id?: string
+          authoritative?: boolean
+          created_at?: string
+          engine_versions?: Json
+          execution_plan_id?: string
+          id?: string
+          input_fingerprint?: string
+          input_provenance?: Json
+          integrity_fingerprint?: string
+          pipeline_version?: string
+          registry_version?: string
+          snapshot_references?: Json
+          source_replay_run_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_shadow_manifests_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_shadow_manifests_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_shadow_manifests_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: true
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intelligence_staged_snapshots: {
+        Row: {
+          adapter_version: string
+          athlete_id: string
+          created_at: string
+          engine_id: string
+          engine_version: string
+          execution_job_id: string
+          execution_plan_id: string
+          id: string
+          output_contract: string
+          output_fingerprint: string
+          payload: Json | null
+          snapshot_id: string
+        }
+        Insert: {
+          adapter_version: string
+          athlete_id: string
+          created_at?: string
+          engine_id: string
+          engine_version: string
+          execution_job_id: string
+          execution_plan_id: string
+          id?: string
+          output_contract: string
+          output_fingerprint: string
+          payload?: Json | null
+          snapshot_id: string
+        }
+        Update: {
+          adapter_version?: string
+          athlete_id?: string
+          created_at?: string
+          engine_id?: string
+          engine_version?: string
+          execution_job_id?: string
+          execution_plan_id?: string
+          id?: string
+          output_contract?: string
+          output_fingerprint?: string
+          payload?: Json | null
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intelligence_staged_snapshots_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_staged_snapshots_execution_job_id_fkey"
+            columns: ["execution_job_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intelligence_staged_snapshots_execution_plan_id_fkey"
+            columns: ["execution_plan_id"]
+            isOneToOne: false
+            referencedRelation: "intelligence_execution_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mobile_analysis_requests: {
+        Row: {
+          analysis_id: string
+          athlete_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          request_id: string
+          upload_id: string
+          user_id: string
+        }
+        Insert: {
+          analysis_id: string
+          athlete_id: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          request_id: string
+          upload_id: string
+          user_id: string
+        }
+        Update: {
+          analysis_id?: string
+          athlete_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          request_id?: string
+          upload_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobile_analysis_requests_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: true
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_analysis_requests_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_analysis_requests_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: true
+            referencedRelation: "mobile_uploads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_analysis_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mobile_deletion_audit: {
+        Row: {
+          analysis_id: string | null
+          athlete_id: string
+          completed_at: string | null
+          id: string
+          request_id: string
+          requested_at: string
+          status: string
+          upload_id: string
+          user_id: string
+        }
+        Insert: {
+          analysis_id?: string | null
+          athlete_id: string
+          completed_at?: string | null
+          id?: string
+          request_id: string
+          requested_at?: string
+          status: string
+          upload_id: string
+          user_id: string
+        }
+        Update: {
+          analysis_id?: string | null
+          athlete_id?: string
+          completed_at?: string | null
+          id?: string
+          request_id?: string
+          requested_at?: string
+          status?: string
+          upload_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobile_deletion_audit_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_deletion_audit_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mobile_uploads: {
+        Row: {
+          actual_bytes: number | null
+          analysis_id: string | null
+          athlete_id: string
+          client_sha256: string
+          completed_at: string | null
+          content_type: string
+          created_at: string
+          deleted_at: string | null
+          deletion_requested_at: string | null
+          expected_bytes: number
+          expires_at: string
+          id: string
+          idempotency_key: string
+          object_path: string
+          original_filename: string
+          recording_metadata: Json
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          actual_bytes?: number | null
+          analysis_id?: string | null
+          athlete_id: string
+          client_sha256: string
+          completed_at?: string | null
+          content_type: string
+          created_at?: string
+          deleted_at?: string | null
+          deletion_requested_at?: string | null
+          expected_bytes: number
+          expires_at: string
+          id?: string
+          idempotency_key: string
+          object_path: string
+          original_filename: string
+          recording_metadata: Json
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          actual_bytes?: number | null
+          analysis_id?: string | null
+          athlete_id?: string
+          client_sha256?: string
+          completed_at?: string | null
+          content_type?: string
+          created_at?: string
+          deleted_at?: string | null
+          deletion_requested_at?: string | null
+          expected_bytes?: number
+          expires_at?: string
+          id?: string
+          idempotency_key?: string
+          object_path?: string
+          original_filename?: string
+          recording_metadata?: Json
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobile_uploads_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: true
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_uploads_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_uploads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_states: {
+        Row: {
+          completed_at: string | null
+          current_step: number
+          onboarding_version: string
+          scientific_boundary_acknowledged: boolean
+          state: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          current_step?: number
+          onboarding_version: string
+          scientific_boundary_acknowledged?: boolean
+          state?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          current_step?: number
+          onboarding_version?: string
+          scientific_boundary_acknowledged?: boolean
+          state?: string
+          updated_at?: string
+          user_id?: string
+        }
         Relationships: []
       }
       organization_memberships: {
-        Row: { created_at: string; organization_id: string; role: Database["public"]["Enums"]["organization_role"]; user_id: string }
-        Insert: { created_at?: string; organization_id: string; role: Database["public"]["Enums"]["organization_role"]; user_id: string }
-        Update: { created_at?: string; organization_id?: string; role?: Database["public"]["Enums"]["organization_role"]; user_id?: string }
-        Relationships: []
+        Row: {
+          created_at: string
+          organization_id: string
+          role: Database["public"]["Enums"]["organization_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          organization_id: string
+          role: Database["public"]["Enums"]["organization_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          organization_id?: string
+          role?: Database["public"]["Enums"]["organization_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_memberships_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_memberships_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      teams: {
-        Row: { active: boolean; created_at: string; id: string; name: string; organization_id: string; season_label: string | null; updated_at: string }
-        Insert: { active?: boolean; created_at?: string; id?: string; name: string; organization_id: string; season_label?: string | null; updated_at?: string }
-        Update: { active?: boolean; created_at?: string; id?: string; name?: string; organization_id?: string; season_label?: string | null; updated_at?: string }
-        Relationships: []
+      organizations: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      team_coaches: {
-        Row: { coach_id: string; created_at: string; role: Database["public"]["Enums"]["organization_role"]; team_id: string }
-        Insert: { coach_id: string; created_at?: string; role: Database["public"]["Enums"]["organization_role"]; team_id: string }
-        Update: { coach_id?: string; created_at?: string; role?: Database["public"]["Enums"]["organization_role"]; team_id?: string }
-        Relationships: []
+      performance_optimization_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          athlete_id: string
+          created_at: string
+          id: string
+          input_fingerprint: string
+          selected_snapshot_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          athlete_id: string
+          created_at?: string
+          id?: string
+          input_fingerprint: string
+          selected_snapshot_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          athlete_id?: string
+          created_at?: string
+          id?: string
+          input_fingerprint?: string
+          selected_snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_optimization_audit_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "performance_optimization_audit_selected_snapshot_id_fkey"
+            columns: ["selected_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "performance_optimization_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      team_athletes: {
-        Row: { active: boolean; athlete_id: string; joined_at: string; team_id: string }
-        Insert: { active?: boolean; athlete_id: string; joined_at?: string; team_id: string }
-        Update: { active?: boolean; athlete_id?: string; joined_at?: string; team_id?: string }
-        Relationships: []
+      performance_optimization_invalidations: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          id: string
+          occurred_at: string
+          processed_at: string | null
+          processed_snapshot_id: string | null
+          source_id: string
+          status: string
+          trigger_id: string
+          trigger_type: string
+        }
+        Insert: {
+          athlete_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          occurred_at: string
+          processed_at?: string | null
+          processed_snapshot_id?: string | null
+          source_id: string
+          status?: string
+          trigger_id: string
+          trigger_type: string
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          occurred_at?: string
+          processed_at?: string | null
+          processed_snapshot_id?: string | null
+          source_id?: string
+          status?: string
+          trigger_id?: string
+          trigger_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_optimization_invalidatio_processed_snapshot_id_fkey"
+            columns: ["processed_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "performance_optimization_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "performance_optimization_invalidations_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      coach_athlete_preferences: {
-        Row: { athlete_id: string; coach_id: string; favorite: boolean; last_viewed_at: string | null; updated_at: string }
-        Insert: { athlete_id: string; coach_id: string; favorite?: boolean; last_viewed_at?: string | null; updated_at?: string }
-        Update: { athlete_id?: string; coach_id?: string; favorite?: boolean; last_viewed_at?: string | null; updated_at?: string }
-        Relationships: []
+      performance_optimization_snapshots: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          engine_version: string
+          id: string
+          input_fingerprint: string
+          optimization_id: string
+          optimization_version: string
+          state_snapshot: Json
+          twin_updated_at: string
+        }
+        Insert: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          engine_version: string
+          id?: string
+          input_fingerprint: string
+          optimization_id: string
+          optimization_version: string
+          state_snapshot: Json
+          twin_updated_at: string
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          created_by?: string
+          engine_version?: string
+          id?: string
+          input_fingerprint?: string
+          optimization_id?: string
+          optimization_version?: string
+          state_snapshot?: Json
+          twin_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_optimization_snapshots_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      performance_projection_snapshots: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          engine_version: string
+          id: string
+          input_snapshot: Json
+          output_snapshot: Json
+          projection_id: string
+          projection_type: string
+          schema_version: string
+          target_metric: string
+        }
+        Insert: {
+          athlete_id: string
+          created_at?: string
+          created_by: string
+          engine_version: string
+          id?: string
+          input_snapshot: Json
+          output_snapshot: Json
+          projection_id: string
+          projection_type: string
+          schema_version: string
+          target_metric: string
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          created_by?: string
+          engine_version?: string
+          id?: string
+          input_snapshot?: Json
+          output_snapshot?: Json
+          projection_id?: string
+          projection_type?: string
+          schema_version?: string
+          target_metric?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_projection_snapshots_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -605,6 +2867,731 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"]
         }
         Relationships: []
+      }
+      research_audit_events: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          details: Json
+          entity_id: string
+          entity_type: string
+          from_status: string | null
+          id: string
+          reason: string
+          to_status: string | null
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          details?: Json
+          entity_id: string
+          entity_type: string
+          from_status?: string | null
+          id?: string
+          reason: string
+          to_status?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          details?: Json
+          entity_id?: string
+          entity_type?: string
+          from_status?: string | null
+          id?: string
+          reason?: string
+          to_status?: string | null
+        }
+        Relationships: []
+      }
+      research_claims: {
+        Row: {
+          applicability: string
+          archived_at: string | null
+          athlete_facing_eligible: boolean
+          category: string
+          claim_key: string
+          claim_type: string
+          coach_facing_eligible: boolean
+          consensus_status: string
+          created_at: string
+          created_by: string
+          evidence_grade: string
+          evidence_grade_reasons: Json
+          excluded_conclusions: Json
+          id: string
+          limitations: Json
+          normalized_statement: string
+          review_status: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          scope: Json
+          statement: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          applicability?: string
+          archived_at?: string | null
+          athlete_facing_eligible?: boolean
+          category: string
+          claim_key: string
+          claim_type: string
+          coach_facing_eligible?: boolean
+          consensus_status?: string
+          created_at?: string
+          created_by: string
+          evidence_grade?: string
+          evidence_grade_reasons?: Json
+          excluded_conclusions?: Json
+          id?: string
+          limitations?: Json
+          normalized_statement: string
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scope?: Json
+          statement: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          applicability?: string
+          archived_at?: string | null
+          athlete_facing_eligible?: boolean
+          category?: string
+          claim_key?: string
+          claim_type?: string
+          coach_facing_eligible?: boolean
+          consensus_status?: string
+          created_at?: string
+          created_by?: string
+          evidence_grade?: string
+          evidence_grade_reasons?: Json
+          excluded_conclusions?: Json
+          id?: string
+          limitations?: Json
+          normalized_statement?: string
+          review_status?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scope?: Json
+          statement?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      research_evidence_links: {
+        Row: {
+          applicability: Json
+          claim_id: string
+          created_at: string
+          directness: string
+          extraction: Json
+          id: string
+          limitations: Json
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_notes: string | null
+          reviewer_status: string
+          source_id: string
+          statistics: Json
+          support_type: string
+          version: number
+        }
+        Insert: {
+          applicability?: Json
+          claim_id: string
+          created_at?: string
+          directness: string
+          extraction?: Json
+          id?: string
+          limitations?: Json
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_notes?: string | null
+          reviewer_status?: string
+          source_id: string
+          statistics?: Json
+          support_type: string
+          version?: number
+        }
+        Update: {
+          applicability?: Json
+          claim_id?: string
+          created_at?: string
+          directness?: string
+          extraction?: Json
+          id?: string
+          limitations?: Json
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_notes?: string | null
+          reviewer_status?: string
+          source_id?: string
+          statistics?: Json
+          support_type?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_evidence_links_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "research_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "research_evidence_links_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "research_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_metric_definitions: {
+        Row: {
+          created_at: string
+          created_by: string
+          definition: Json
+          metric_key: string
+          review_status: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          definition: Json
+          metric_key: string
+          review_status?: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          definition?: Json
+          metric_key?: string
+          review_status?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      research_reviewers: {
+        Row: {
+          active: boolean
+          appointed_at: string
+          appointed_by: string | null
+          role: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          appointed_at?: string
+          appointed_by?: string | null
+          role: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          appointed_at?: string
+          appointed_by?: string | null
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      research_sources: {
+        Row: {
+          access_status: string
+          archived_at: string | null
+          correction_notice: string | null
+          created_at: string
+          created_by: string
+          document_hash: string | null
+          doi: string | null
+          expression_of_concern: boolean
+          id: string
+          ingestion_status: string
+          license_status: string
+          metadata: Json
+          normalized_title: string
+          pmid: string | null
+          retracted: boolean
+          review_status: string
+          source_key: string
+          source_type: string
+          superseded_by: string | null
+          title: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          access_status: string
+          archived_at?: string | null
+          correction_notice?: string | null
+          created_at?: string
+          created_by: string
+          document_hash?: string | null
+          doi?: string | null
+          expression_of_concern?: boolean
+          id?: string
+          ingestion_status?: string
+          license_status: string
+          metadata?: Json
+          normalized_title: string
+          pmid?: string | null
+          retracted?: boolean
+          review_status?: string
+          source_key: string
+          source_type: string
+          superseded_by?: string | null
+          title: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          access_status?: string
+          archived_at?: string | null
+          correction_notice?: string | null
+          created_at?: string
+          created_by?: string
+          document_hash?: string | null
+          doi?: string | null
+          expression_of_concern?: boolean
+          id?: string
+          ingestion_status?: string
+          license_status?: string
+          metadata?: Json
+          normalized_title?: string
+          pmid?: string | null
+          retracted?: boolean
+          review_status?: string
+          source_key?: string
+          source_type?: string
+          superseded_by?: string | null
+          title?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_sources_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "research_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      research_terminology_mappings: {
+        Row: {
+          context: string | null
+          created_at: string
+          created_by: string
+          id: string
+          normalized_key: string
+          original_term: string
+          preserve_distinct: boolean
+          relationship: string
+          version: number
+        }
+        Insert: {
+          context?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          normalized_key: string
+          original_term: string
+          preserve_distinct?: boolean
+          relationship: string
+          version?: number
+        }
+        Update: {
+          context?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          normalized_key?: string
+          original_term?: string
+          preserve_distinct?: boolean
+          relationship?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      root_cause_feedback_audit: {
+        Row: {
+          action_id: string
+          action_snapshot: Json
+          actor_id: string
+          athlete_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          action_id: string
+          action_snapshot: Json
+          actor_id: string
+          athlete_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          action_id?: string
+          action_snapshot?: Json
+          actor_id?: string
+          athlete_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "root_cause_feedback_audit_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      root_cause_invalidations: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          id: string
+          occurred_at: string
+          processed_at: string | null
+          processed_snapshot_id: string | null
+          source_id: string
+          status: string
+          trigger_id: string
+          trigger_type: string
+        }
+        Insert: {
+          athlete_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          occurred_at: string
+          processed_at?: string | null
+          processed_snapshot_id?: string | null
+          source_id: string
+          status?: string
+          trigger_id: string
+          trigger_type: string
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          occurred_at?: string
+          processed_at?: string | null
+          processed_snapshot_id?: string | null
+          source_id?: string
+          status?: string
+          trigger_id?: string
+          trigger_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "root_cause_invalidations_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "root_cause_invalidations_processed_snapshot_id_fkey"
+            columns: ["processed_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "root_cause_state_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      root_cause_recommendation_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          athlete_id: string
+          created_at: string
+          id: string
+          input_fingerprint: string
+          snapshot_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          athlete_id: string
+          created_at?: string
+          id?: string
+          input_fingerprint: string
+          snapshot_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          athlete_id?: string
+          created_at?: string
+          id?: string
+          input_fingerprint?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "root_cause_recommendation_audit_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "root_cause_recommendation_audit_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "root_cause_recommendation_context_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      root_cause_recommendation_context_snapshots: {
+        Row: {
+          adapter_version: string
+          analysis_id: string
+          athlete_id: string
+          context_id: string
+          context_snapshot: Json
+          created_at: string
+          created_by: string
+          id: string
+          invalidation_fingerprint: string
+          mapping_registry_version: string
+          rollout_mode: string
+        }
+        Insert: {
+          adapter_version: string
+          analysis_id: string
+          athlete_id: string
+          context_id: string
+          context_snapshot: Json
+          created_at: string
+          created_by: string
+          id?: string
+          invalidation_fingerprint: string
+          mapping_registry_version: string
+          rollout_mode: string
+        }
+        Update: {
+          adapter_version?: string
+          analysis_id?: string
+          athlete_id?: string
+          context_id?: string
+          context_snapshot?: Json
+          created_at?: string
+          created_by?: string
+          id?: string
+          invalidation_fingerprint?: string
+          mapping_registry_version?: string
+          rollout_mode?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "root_cause_recommendation_context_snapshots_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      root_cause_recommendation_invalidations: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          id: string
+          occurred_at: string
+          processed_at: string | null
+          processed_snapshot_id: string | null
+          source_id: string
+          status: string
+          trigger_id: string
+          trigger_type: string
+        }
+        Insert: {
+          athlete_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          occurred_at: string
+          processed_at?: string | null
+          processed_snapshot_id?: string | null
+          source_id: string
+          status?: string
+          trigger_id: string
+          trigger_type: string
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          occurred_at?: string
+          processed_at?: string | null
+          processed_snapshot_id?: string | null
+          source_id?: string
+          status?: string
+          trigger_id?: string
+          trigger_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "root_cause_recommendation_invalidati_processed_snapshot_id_fkey"
+            columns: ["processed_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "root_cause_recommendation_context_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "root_cause_recommendation_invalidations_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      root_cause_recommendation_mapping_registry: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          mapping_id: string
+          mapping_snapshot: Json
+          mapping_version: string
+          registry_version: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          mapping_id: string
+          mapping_snapshot: Json
+          mapping_version: string
+          registry_version: string
+          status: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          mapping_id?: string
+          mapping_snapshot?: Json
+          mapping_version?: string
+          registry_version?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      root_cause_recommendation_shadow_comparisons: {
+        Row: {
+          athlete_id: string
+          comparison_id: string
+          comparison_snapshot: Json
+          created_at: string
+          created_by: string
+          id: string
+          snapshot_id: string
+        }
+        Insert: {
+          athlete_id: string
+          comparison_id: string
+          comparison_snapshot: Json
+          created_at: string
+          created_by: string
+          id?: string
+          snapshot_id: string
+        }
+        Update: {
+          athlete_id?: string
+          comparison_id?: string
+          comparison_snapshot?: Json
+          created_at?: string
+          created_by?: string
+          id?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "root_cause_recommendation_shadow_comparisons_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "root_cause_recommendation_shadow_comparisons_snapshot_id_fkey"
+            columns: ["snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "root_cause_recommendation_context_snapshots"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      root_cause_state_snapshots: {
+        Row: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          engine_version: string
+          id: string
+          input_fingerprint: string
+          root_cause_state_id: string
+          state_snapshot: Json
+          state_version: string
+          twin_updated_at: string
+        }
+        Insert: {
+          athlete_id: string
+          created_at: string
+          created_by: string
+          engine_version: string
+          id?: string
+          input_fingerprint: string
+          root_cause_state_id: string
+          state_snapshot: Json
+          state_version: string
+          twin_updated_at: string
+        }
+        Update: {
+          athlete_id?: string
+          created_at?: string
+          created_by?: string
+          engine_version?: string
+          id?: string
+          input_fingerprint?: string
+          root_cause_state_id?: string
+          state_snapshot?: Json
+          state_version?: string
+          twin_updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "root_cause_state_snapshots_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sessions: {
         Row: {
@@ -636,6 +3623,7 @@ export type Database = {
           fps_override: number | null
           height: number | null
           id: string
+          is_reference_benchmark: boolean
           name: string | null
           notes: string | null
           original_filename: string | null
@@ -686,6 +3674,7 @@ export type Database = {
           fps_override?: number | null
           height?: number | null
           id?: string
+          is_reference_benchmark?: boolean
           name?: string | null
           notes?: string | null
           original_filename?: string | null
@@ -736,6 +3725,7 @@ export type Database = {
           fps_override?: number | null
           height?: number | null
           id?: string
+          is_reference_benchmark?: boolean
           name?: string | null
           notes?: string | null
           original_filename?: string | null
@@ -784,6 +3774,176 @@ export type Database = {
             columns: ["current_working_analysis_id"]
             isOneToOne: false
             referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_requests: {
+        Row: {
+          analysis_id: string | null
+          category: string
+          created_at: string
+          diagnostic_context: Json
+          id: string
+          message: string
+          safe_reference_id: string
+          session_id: string | null
+          status: string
+          subject: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          analysis_id?: string | null
+          category: string
+          created_at?: string
+          diagnostic_context?: Json
+          id?: string
+          message: string
+          safe_reference_id: string
+          session_id?: string | null
+          status?: string
+          subject: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          analysis_id?: string | null
+          category?: string
+          created_at?: string
+          diagnostic_context?: Json
+          id?: string
+          message?: string
+          safe_reference_id?: string
+          session_id?: string | null
+          status?: string
+          subject?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_requests_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analyses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_requests_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_athletes: {
+        Row: {
+          active: boolean
+          athlete_id: string
+          joined_at: string
+          team_id: string
+        }
+        Insert: {
+          active?: boolean
+          athlete_id: string
+          joined_at?: string
+          team_id: string
+        }
+        Update: {
+          active?: boolean
+          athlete_id?: string
+          joined_at?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_athletes_athlete_id_fkey"
+            columns: ["athlete_id"]
+            isOneToOne: false
+            referencedRelation: "athletes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_athletes_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_coaches: {
+        Row: {
+          coach_id: string
+          created_at: string
+          role: Database["public"]["Enums"]["organization_role"]
+          team_id: string
+        }
+        Insert: {
+          coach_id: string
+          created_at?: string
+          role: Database["public"]["Enums"]["organization_role"]
+          team_id: string
+        }
+        Update: {
+          coach_id?: string
+          created_at?: string
+          role?: Database["public"]["Enums"]["organization_role"]
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_coaches_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_coaches_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          season_label: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          season_label?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          season_label?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teams_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -883,17 +4043,69 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cancel_analysis_job: {
+      activate_athlete_digital_twin_snapshot: {
+        Args: { p_athlete_id: string; p_reason: string; p_snapshot_id: string }
+        Returns: boolean
+      }
+      activate_intelligence_pipeline: {
         Args: {
-          p_job_id: string
+          p_actor_id: string
+          p_execution_plan_id: string
+          p_snapshot_ids: Json
+        }
+        Returns: string
+      }
+      activate_staged_intelligence_pipeline: {
+        Args: { p_actor_id: string; p_execution_plan_id: string }
+        Returns: string
+      }
+      append_and_activate_athlete_digital_twin_snapshot: {
+        Args: { p_athlete_id: string; p_reason: string; p_snapshot: Json }
+        Returns: string
+      }
+      append_and_activate_coaching_state: {
+        Args: { p_athlete_id: string; p_state: Json; p_triggers?: Json }
+        Returns: string
+      }
+      append_and_activate_performance_optimization: {
+        Args: { p_athlete_id: string; p_state: Json }
+        Returns: string
+      }
+      append_and_activate_root_cause_recommendation_context: {
+        Args: { p_athlete_id: string; p_context: Json; p_trigger_ids?: Json }
+        Returns: string
+      }
+      append_and_activate_root_cause_state: {
+        Args: { p_athlete_id: string; p_state: Json }
+        Returns: string
+      }
+      append_athlete_timeline_event: {
+        Args: { p_athlete_id: string; p_event: Json }
+        Returns: boolean
+      }
+      append_intelligence_execution_trace: {
+        Args: { p_job_id: string; p_plan_id: string; p_trace: Json }
+        Returns: string
+      }
+      append_root_cause_feedback: {
+        Args: {
+          p_action: Json
+          p_athlete_id: string
+          p_root_cause_state_id: string
         }
         Returns: boolean
       }
+      can_access_athlete: { Args: { p_athlete_id: string }; Returns: boolean }
+      can_edit_athlete_notes: {
+        Args: { p_athlete_id: string }
+        Returns: boolean
+      }
+      cancel_analysis_job: { Args: { p_job_id: string }; Returns: boolean }
       claim_analysis_job: {
         Args: {
+          p_lease_seconds?: number
           p_worker_id: string
           p_worker_version: string
-          p_lease_seconds?: number
         }
         Returns: {
           analysis_id: string
@@ -919,6 +4131,7 @@ export type Database = {
           next_attempt_at: string
           output_artifact_paths: Json
           priority: number
+          progress: Json | null
           session_id: string
           source_video_path: string
           started_at: string | null
@@ -928,169 +4141,308 @@ export type Database = {
           user_message: string | null
           worker_version: string | null
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "analysis_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_intelligence_execution_job: {
+        Args: { p_lease_seconds?: number; p_worker_id: string }
+        Returns: {
+          athlete_id: string
+          attempt_count: number
+          available_at: string
+          cache_hit: boolean | null
+          claim_token: string | null
+          claimed_by: string | null
+          created_at: string
+          dependencies: Json
+          engine_id: string
+          engine_version: string
+          execution_plan_id: string
+          failure_code: string | null
+          failure_kind: string | null
+          failure_message: string | null
+          finished_at: string | null
+          id: string
+          lease_expires_at: string | null
+          max_attempts: number
+          snapshot_id: string | null
+          started_at: string | null
+          state: Database["public"]["Enums"]["intelligence_execution_state"]
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "intelligence_execution_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      cleanup_unprotected_sessions: {
+        Args: { p_dry_run?: boolean }
+        Returns: {
+          athlete_id: string
+          session_id: string
+          session_name: string
+          status: Database["public"]["Enums"]["session_status"]
+        }[]
       }
       complete_analysis_job: {
         Args: {
-          p_job_id: string
-          p_claim_token: string
-          p_worker_id: string
-          p_model_version: string
-          p_metrics: Json
-          p_provenance: Json
-          p_input_snapshot: Json
-          p_result_payload: Json
-          p_keypoints_path: string
-          p_source_fps: number
           p_artifact_paths: Json
+          p_claim_token: string
+          p_input_snapshot: Json
+          p_job_id: string
+          p_keypoints_path: string
+          p_metrics: Json
+          p_model_version: string
+          p_provenance: Json
+          p_result_payload: Json
+          p_source_fps: number
+          p_worker_id: string
         }
         Returns: boolean
       }
       complete_experimental_analysis_job: {
         Args: {
-          p_job_id: string
-          p_claim_token: string
-          p_worker_id: string
-          p_model_version: string
-          p_metrics: Json
-          p_provenance: Json
-          p_input_snapshot: Json
-          p_result_payload: Json
-          p_keypoints_path: string
-          p_source_fps: number
           p_artifact_paths: Json
-          p_experimental_result: Json
-        }
-        Returns: boolean
-      }
-      fail_analysis_job: {
-        Args: {
-          p_job_id: string
           p_claim_token: string
+          p_experimental_result: Json
+          p_input_snapshot: Json
+          p_job_id: string
+          p_keypoints_path: string
+          p_metrics: Json
+          p_model_version: string
+          p_provenance: Json
+          p_result_payload: Json
+          p_source_fps: number
           p_worker_id: string
-          p_error_code: string
-          p_error_message: string
-          p_error_stage: string
-          p_failure_category: string
-          p_user_message: string
-          p_retryable: boolean
-          p_backoff_seconds: number
-          p_user_action_required?: boolean
         }
-        Returns: Database["public"]["Enums"]["analysis_job_status"]
-      }
-      get_analysis_job_status: {
-        Args: {
-          p_analysis_id: string
-        }
-        Returns: {
-          status: Database["public"]["Enums"]["analysis_job_status"]
-          user_message: string
-          attempt_count: number
-          updated_at: string
-        }[]
-      }
-      get_research_workspace_summary: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      get_research_source_detail: {
-        Args: { p_source_id: string }
-        Returns: Json
-      }
-      get_research_claim_detail: {
-        Args: { p_claim_id: string }
-        Returns: Json
-      }
-      review_research_claim: {
-        Args: { p_claim_id: string; p_status: string; p_reason: string }
         Returns: boolean
       }
-      retrieve_production_research_evidence: {
-        Args: { p_metric_keys: string[]; p_usage: string; p_limit?: number }
-        Returns: Json
-      }
-      get_benchmark_developer_catalog: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      get_projection_developer_summary: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      get_athlete_digital_twin_summary: {
-        Args: { p_athlete_id: string }
-        Returns: Json
-      }
-      activate_athlete_digital_twin_snapshot: {
-        Args: { p_athlete_id: string; p_snapshot_id: string; p_reason: string }
-        Returns: boolean
-      }
-      append_athlete_timeline_event: {
-        Args: { p_athlete_id: string; p_event: Json }
-        Returns: boolean
-      }
-      append_and_activate_athlete_digital_twin_snapshot: {
-        Args: { p_athlete_id: string; p_snapshot: Json; p_reason: string }
+      create_shadow_intelligence_manifest: {
+        Args: { p_execution_plan_id: string; p_replay_run_id?: string }
         Returns: string
       }
       enqueue_coaching_state_invalidation: {
         Args: { p_athlete_id: string; p_trigger: Json }
         Returns: boolean
       }
-      append_and_activate_coaching_state: {
-        Args: { p_athlete_id: string; p_state: Json; p_triggers: Json }
-        Returns: string
+      enqueue_performance_optimization_invalidation: {
+        Args: { p_athlete_id: string; p_trigger: Json }
+        Returns: boolean
       }
+      enqueue_root_cause_invalidation: {
+        Args: { p_athlete_id: string; p_trigger: Json }
+        Returns: boolean
+      }
+      enqueue_root_cause_recommendation_invalidation: {
+        Args: { p_athlete_id: string; p_trigger: Json }
+        Returns: boolean
+      }
+      fail_analysis_job: {
+        Args: {
+          p_backoff_seconds: number
+          p_claim_token: string
+          p_error_code: string
+          p_error_message: string
+          p_error_stage: string
+          p_failure_category: string
+          p_job_id: string
+          p_retryable: boolean
+          p_user_action_required?: boolean
+          p_user_message: string
+          p_worker_id: string
+        }
+        Returns: Database["public"]["Enums"]["analysis_job_status"]
+      }
+      fail_intelligence_execution_plan: {
+        Args: { p_actor_id: string; p_failure: Json; p_plan_id: string }
+        Returns: boolean
+      }
+      get_activated_intelligence_snapshot: {
+        Args: { p_athlete_id: string; p_engine_id: string }
+        Returns: Json
+      }
+      get_analysis_job_status: {
+        Args: { p_analysis_id: string }
+        Returns: {
+          attempt_count: number
+          progress: Json
+          status: Database["public"]["Enums"]["analysis_job_status"]
+          updated_at: string
+          user_message: string
+        }[]
+      }
+      get_athlete_digital_twin_summary: {
+        Args: { p_athlete_id: string }
+        Returns: Json
+      }
+      get_benchmark_developer_catalog: { Args: never; Returns: Json }
       get_cached_coaching_state: {
         Args: { p_athlete_id: string }
         Returns: Json
       }
+      get_cached_performance_optimization: {
+        Args: { p_athlete_id: string }
+        Returns: Json
+      }
+      get_cached_root_cause_recommendation_context: {
+        Args: { p_athlete_id: string }
+        Returns: Json
+      }
+      get_cached_root_cause_state: {
+        Args: { p_athlete_id: string }
+        Returns: Json
+      }
+      get_intelligence_execution_job_internal: {
+        Args: { p_job_id: string; p_plan_id: string }
+        Returns: Json
+      }
+      get_intelligence_execution_plan_internal: {
+        Args: { p_plan_id: string }
+        Returns: Json
+      }
+      get_intelligence_orchestration_dashboard: {
+        Args: { p_athlete_id: string }
+        Returns: Json
+      }
+      get_orchestration_operational_dashboard: {
+        Args: { p_athlete_id: string; p_limit?: number }
+        Returns: Json
+      }
+      get_projection_developer_summary: { Args: never; Returns: Json }
+      get_research_claim_detail: { Args: { p_claim_id: string }; Returns: Json }
+      get_research_source_detail: {
+        Args: { p_source_id: string }
+        Returns: Json
+      }
+      get_research_workspace_summary: { Args: never; Returns: Json }
       heartbeat_analysis_job: {
         Args: {
-          p_job_id: string
           p_claim_token: string
-          p_worker_id: string
+          p_job_id: string
           p_lease_seconds?: number
+          p_progress?: Json
+          p_worker_id: string
         }
         Returns: boolean
       }
+      heartbeat_intelligence_execution_job: {
+        Args: {
+          p_claim_token: string
+          p_job_id: string
+          p_lease_seconds?: number
+          p_worker_id: string
+        }
+        Returns: boolean
+      }
+      is_organization_manager: {
+        Args: { p_organization_id: string }
+        Returns: boolean
+      }
+      is_organization_member: {
+        Args: { p_organization_id: string }
+        Returns: boolean
+      }
+      is_research_reviewer: { Args: never; Returns: boolean }
+      persist_shadow_intelligence_comparison: {
+        Args: {
+          p_execution_plan_id: string
+          p_report: Json
+          p_shadow_manifest_id: string
+        }
+        Returns: string
+      }
+      recover_intelligence_execution_jobs: {
+        Args: { p_cursor?: string; p_limit: number }
+        Returns: Json
+      }
       replace_working_analysis: {
         Args: {
-          p_session_id: string
-          p_input_snapshot: Json
           p_analysis_fps: number
-          p_pipeline_version: string
-          p_metric_schema_version: string
           p_explainability_schema_version: string
+          p_input_snapshot: Json
+          p_metric_schema_version: string
+          p_pipeline_version: string
+          p_session_id: string
           p_timing_compatibility_group: string
         }
         Returns: string
       }
-      requeue_analysis_job: {
-        Args: {
-          p_job_id: string
-        }
-        Returns: boolean
-      }
+      requeue_analysis_job: { Args: { p_job_id: string }; Returns: boolean }
       reset_working_analysis: {
-        Args: {
-          p_session_id: string
-        }
+        Args: { p_session_id: string }
         Returns: boolean
       }
-      save_working_analysis_snapshot: {
+      retrieve_production_research_evidence: {
+        Args: { p_limit?: number; p_metric_keys: string[]; p_usage: string }
+        Returns: Json
+      }
+      review_research_claim: {
+        Args: { p_claim_id: string; p_reason: string; p_status: string }
+        Returns: boolean
+      }
+      rollback_intelligence_pipeline: {
         Args: {
-          p_session_id: string
-          p_notes?: string
+          p_actor_id: string
+          p_execution_plan_id: string
+          p_reason: string
         }
         Returns: string
       }
+      save_working_analysis_snapshot: {
+        Args: { p_notes?: string; p_session_id: string }
+        Returns: string
+      }
+      schedule_intelligence_execution_retry: {
+        Args: {
+          p_delay_ms: number
+          p_failure: Json
+          p_job_id: string
+          p_plan_id: string
+        }
+        Returns: boolean
+      }
       set_analysis_job_stage: {
         Args: {
-          p_job_id: string
           p_claim_token: string
-          p_worker_id: string
+          p_job_id: string
           p_status: Database["public"]["Enums"]["analysis_job_status"]
+          p_worker_id: string
+        }
+        Returns: boolean
+      }
+      set_session_reference_benchmark: {
+        Args: { p_protected: boolean; p_session_id: string }
+        Returns: boolean
+      }
+      stage_intelligence_snapshot: {
+        Args: { p_actor_id: string; p_plan_id: string; p_snapshot: Json }
+        Returns: string
+      }
+      transition_intelligence_execution_job: {
+        Args: {
+          p_actor_id: string
+          p_job_id: string
+          p_patch: Json
+          p_plan_id: string
+        }
+        Returns: boolean
+      }
+      update_session_source_metadata: {
+        Args: {
+          p_codec: string
+          p_duration_s: number
+          p_fps: number
+          p_fps_classification: string
+          p_fps_metadata: Json
+          p_height: number
+          p_session_id: string
+          p_width: number
         }
         Returns: boolean
       }
@@ -1111,6 +4463,22 @@ export type Database = {
         | "dead_lettered"
         | "cancelled"
       analysis_status: "queued" | "running" | "complete" | "failed"
+      coach_note_kind: "session" | "technique" | "training" | "competition"
+      intelligence_execution_state:
+        | "queued"
+        | "waiting"
+        | "ready"
+        | "running"
+        | "retrying"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "rolled_back"
+      organization_role:
+        | "owner"
+        | "head_coach"
+        | "assistant_coach"
+        | "read_only_staff"
       session_status:
         | "uploading"
         | "uploaded"
@@ -1120,8 +4488,6 @@ export type Database = {
         | "failed"
       sprint_analysis_type: "fly" | "acceleration"
       user_role: "coach" | "athlete" | "admin"
-      organization_role: "owner" | "head_coach" | "assistant_coach" | "read_only_staff"
-      coach_note_kind: "session" | "technique" | "training" | "competition"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1140,6 +4506,7 @@ export type Database = {
           owner: string | null
           owner_id: string | null
           public: boolean | null
+          type: Database["storage"]["Enums"]["buckettype"]
           updated_at: string | null
         }
         Insert: {
@@ -1152,6 +4519,7 @@ export type Database = {
           owner?: string | null
           owner_id?: string | null
           public?: boolean | null
+          type?: Database["storage"]["Enums"]["buckettype"]
           updated_at?: string | null
         }
         Update: {
@@ -1164,9 +4532,156 @@ export type Database = {
           owner?: string | null
           owner_id?: string | null
           public?: boolean | null
+          type?: Database["storage"]["Enums"]["buckettype"]
           updated_at?: string | null
         }
         Relationships: []
+      }
+      buckets_analytics: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          format: string
+          id: string
+          name: string
+          type: Database["storage"]["Enums"]["buckettype"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          format?: string
+          id?: string
+          name: string
+          type?: Database["storage"]["Enums"]["buckettype"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          format?: string
+          id?: string
+          name?: string
+          type?: Database["storage"]["Enums"]["buckettype"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      buckets_vectors: {
+        Row: {
+          created_at: string
+          id: string
+          type: Database["storage"]["Enums"]["buckettype"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          type?: Database["storage"]["Enums"]["buckettype"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          type?: Database["storage"]["Enums"]["buckettype"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      iceberg_namespaces: {
+        Row: {
+          bucket_name: string
+          catalog_id: string
+          created_at: string
+          id: string
+          metadata: Json
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          bucket_name: string
+          catalog_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          bucket_name?: string
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "iceberg_namespaces_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "buckets_analytics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      iceberg_tables: {
+        Row: {
+          bucket_name: string
+          catalog_id: string
+          created_at: string
+          id: string
+          location: string
+          name: string
+          namespace_id: string
+          remote_table_id: string | null
+          shard_id: string | null
+          shard_key: string | null
+          updated_at: string
+        }
+        Insert: {
+          bucket_name: string
+          catalog_id: string
+          created_at?: string
+          id?: string
+          location: string
+          name: string
+          namespace_id: string
+          remote_table_id?: string | null
+          shard_id?: string | null
+          shard_key?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bucket_name?: string
+          catalog_id?: string
+          created_at?: string
+          id?: string
+          location?: string
+          name?: string
+          namespace_id?: string
+          remote_table_id?: string | null
+          shard_id?: string | null
+          shard_key?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "iceberg_tables_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "buckets_analytics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "iceberg_tables_namespace_id_fkey"
+            columns: ["namespace_id"]
+            isOneToOne: false
+            referencedRelation: "iceberg_namespaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       migrations: {
         Row: {
@@ -1249,6 +4764,7 @@ export type Database = {
           id: string
           in_progress_size: number
           key: string
+          metadata: Json | null
           owner_id: string | null
           upload_signature: string
           user_metadata: Json | null
@@ -1260,6 +4776,7 @@ export type Database = {
           id: string
           in_progress_size?: number
           key: string
+          metadata?: Json | null
           owner_id?: string | null
           upload_signature: string
           user_metadata?: Json | null
@@ -1271,6 +4788,7 @@ export type Database = {
           id?: string
           in_progress_size?: number
           key?: string
+          metadata?: Json | null
           owner_id?: string | null
           upload_signature?: string
           user_metadata?: Json | null
@@ -1340,103 +4858,181 @@ export type Database = {
           },
         ]
       }
+      vector_indexes: {
+        Row: {
+          bucket_id: string
+          created_at: string
+          data_type: string
+          dimension: number
+          distance_metric: string
+          id: string
+          metadata_configuration: Json | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          bucket_id: string
+          created_at?: string
+          data_type: string
+          dimension: number
+          distance_metric: string
+          id?: string
+          metadata_configuration?: Json | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          bucket_id?: string
+          created_at?: string
+          data_type?: string
+          dimension?: number
+          distance_metric?: string
+          id?: string
+          metadata_configuration?: Json | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vector_indexes_bucket_id_fkey"
+            columns: ["bucket_id"]
+            isOneToOne: false
+            referencedRelation: "buckets_vectors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      allow_any_operation: {
+        Args: { expected_operations: string[] }
+        Returns: boolean
+      }
+      allow_only_operation: {
+        Args: { expected_operation: string }
+        Returns: boolean
+      }
       can_insert_object: {
-        Args: {
-          bucketid: string
-          name: string
-          owner: string
-          metadata: Json
-        }
+        Args: { bucketid: string; metadata: Json; name: string; owner: string }
         Returns: undefined
       }
-      extension: {
-        Args: {
-          name: string
-        }
+      extension: { Args: { name: string }; Returns: string }
+      filename: { Args: { name: string }; Returns: string }
+      foldername: { Args: { name: string }; Returns: string[] }
+      get_common_prefix: {
+        Args: { p_delimiter: string; p_key: string; p_prefix: string }
         Returns: string
-      }
-      filename: {
-        Args: {
-          name: string
-        }
-        Returns: string
-      }
-      foldername: {
-        Args: {
-          name: string
-        }
-        Returns: string[]
       }
       get_size_by_bucket: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
-          size: number
           bucket_id: string
+          size: number
         }[]
       }
       list_multipart_uploads_with_delimiter: {
         Args: {
           bucket_id: string
-          prefix_param: string
           delimiter_param: string
           max_keys?: number
           next_key_token?: string
           next_upload_token?: string
+          prefix_param: string
         }
         Returns: {
-          key: string
-          id: string
           created_at: string
+          id: string
+          key: string
         }[]
       }
       list_objects_with_delimiter: {
         Args: {
-          bucket_id: string
-          prefix_param: string
+          _bucket_id: string
           delimiter_param: string
           max_keys?: number
-          start_after?: string
           next_token?: string
+          prefix_param: string
+          sort_order?: string
+          start_after?: string
         }
         Returns: {
-          name: string
+          created_at: string
           id: string
+          last_accessed_at: string
           metadata: Json
+          name: string
           updated_at: string
         }[]
       }
-      operation: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      operation: { Args: never; Returns: string }
       search: {
         Args: {
-          prefix: string
           bucketname: string
-          limits?: number
           levels?: number
+          limits?: number
           offsets?: number
+          prefix: string
           search?: string
           sortcolumn?: string
           sortorder?: string
         }
         Returns: {
-          name: string
-          id: string
-          updated_at: string
           created_at: string
+          id: string
           last_accessed_at: string
           metadata: Json
+          name: string
+          updated_at: string
+        }[]
+      }
+      search_by_timestamp: {
+        Args: {
+          p_bucket_id: string
+          p_level: number
+          p_limit: number
+          p_prefix: string
+          p_sort_column: string
+          p_sort_column_after: string
+          p_sort_order: string
+          p_start_after: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          key: string
+          last_accessed_at: string
+          metadata: Json
+          name: string
+          updated_at: string
+        }[]
+      }
+      search_v2: {
+        Args: {
+          bucket_name: string
+          levels?: number
+          limits?: number
+          prefix: string
+          sort_column?: string
+          sort_column_after?: string
+          sort_order?: string
+          start_after?: string
+        }
+        Returns: {
+          created_at: string
+          id: string
+          key: string
+          last_accessed_at: string
+          metadata: Json
+          name: string
+          updated_at: string
         }[]
       }
     }
     Enums: {
-      [_ in never]: never
+      buckettype: "STANDARD" | "ANALYTICS" | "VECTOR"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1444,27 +5040,33 @@ export type Database = {
   }
 }
 
-type PublicSchema = Database[Extract<keyof Database, "public">]
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
-  PublicTableNameOrOptions extends
-    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-        Database[PublicTableNameOrOptions["schema"]]["Views"])
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
-        PublicSchema["Views"])
-    ? (PublicSchema["Tables"] &
-        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -1472,20 +5074,24 @@ export type Tables<
     : never
 
 export type TablesInsert<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -1493,20 +5099,24 @@ export type TablesInsert<
     : never
 
 export type TablesUpdate<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
-    | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -1514,29 +5124,91 @@ export type TablesUpdate<
     : never
 
 export type Enums<
-  PublicEnumNameOrOptions extends
-    | keyof PublicSchema["Enums"]
-    | { schema: keyof Database },
-  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = PublicEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
-    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof PublicSchema["CompositeTypes"]
-    | { schema: keyof Database },
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
-    ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      analysis_job_status: [
+        "queued",
+        "claimed",
+        "downloading",
+        "validating",
+        "processing",
+        "generating_results",
+        "uploading_artifacts",
+        "completing",
+        "completed",
+        "retry_scheduled",
+        "failed",
+        "dead_lettered",
+        "cancelled",
+      ],
+      analysis_status: ["queued", "running", "complete", "failed"],
+      coach_note_kind: ["session", "technique", "training", "competition"],
+      intelligence_execution_state: [
+        "queued",
+        "waiting",
+        "ready",
+        "running",
+        "retrying",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "rolled_back",
+      ],
+      organization_role: [
+        "owner",
+        "head_coach",
+        "assistant_coach",
+        "read_only_staff",
+      ],
+      session_status: [
+        "uploading",
+        "uploaded",
+        "queued",
+        "analyzing",
+        "complete",
+        "failed",
+      ],
+      sprint_analysis_type: ["fly", "acceleration"],
+      user_role: ["coach", "athlete", "admin"],
+    },
+  },
+  storage: {
+    Enums: {
+      buckettype: ["STANDARD", "ANALYTICS", "VECTOR"],
+    },
+  },
+} as const

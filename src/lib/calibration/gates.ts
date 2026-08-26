@@ -21,7 +21,13 @@
 
 import { z } from "zod";
 
-import type { ManualCalibrationPoints } from "./index";
+// Structural copy of the legacy calibration adapter input. Keeping this tiny
+// type local prevents the worker's gate-debug schema from pulling the entire
+// UI calibration barrel (and its Next.js aliases) into the standalone build.
+type ManualCalibrationPoints = {
+  ax: number; ay: number; bx: number; by: number; distanceM: number;
+  aTimeS?: number | null; bTimeS?: number | null;
+};
 import { groundBoundarySchema, GROUND_ANCHOR_SCHEMA_VERSION } from "./zoneAnchors";
 import { WORLD_COORDINATE_SCHEMA_VERSION } from "../video/worldProjection";
 import { manualCameraPathRepairSchema } from "../video/cameraPathSchema";

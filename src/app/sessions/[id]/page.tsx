@@ -71,11 +71,13 @@ import AvaPerformanceScoreCard from "./AvaPerformanceScoreCard";
 import PerformancePotentialCard from "./PerformancePotentialCard";
 import UnlockSimulatorCard from "./UnlockSimulatorCard";
 import AnalysisProgressCard from "./AnalysisProgressCard";
+import SessionDevIdentityCard from "./SessionDevIdentityCard";
 import RerunAnalysisButton from "./RerunAnalysisButton";
 import CoachNotesForm from "./CoachNotesForm";
 import RecordingQualityCard from "./RecordingQualityCard";
 import BenchmarkPanel from "./BenchmarkPanel";
 import PerformanceSummaryCard from "./PerformanceSummaryCard";
+import EvidenceInspector from "./EvidenceInspector";
 import CoachingRecommendationsCard from "./CoachingRecommendationsCard";
 import ProgressCard from "./ProgressCard";
 import AppShell from "@/components/nav/AppShell";
@@ -86,7 +88,9 @@ import { AvaStatusPill } from "@/components/ava/AvaStatusPill";
 import { AvaInfoStat } from "@/components/ava/AvaInfoStat";
 import { buildRecordingQuality, summarisePoseQuality } from "@/lib/recording/quality";
 import { accelerationProfileLabel, analysisTypeConfig, isAnalysisType } from "@/lib/analysisTypes";
-import AccelerationMetricsPanel from "./AccelerationMetricsPanel";
+import AccelerationAnalysisPanel from "./AccelerationAnalysisPanel";
+import AccelerationCalibrationPanel from "./AccelerationCalibrationPanel";
+import { accelerationCalibrationGatesSchema } from "@/lib/acceleration/calibration";
 import { FEATURES } from "@/lib/config/features";
 import { toCanonicalIso } from "@/lib/time/canonicalTimestamp";
 import {
@@ -160,7 +164,7 @@ export default async function SessionPage({
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
     .select(
-      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, current_working_analysis_id, analysis_type, pose_engine, distance_m, duration_s, width, height, fps, fps_classification, fps_metadata, fps_override, benchmark_id, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, timing_mode, timing_direction, timing_body_reference, timing_splits, timing_setup, timing_workspace, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
+      "id, name, notes, original_filename, video_path, status, created_at, athlete_id, current_working_analysis_id, analysis_type, pose_engine, distance_m, duration_s, width, height, fps, fps_classification, fps_metadata, fps_override, benchmark_id, is_reference_benchmark, calibration_zone_start_s, calibration_zone_end_s, calibration_zone_distance_m, calibration_point_ax, calibration_point_ay, calibration_point_bx, calibration_point_by, calibration_known_distance_m, calibration_point_a_time_s, calibration_point_b_time_s, calibration_gates, timing_zone_version, timing_mode, timing_direction, timing_body_reference, timing_splits, timing_setup, timing_workspace, overlay_trochanter_x, overlay_trochanter_y, overlay_trochanter_time_s, codec, size_bytes, athletes(full_name, height_cm, weight_kg, leg_length_cm, trochanter_height_m, primary_event, personal_best_60m, personal_best_100m, personal_best_200m, goal_60m, goal_100m, goal_200m)",
     )
     .eq("id", id)
     .single();
@@ -216,7 +220,7 @@ export default async function SessionPage({
     ? await supabase
         .from("analyses")
         .select(
-          "id, status, error, metrics, keypoints_path, created_at, completed_at, provenance, input_snapshot, result_payload, analysis_fps, source_fps, metric_schema_version, analysis_pipeline_version, experimental, experiment_version, validation_status, compatibility_group, timing_compatibility_group, experimental_result, version_number, parent_analysis_id, workspace_config, performance_result_status, performance_result_invalid_reason, excluded_from_history_trends, excluded_from_benchmarks, excluded_from_predictions, excluded_from_recommendations, analysis_kind, is_current_working, saved_version_number, saved_at, saved_notes",
+          "id, status, error, metrics, keypoints_path, created_at, completed_at, provenance, input_snapshot, result_payload, analysis_fps, source_fps, model_version, metric_schema_version, analysis_pipeline_version, experimental, experiment_version, validation_status, compatibility_group, timing_compatibility_group, experimental_result, version_number, parent_analysis_id, workspace_config, performance_result_status, performance_result_invalid_reason, excluded_from_history_trends, excluded_from_benchmarks, excluded_from_predictions, excluded_from_recommendations, analysis_kind, is_current_working, saved_version_number, saved_at, saved_notes",
         )
         .eq("session_id", session.id)
         .eq("id", selectedVersion.id)
@@ -270,10 +274,10 @@ export default async function SessionPage({
   // Interactive-overlay frames come from the analysis's stored pose artifact
   // (analyses.keypoints_path). The loader is fully defensive: a missing path,
   // bucket, object, or malformed artifact resolves to [] (placeholder shown).
-  const { frames: rawOverlayFrames, meta: overlayMeta } =
+  const { frames: rawOverlayFrames, meta: overlayMeta, status: overlayLoadStatus, reason: overlayLoadReason } =
     analysis?.status === "complete" && analysis.keypoints_path
     ? await loadOverlayFrames(supabase, analysis?.keypoints_path)
-    : { frames: [] as OverlayFrame[], meta: null };
+    : { frames: [] as OverlayFrame[], meta: null, status: "missing_pointer" as const, reason: "This analysis has no pose-artifact pointer." };
 
   // Source video dimensions + detected FPS. The session row may lack them (older
   // uploads), so fall back to the pose artifact's own metadata, which the worker
@@ -393,11 +397,6 @@ export default async function SessionPage({
       })
     : null;
 
-  // Step cadence straight from the verified ground contacts (contacts / elapsed
-  // time), independent of any scale — shown on the overlay's step-marks legend.
-  const overlayStepMarks = overlayFrames.length ? detectStepMarks(overlayFrames) : [];
-  const stepCadenceHz = stepFrequencyFromContacts(overlayStepMarks);
-
   // Full calibrated sprint measurement set (Day 62 benchmark): contacts, combined
   // + per-side frequency, average/individual/per-side step length, and the three
   // cross-checked velocities. The manual calibration points supply both the scale
@@ -435,9 +434,27 @@ export default async function SessionPage({
           cameraEvidence: cameraPansMeaningfully ? cameraEvidence : undefined,
         })
       : null;
+
+  // Phase R1C — render directly from the SAME authoritative full-run contact
+  // set `measurements` already computed internally (`fullRunContacts`,
+  // stripped of predicted/invalid/frozen_suspect landmarks with the Phase
+  // 4.2K/9.1B `independent_corroborated` exception), instead of independently
+  // re-running `detectStepMarks` on unstripped frames — the two previously
+  // diverged (a real, measured contact-set mismatch, not merely a numbering
+  // difference; see docs/phase-r1c-authoritative-contact-render-alignment.md).
+  // Falls back to the prior independent-detection behavior only when no
+  // authoritative measurement set exists at all (non-"fly" analysis types),
+  // preserving existing behavior there exactly.
+  const overlayStepMarks = measurements
+    ? measurements.fullRunContacts
+    : overlayFrames.length
+      ? detectStepMarks(overlayFrames)
+      : [];
+  const stepCadenceHz = stepFrequencyFromContacts(overlayStepMarks);
   const accelerationMetrics = parsedAccelerationMetrics?.success
     ? parsedAccelerationMetrics.data
     : null;
+  const accelerationCalibrationSaved = accelerationCalibrationGatesSchema.safeParse(session.calibration_gates);
   const accelerationOverlayMarkers = accelerationMetrics
     ? [
         ...(accelerationMetrics.startEvent.timestamp != null
@@ -465,8 +482,19 @@ export default async function SessionPage({
     : [];
 
   // The clock every timing-derived number (contact, flight, frequency, zone,
-  // velocity, phases) uses: manual override, else the normalized detected rate.
-  const activeFps = analysis?.analysis_fps ?? effectiveFps;
+  // velocity, phases) uses. `analyses.analysis_fps` is only authoritative once
+  // the analysis has actually completed — the worker overwrites it with the
+  // real detected rate on completion (`complete_analysis_job`). Before that it
+  // is just the QUEUE-TIME placeholder `queueAnalysis` requested (frequently a
+  // 60 FPS guess for a session AVA hasn't analyzed yet), so a queued, running,
+  // or failed analysis must prefer the session's own real detected/normalized
+  // source rate instead — otherwise a 120 FPS recording whose job hasn't
+  // completed (or failed before detection) would display as "60 FPS" even
+  // though nothing ever detected 60.
+  const analysisCompleteForFps = analysis?.status === "complete";
+  const activeFps: number | null = analysisCompleteForFps
+    ? (analysis?.analysis_fps ?? effectiveFps)
+    : (effectiveFps ?? analysis?.analysis_fps ?? null);
 
   // Precision mode (Day 69): below ~120 fps, temporal metrics (contact/flight) are
   // frame-quantized too coarsely to be trusted as high-confidence — so we neither
@@ -610,8 +638,15 @@ export default async function SessionPage({
     : null;
 
   // Trusted Sprint Metrics (Day 79): THE single source of truth for every customer-
-  // facing surface. Derived only from the calibrated measurement engine.
-  const trusted = buildTrustedMetrics(measurements, cameraAssessment);
+  // facing surface. Derived only from the calibrated measurement engine. Day 98:
+  // `calibrationCameraType` (coach-confirmed, defaults to "stationary" only when
+  // never explicitly set to "panning" — the same convention already used above for
+  // `cameraPansMeaningfully`) is the one signal allowed to let a metric be judged on
+  // its own evidence when athlete tracking (not camera motion) was the limiter.
+  const trusted = buildTrustedMetrics(measurements, cameraAssessment, {
+    calibrationCameraType,
+    calibrationSource,
+  });
   const trustedConfidence = trusted
     ? buildTrustedMetricConfidence(trusted, confidenceEvidence)
     : null;
@@ -912,8 +947,20 @@ export default async function SessionPage({
             initialMessage={jobStatus?.user_message ?? null}
             initialUpdatedAt={jobStatus?.updated_at ?? null}
             initialAttemptCount={jobStatus?.attempt_count ?? 0}
+            initialProgress={jobStatus?.progress ?? null}
           />
         )}
+
+        <SessionDevIdentityCard
+          sessionId={session.id}
+          sourceFilename={session.original_filename ?? null}
+          verifiedSourceFps={session.fps ?? null}
+          isReferenceBenchmark={session.is_reference_benchmark ?? false}
+          analysisId={analysis?.id ?? null}
+          analysisStatus={analysis?.status ?? null}
+          pipelineVersion={analysis?.analysis_pipeline_version ?? null}
+          poseBackendVersion={analysis?.model_version ?? null}
+        />
 
         {analysis?.experimental && (
           <div className="rounded-xl border border-[#f5c451]/40 bg-[#f5c451]/10 px-4 py-3">
@@ -1132,6 +1179,50 @@ export default async function SessionPage({
                   </form>
                 ))}
               </div>
+              <p className="mt-2 text-[10px] text-[#7e8797]">
+                Quick single-distance setup above. For step-by-step data, splits at every marker, and asymmetry, use
+                the distance-marker calibration below instead.
+              </p>
+            </div>
+          )}
+          {session.analysis_type === "acceleration" && signedVideo?.signedUrl && effectiveWidth && effectiveHeight && (
+            <div className="mb-4">
+              <AccelerationCalibrationPanel
+                sessionId={session.id}
+                videoUrl={signedVideo.signedUrl}
+                sourceWidth={effectiveWidth}
+                sourceHeight={effectiveHeight}
+                fps={detectedFps ?? 60}
+                savedMarkers={
+                  accelerationCalibrationSaved.success
+                    ? accelerationCalibrationSaved.data.markers.map((m) => ({
+                        distanceM: m.distanceM,
+                        x: m.point.x,
+                        y: m.point.y,
+                        frameIndex: m.frameIndex ?? null,
+                      }))
+                    : []
+                }
+                savedTravelDirection={
+                  accelerationCalibrationSaved.success ? accelerationCalibrationSaved.data.travelDirection : null
+                }
+                expectedRevision={session.timing_zone_version ?? 0}
+                suggestedStart={
+                  accelerationMetrics?.startEvent
+                    ? {
+                        frame: accelerationMetrics.startEvent.frame,
+                        timestamp: accelerationMetrics.startEvent.timestamp,
+                        confidence: accelerationMetrics.startEvent.confidence,
+                        signal: accelerationMetrics.startEvent.signal,
+                      }
+                    : null
+                }
+                savedStartOverride={
+                  accelerationCalibrationSaved.success && accelerationCalibrationSaved.data.manualStartOverride
+                    ? { zoneStartFrame: accelerationCalibrationSaved.data.manualStartOverride.zoneStartFrame }
+                    : null
+                }
+              />
             </div>
           )}
           {!analysisInFlight && (
@@ -1209,6 +1300,9 @@ export default async function SessionPage({
                the normalized frames, so benchmark numbers are unchanged. */
               <OverlayVideoPlayer
                 videoUrl={signedVideo.signedUrl}
+                analysisId={analysis?.id ?? null}
+                sourceVideo={session.original_filename ?? session.video_path ?? "unknown"}
+                sourceFpsClassification={session.fps_classification}
                 frames={rawOverlayFrames}
                 sourceFps={detectedFps}
                 analysisFps={analysis?.analysis_fps ?? null}
@@ -1218,7 +1312,10 @@ export default async function SessionPage({
                 calibrationCameraType={explicitCalibrationCameraType}
                 sourceWidth={effectiveWidth}
                 sourceHeight={effectiveHeight}
+                zoneCoverage={trusted?.zoneCoverage ?? null}
                 stepScale={stepScale}
+                authoritativeSteps={measurements?.zoneSteps ?? null}
+                authoritativeContacts={measurements?.fullRunContacts ?? null}
                 stepCadenceHz={stepCadenceHz}
                 stepContactCount={overlayStepMarks.length}
                 sessionId={session.id}
@@ -1243,7 +1340,7 @@ export default async function SessionPage({
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-8 text-center">
               <p className="text-sm text-[#b3bccb]">
                 {analysisComplete
-                  ? "This analysis has no readable pose artifact. The original video remains available above."
+                  ? `${overlayLoadReason ?? "This analysis has no readable pose artifact."} The original video remains available above.${overlayLoadStatus === "missing_object" || overlayLoadStatus === "corrupt_json" || overlayLoadStatus === "schema_incompatible" ? " Rerun analysis to regenerate it." : ""}`
                   : "Run an analysis to add a synchronized pose overlay. The original video remains available above."}
               </p>
             </div>
@@ -1275,7 +1372,22 @@ export default async function SessionPage({
                 legacy={!analysisProvenance || !explainableResult}
               />
             )}
-            {!MVP_FIVE_ONLY && accelerationMetrics && <AccelerationMetricsPanel metrics={accelerationMetrics} />}
+            {accelerationMetrics && (
+              <AccelerationAnalysisPanel
+                metrics={accelerationMetrics}
+                athlete={
+                  athleteProfile
+                    ? {
+                        heightCm: athleteProfile.height_cm,
+                        legLengthCm: athleteProfile.leg_length_cm,
+                        trochanterHeightM: athleteProfile.trochanter_height_m,
+                        weightKg: athleteProfile.weight_kg,
+                        primaryEvent: athleteProfile.primary_event ?? null,
+                      }
+                    : null
+                }
+              />
+            )}
 
             {/* Trusted-only headline score. */}
             {!MVP_FIVE_ONLY && session.analysis_type === "fly" && performanceScore && (
@@ -1344,6 +1456,7 @@ export default async function SessionPage({
 
             {/* Recording-quality trust indicator (collapsed). */}
             {recordingQuality && <RecordingQualityCard report={recordingQuality} />}
+            {FEATURES.developerDiagnostics && trusted && <EvidenceInspector trusted={trusted} />}
             {FEATURES.developerDiagnostics && observationResult && (
               <ObservationDebugPanel
                 observations={observationResult.observations}

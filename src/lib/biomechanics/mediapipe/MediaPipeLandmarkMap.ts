@@ -60,3 +60,31 @@ export function mapFrameToKeypoints(frame: MediaPipeFrame): Partial<Record<Joint
 
   return keypoints;
 }
+
+/**
+ * Same mapping as {@link mapFrameToKeypoints}, but reads `frame.landmarksCropSpace`
+ * (crop-normalized, NOT remapped to source-frame space) instead of `frame.landmarks`.
+ * Exists purely for coordinate-transform verification (Part 5, Day 94): comparing
+ * a joint here against the same joint in `mapFrameToKeypoints`'s output, together
+ * with `frame.cropRect`/`cropScale`/`cropTranslation`, proves the crop→source remap
+ * is correct. Returns `{}` when the frame carries no crop-space landmarks (no ROI
+ * crop ran for this frame).
+ */
+export function mapFrameToCropSpaceKeypoints(frame: MediaPipeFrame): Partial<Record<JointName, Keypoint>> {
+  const keypoints: Partial<Record<JointName, Keypoint>> = {};
+  if (!frame.landmarksCropSpace) return keypoints;
+
+  for (const joint of CANONICAL_JOINTS) {
+    const index = MEDIAPIPE_LANDMARK_INDEX[joint];
+    const lm = frame.landmarksCropSpace[index];
+    if (!lm) continue;
+    const keypoint: Keypoint = {
+      x: lm.x,
+      y: lm.y,
+      score: clamp01(lm.visibility ?? lm.presence ?? 1),
+    };
+    if (lm.visibility != null) keypoint.visibility = clamp01(lm.visibility);
+    keypoints[joint] = keypoint;
+  }
+  return keypoints;
+}

@@ -122,7 +122,7 @@ export function stageState(def: StageDefinition, currentForwardIndex: number): S
 }
 
 // ---------------------------------------------------------------------------
-// Overall progress — REAL status → [floor, ceiling] band, plus bounded creep.
+// Overall progress — real status transitions plus measured processing work.
 // ---------------------------------------------------------------------------
 
 /**
@@ -157,20 +157,8 @@ export const STATUS_TYPICAL_MS: Record<string, number> = {
   completing: 3000,
 };
 
-/** Fraction of a band the creep may fill before the real transition unlocks the next band. */
-const CREEP_CAP = 0.9;
-
 /** How far past its typical duration a status must run to be surfaced as "delayed". */
 const STALL_FACTOR = 2.5;
-
-/** Asymptotic fill fraction for a status that has been active `elapsedMs`, paced by its
- *  typical duration (≈63% at 1×typical, capped at CREEP_CAP). Deterministic and monotonic. */
-function creepFraction(status: AnalysisJobStatus, elapsedMs: number): number {
-  const tau = STATUS_TYPICAL_MS[status];
-  if (!tau || elapsedMs <= 0) return 0;
-  const f = 1 - Math.exp(-elapsedMs / tau);
-  return Math.min(CREEP_CAP, f);
-}
 
 /**
  * Overall progress 0..100 for a forward status, given how long it has been active.
@@ -178,15 +166,21 @@ function creepFraction(status: AnalysisJobStatus, elapsedMs: number): number {
  */
 export function computeOverallProgress(
   status: AnalysisJobStatus,
-  elapsedInStatusMs: number,
+  _elapsedInStatusMs: number,
+  frame?: FrameProgressSnapshot | null,
 ): number | null {
   if (status === "completed") return 100;
   const band = STATUS_BANDS[status];
   if (!band) return null; // retry_scheduled / failed / dead_lettered / cancelled
-  if (band.ceiling === band.floor) return band.floor; // queued
-  const filled = band.floor + (band.ceiling - band.floor) * creepFraction(status, elapsedInStatusMs);
-  // Never round up into the next band.
-  return Math.min(band.ceiling, filled);
+  if (status === "processing" && frame && frame.totalFrames > 0) {
+    const completedPasses = frame.stage === "pass2" ? 1 : 0;
+    const fraction = Math.min(1, Math.max(0, frame.framesCompleted / frame.totalFrames));
+    const measuredWorkFraction = (completedPasses + fraction) / 2;
+    return band.floor + (band.ceiling - band.floor) * measuredWorkFraction;
+  }
+  // A stage transition is evidence; wall-clock time is not. Hold at the real
+  // stage floor until measured work or the next transition arrives.
+  return band.floor;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,32 +193,101 @@ export interface EtaEstimate {
   kind: EtaKind;
   /** Remaining milliseconds when kind === "ready". */
   ms: number | null;
+  /** Day 104 (Part 8): true only when `ms` was derived from REAL measured
+   *  frame throughput (not the provisional per-status duration table below).
+   *  Callers use this to decide between a precise mm:ss countdown and the
+   *  honest "Estimating…" / coarse-bucket text — never claim more
+   *  precision than the evidence actually supports. */
+  precise: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Day 104 (Part 8): real frame-throughput ETA — used only for the
+// `processing` status (pass 1 + pass 2 of the pose runner), which dominates
+// total wall-clock time on every real run measured so far (Day 99: 274s + 97s
+// of ~383s total, ≈97%). Other statuses (downloading, validating,
+// generating_results, uploading_artifacts, completing) have no frame-level
+// granularity and keep the provisional STATUS_TYPICAL_MS estimate — they are
+// short by construction, so a coarse estimate there is honest, not lazy.
+//
+// Deliberately self-contained (no import from `pose-backend.ts`) — this
+// module's own stated contract is zero framework/alias imports so it stays
+// unit-compilable in isolation (see module docstring); the shape is kept in
+// sync by convention, the same choice `stepIntegrity.ts` made for its
+// mirrored SprintAnalyzer.ts constants.
+// ---------------------------------------------------------------------------
+
+export interface FrameProgressSnapshot {
+  stage: "pass1" | "pass2";
+  framesCompleted: number;
+  totalFrames: number;
+}
+
+/**
+ * Fixed, generous, documented buffer for "the rest of the pipeline after
+ * pass 1 finishes" (pass 2 itself, plus generating_results/uploading/
+ * completing) — used ONLY while pass 1 is still running and pass 2 hasn't
+ * started yet, since there is no real throughput evidence for pass 2 before
+ * it begins. Mirrors this module's existing STATUS_TYPICAL_MS philosophy:
+ * deliberately generous so the estimate over-, not under-, shoots. Derived
+ * from the same Day 99 real measurement (pass 2 ≈ 97s, generating_results +
+ * uploading + completing ≈ 21s of typical durations below) rounded well up.
+ */
+/**
+ * Real remaining-time estimate for the CURRENT pass, from genuinely measured
+ * recent throughput (frames/sec between two consecutive real progress
+ * snapshots — the caller computes this, since only it sees consecutive
+ * polls). Returns null when there isn't yet a real rate to divide by —
+ * callers must fall back to "Estimating…", never a fabricated number.
+ */
+export function estimateFrameThroughputRemainingMs(
+  frame: FrameProgressSnapshot,
+  recentFramesPerSecond: number | null,
+): number | null {
+  if (recentFramesPerSecond == null || !Number.isFinite(recentFramesPerSecond) || recentFramesPerSecond <= 0) {
+    return null;
+  }
+  const remainingCurrentPass = Math.max(0, frame.totalFrames - frame.framesCompleted);
+  const remainingFuturePass = frame.stage === "pass1" ? frame.totalFrames : 0;
+  return ((remainingCurrentPass + remainingFuturePass) / recentFramesPerSecond) * 1000;
 }
 
 /**
  * Conservative remaining-time estimate. Hierarchy:
  *   • terminal (completed/failed/…)        → none
  *   • queued / retry_scheduled             → indeterminate (no worker holds it yet)
- *   • active forward status                → (typical remaining in this status) +
+ *   • `processing` WITH real frame evidence → real frame-throughput estimate (precise)
+ *   • active forward status (else)         → (typical remaining in this status) +
  *                                            Σ typical of all later statuses
  * Uses real elapsed-in-status so a stage that overruns stops shrinking toward zero.
  */
-export function estimateEta(status: AnalysisJobStatus, elapsedInStatusMs: number): EtaEstimate {
+export function estimateEta(
+  status: AnalysisJobStatus,
+  elapsedInStatusMs: number,
+  frame?: FrameProgressSnapshot | null,
+  recentFramesPerSecond?: number | null,
+): EtaEstimate {
   if (status === "completed" || status === "failed" || status === "dead_lettered" || status === "cancelled") {
-    return { kind: "none", ms: null };
+    return { kind: "none", ms: null, precise: false };
   }
   if (status === "queued" || status === "retry_scheduled") {
-    return { kind: "indeterminate", ms: null };
+    return { kind: "indeterminate", ms: null, precise: false };
+  }
+  if (status === "processing" && frame) {
+    const preciseMs = estimateFrameThroughputRemainingMs(frame, recentFramesPerSecond ?? null);
+    if (preciseMs != null) {
+      return { kind: "ready", ms: preciseMs, precise: true };
+    }
   }
   const idx = forwardIndex(status);
-  if (idx < 0) return { kind: "indeterminate", ms: null };
+  if (idx < 0) return { kind: "indeterminate", ms: null, precise: false };
 
   const remainingCurrent = Math.max(0, (STATUS_TYPICAL_MS[status] ?? 0) - Math.max(0, elapsedInStatusMs));
   let remainingLater = 0;
   for (let i = idx + 1; i < FORWARD_ORDER.length; i++) {
     remainingLater += STATUS_TYPICAL_MS[FORWARD_ORDER[i]] ?? 0;
   }
-  return { kind: "ready", ms: remainingCurrent + remainingLater };
+  return { kind: "ready", ms: remainingCurrent + remainingLater, precise: false };
 }
 
 /** True when the current status has run well past its typical duration (heartbeat-free
@@ -234,12 +297,33 @@ export function isDelayed(status: AnalysisJobStatus, elapsedInStatusMs: number):
   return Boolean(tau) && elapsedInStatusMs > tau * STALL_FACTOR;
 }
 
-/** Coarse, rounded-up, human ETA text. Never shows precise seconds (avoids a jittery
- *  countdown); returns null when there is nothing meaningful to show. */
-export function formatEta(eta: EtaEstimate): string | null {
+/** `M:SS` (or `H:MM:SS` past an hour) countdown text — used only when the
+ *  estimate is `precise` (real measured throughput), matching the exact
+ *  "03:42 remaining" shape this task asked for. */
+export function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const mm = hours > 0 ? String(minutes).padStart(2, "0") : String(minutes);
+  const ss = String(seconds).padStart(2, "0");
+  const clock = hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+  return `${clock} remaining`;
+}
+
+/** Human ETA text. Uses a precise `M:SS remaining` countdown ONLY when the
+ *  estimate is backed by real measured frame throughput; otherwise "Estimating…"
+ *  during processing (real evidence hasn't arrived yet) or the existing coarse
+ *  bucket text for the short, non-frame-tracked statuses — never claims more
+ *  precision than the evidence actually supports. */
+export function formatEta(eta: EtaEstimate, status?: AnalysisJobStatus): string | null {
   if (eta.kind === "none") return null;
   if (eta.kind === "indeterminate") return "Waiting to start";
   const ms = eta.ms ?? 0;
+  if (eta.precise) {
+    return ms <= 0 ? "Almost done" : formatCountdown(ms);
+  }
+  if (status === "processing") return "Estimating…";
   if (ms <= 0) return "Almost done";
   if (ms < 8000) return "A few seconds left";
   if (ms < 45000) return "Under a minute left";
@@ -335,6 +419,13 @@ export interface NormalizeInput {
   nowMs: number;
   attemptCount?: number;
   userMessage?: string | null;
+  /** Day 104 (Part 8): the latest real progress snapshot (`analysis_jobs.progress`),
+   *  when the worker has reported one yet. */
+  frame?: FrameProgressSnapshot | null;
+  /** Day 104 (Part 8): real measured frames/sec between the two most recent
+   *  progress snapshots — the caller (which sees consecutive polls) computes
+   *  this; the model never invents a rate from a single snapshot. */
+  recentFramesPerSecond?: number | null;
 }
 
 const TERMINAL: AnalysisJobStatus[] = ["completed", "failed", "dead_lettered", "cancelled"];
@@ -350,7 +441,7 @@ export function normalizeJobProgress(input: NormalizeInput): AnalysisJobProgress
   const lifecycle = lifecycleFor(status);
   const indeterminate = lifecycle === "queued" || lifecycle === "retrying";
 
-  const rawProgress = computeOverallProgress(status, elapsedInStatusMs);
+  const rawProgress = computeOverallProgress(status, elapsedInStatusMs, input.frame);
   const overallProgress = rawProgress == null ? null : Math.round(rawProgress);
 
   const fwd = forwardIndex(status);
@@ -360,7 +451,7 @@ export function normalizeJobProgress(input: NormalizeInput): AnalysisJobProgress
   }));
   const active = stages.find((s) => s.state === "active") ?? null;
 
-  const eta = estimateEta(status, elapsedInStatusMs);
+  const eta = estimateEta(status, elapsedInStatusMs, input.frame, input.recentFramesPerSecond);
 
   return {
     status,
@@ -372,7 +463,7 @@ export function normalizeJobProgress(input: NormalizeInput): AnalysisJobProgress
     activeStageLabel: active?.label ?? null,
     stages,
     eta,
-    etaLabel: formatEta(eta),
+    etaLabel: formatEta(eta, status),
     delayed: lifecycle === "processing" && isDelayed(status, elapsedInStatusMs),
     isTerminal: TERMINAL.includes(status),
     isFailure: FAILURE.includes(status),

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
         signedUploadLifetimeSeconds: MOBILE_UPLOAD_TTL_SECONDS,
       },
       capture: {
-        acceptedClasses: ["validated_60_fps_class", "high_speed_source_normalized_to_60"],
+        acceptedClasses: ["validated_60_fps_class", "native_source_class"],
         minimumDetectedFps: 59, analysisFps: 60,
       },
       analysisTypes: ["fly", "acceleration"],

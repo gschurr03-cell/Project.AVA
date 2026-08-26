@@ -21,7 +21,7 @@ function athleteName(row: { athletes: unknown }): string {
   return a && typeof a === "object" && "full_name" in a ? String((a as { full_name: string }).full_name) : "Athlete";
 }
 
-const ACTIVE = new Set(["queued", "analyzing", "running", "processing", "uploaded"]);
+const ACTIVE = new Set(["queued", "analyzing", "running", "processing"]);
 
 function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (

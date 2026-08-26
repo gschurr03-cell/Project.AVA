@@ -50,6 +50,78 @@ export function loadWorkerConfig(root) {
   return config;
 }
 
+// Day 95 audit (Part 6): the fixed WORKER_LEASE_SECONDS default (180s) was
+// shorter than a real long native-high-fps job's MediaPipe wall time
+// (~295s observed for a 2348-frame 1920x1080 240fps clip) — heartbeats
+// couldn't reliably renew the lease before it expired, and the job was
+// reclaimed as "stale" even though the worker was healthy and still working.
+//
+// Calibrated from that same observed run: ~0.13s/frame at ~2.07 megapixels.
+// `LEASE_SAFETY_MULTIPLIER` pads generously for slower/production hardware
+// and JSON-serialization overhead of the (now larger, Day 94 crop-provenance)
+// per-frame payload; `LEASE_FIXED_OVERHEAD_SECONDS` covers download/validate/
+// upload stages outside the MediaPipe call itself.
+export const LEASE_SECONDS_PER_FRAME_PER_MEGAPIXEL = 0.13;
+export const LEASE_SAFETY_MULTIPLIER = 2.5;
+export const LEASE_FIXED_OVERHEAD_SECONDS = 60;
+export const LEASE_MAX_SECONDS = 900; // matches claim_analysis_job/heartbeat_analysis_job's DB-enforced ceiling
+
+/**
+ * A lease long enough for the SPECIFIC job's expected processing cost, given
+ * whatever frame-count/fps/resolution evidence is already known for this
+ * session (from a prior successful run's persisted `sessions.fps`/
+ * `duration_s`/`width`/`height` — advisory, not authoritative; the Python
+ * runner's own detection is what actually drives analysis). Falls back to
+ * the operator-configured floor when nothing is known yet (first-ever run of
+ * a session) — never returns less than that floor, and never more than the
+ * database's enforced ceiling.
+ */
+export function computeLeaseSeconds(session, configuredLeaseSeconds) {
+  const floor = configuredLeaseSeconds ?? 180;
+  const durationS = session?.duration_s;
+  const fps = session?.fps;
+  if (!durationS || !fps || durationS <= 0 || fps <= 0) return floor;
+  const frameCount = durationS * fps;
+  const megapixels = session?.width && session?.height ? (session.width * session.height) / 1_000_000 : 2.0;
+  const estimated =
+    frameCount * LEASE_SECONDS_PER_FRAME_PER_MEGAPIXEL * Math.max(1, megapixels / 2.0) * LEASE_SAFETY_MULTIPLIER +
+    LEASE_FIXED_OVERHEAD_SECONDS;
+  return Math.min(LEASE_MAX_SECONDS, Math.max(floor, Math.round(estimated)));
+}
+
+// Day 96 audit (Part 9): the MediaPipe inference subprocess had a FIXED, global
+// hard-kill timeout (`WORKER_PROCESSING_TIMEOUT_SECONDS`, default 900s) that —
+// unlike the lease above — was never scaled per-job. This is exactly how a real
+// rerun of the Vanni 240fps session failed during this audit: a 2348-frame
+// native-source clip needed ~933s end to end for the box-tracker + bounded
+// expanded-crop-retry pipeline, and got SIGKILLed at the flat 900s wall with no
+// warning, no partial result, and no distinguishing signal from a truly hung
+// process.
+//
+// Reusing the lease's own safety multiplier is NOT enough here: that 2.5x
+// margin already assumes the lease's heartbeat renews it periodically, so a
+// momentary underestimate is recoverable. The processing timeout has no such
+// renewal — it is a single hard kill — so it needs a wider margin over the
+// SAME per-frame/megapixel cost model. `PROCESSING_TIMEOUT_SAFETY_MULTIPLIER`
+// is deliberately larger than `LEASE_SAFETY_MULTIPLIER` for that reason.
+export const PROCESSING_TIMEOUT_SAFETY_MULTIPLIER = 4.0;
+export const PROCESSING_TIMEOUT_MAX_SECONDS = 2700; // 45 min hard outer bound
+export function computeProcessingTimeoutSeconds(session, configuredTimeoutSeconds) {
+  const floor = configuredTimeoutSeconds ?? 900;
+  const durationS = session?.duration_s;
+  const fps = session?.fps;
+  if (!durationS || !fps || durationS <= 0 || fps <= 0) return floor;
+  const frameCount = durationS * fps;
+  const megapixels = session?.width && session?.height ? (session.width * session.height) / 1_000_000 : 2.0;
+  const estimated =
+    frameCount *
+      LEASE_SECONDS_PER_FRAME_PER_MEGAPIXEL *
+      Math.max(1, megapixels / 2.0) *
+      PROCESSING_TIMEOUT_SAFETY_MULTIPLIER +
+    LEASE_FIXED_OVERHEAD_SECONDS;
+  return Math.min(PROCESSING_TIMEOUT_MAX_SECONDS, Math.max(floor, Math.round(estimated)));
+}
+
 export function verifyRuntime(config) {
   execFileSync(process.env.MEDIAPIPE_PYTHON ?? "python3", ["-c", "import cv2, mediapipe"], {
     stdio: "ignore",

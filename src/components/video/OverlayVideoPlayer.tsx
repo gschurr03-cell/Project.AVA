@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { OverlayFrame } from "@/lib/video/overlay";
-import type { StepDistanceScale } from "@/lib/video/steps";
+import type { StepDistanceScale, StepMark } from "@/lib/video/steps";
 import {
   saveGateCalibration,
   saveGateCalibrationAction,
@@ -24,6 +24,7 @@ import type { CalibrationGates } from "@/lib/calibration/gates";
 import PlayerControls from "./PlayerControls";
 import TelestrationCanvas from "./TelestrationCanvas";
 import type { TrochanterMarker } from "@/lib/video/overlayAlignment";
+import type { ZoneCoverage, ZoneStep } from "@/lib/benchmark/measurements";
 import type { RawCameraEvidence, RecordingMode } from "@/lib/video/recordingMode";
 import type { CameraPathArtifact } from "@/lib/video/cameraPathSchema";
 
@@ -32,6 +33,12 @@ type Props = {
   frames: OverlayFrame[];
   /** Calibration scale for step distances (metres); null → relative labels. */
   stepScale?: StepDistanceScale | null;
+  /** Phase 8.0B — the authoritative individual-step model (same source as the
+   *  Average/Peak Step Length cards); forwarded to VideoOverlay unchanged. */
+  authoritativeSteps?: ZoneStep[] | null;
+  /** Phase R1C — the authoritative full-run contact list; forwarded unchanged
+   *  so the overlay renders contact markers directly from it. */
+  authoritativeContacts?: StepMark[] | null;
   /** Step frequency (steps/s) from verified contacts, shown in the legend. */
   stepCadenceHz?: number | null;
   /** Detected ground-contact count, shown alongside cadence. */
@@ -58,6 +65,13 @@ type Props = {
   calibrationCameraType?: "stationary" | "panning";
   sourceWidth?: number | null;
   sourceHeight?: number | null;
+  /** Day 100 (Part 5) — the calibrated-zone coverage window, for the
+   *  developer coverage-visualization overlay. Optional; omitted entirely
+   *  before calibration/measurement exists. */
+  zoneCoverage?: ZoneCoverage | null;
+  analysisId?: string | null;
+  sourceVideo?: string;
+  sourceFpsClassification?: string | null;
 };
 
 /**
@@ -69,6 +83,8 @@ export default function OverlayVideoPlayer({
   videoUrl,
   frames,
   stepScale = null,
+  authoritativeSteps = null,
+  authoritativeContacts = null,
   stepCadenceHz = null,
   stepContactCount = 0,
   sessionId,
@@ -87,6 +103,10 @@ export default function OverlayVideoPlayer({
   calibrationCameraType,
   sourceWidth = null,
   sourceHeight = null,
+  zoneCoverage = null,
+  analysisId = null,
+  sourceVideo = "unknown",
+  sourceFpsClassification = null,
 }: Props) {
   const calibration: SurfaceCalibration | undefined = sessionId
     ? {
@@ -110,6 +130,8 @@ export default function OverlayVideoPlayer({
     currentTime: 0,
     isPlaying: false,
     speed: 1,
+    sourcePlaybackStartSeconds: 0,
+    duration: 0,
   });
 
   // Evidence bridge (Recommendation Evidence Frames): the Coaching Recommendations
@@ -133,8 +155,10 @@ export default function OverlayVideoPlayer({
 
   const hasFrames = frames.length > 0;
   const currentIndex = hasFrames ? frameIndexForTime(frames, state.currentTime) : 0;
-  const firstTime = hasFrames ? frames[0].time : 0;
-  const lastTime = hasFrames ? frames[frames.length - 1].time : 0;
+  const firstTime = state.sourcePlaybackStartSeconds;
+  const lastTime = state.duration > firstTime
+    ? state.duration
+    : (hasFrames ? frames[frames.length - 1].time : firstTime);
   const currentFrameTime = frames[currentIndex]?.time ?? state.currentTime;
 
   // Keyboard shortcuts: Space = play/pause, ←/→ = step frames. Ignored while a
@@ -167,8 +191,11 @@ export default function OverlayVideoPlayer({
     <OverlaySurface
       ref={surfaceRef}
       videoUrl={videoUrl}
+      sourceIdentity={sessionId ?? videoUrl}
       frames={frames}
       stepScale={stepScale}
+      authoritativeSteps={authoritativeSteps}
+      authoritativeContacts={authoritativeContacts}
       stepCadenceHz={stepCadenceHz}
       stepContactCount={stepContactCount}
       calibration={calibration}
@@ -179,6 +206,11 @@ export default function OverlayVideoPlayer({
       calibrationCameraType={calibrationCameraType}
       sourceWidth={sourceWidth}
       sourceHeight={sourceHeight}
+      zoneCoverage={zoneCoverage}
+      analysisId={analysisId}
+      sourceVideo={sourceVideo}
+      sourceFps={sourceFps}
+      sourceFpsClassification={sourceFpsClassification}
       onState={setState}
       overlaySlot={
         <>

@@ -30,7 +30,7 @@ export default async function PathToGoalPage({ params }: { params: Promise<{ id:
   const { data: session } = await supabase
     .from("sessions")
     .select(
-      "id, name, athlete_id, distance_m, athletes(full_name, personal_best_100m, goal_100m)",
+      "id, name, athlete_id, distance_m, current_working_analysis_id, athletes(full_name, personal_best_100m, goal_100m)",
     )
     .eq("id", id)
     .single();
@@ -41,12 +41,14 @@ export default async function PathToGoalPage({ params }: { params: Promise<{ id:
   const { data: analysis } = await supabase
     .from("analyses")
     .select("id, status, metrics")
-    .eq("session_id", id)
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .eq("id", session.current_working_analysis_id ?? "00000000-0000-0000-0000-000000000000")
     .maybeSingle();
 
   const inFlight = analysis?.status === "queued" || analysis?.status === "running";
+  const { data: jobRows } = inFlight && analysis
+    ? await supabase.rpc("get_analysis_job_status", { p_analysis_id: analysis.id })
+    : { data: null };
+  const jobStatus = jobRows?.[0] ?? null;
 
   const parsed = analysis?.status === "complete" ? analysisMetricsSchema.safeParse(analysis.metrics) : null;
   const m = parsed?.success ? (parsed.data as Record<string, unknown>) : null;
@@ -92,7 +94,12 @@ export default async function PathToGoalPage({ params }: { params: Promise<{ id:
       </div>
 
       {inFlight && analysis ? (
-        <AnalysisProgressExperience analysisId={analysis.id} initialStatus="processing" startedAtMs={Date.now()} />
+        <AnalysisProgressExperience
+          analysisId={analysis.id}
+          initialStatus={jobStatus?.status ?? (analysis.status === "running" ? "processing" : "queued")}
+          initialUpdatedAt={jobStatus?.updated_at ?? null}
+          startedAtMs={Date.now()}
+        />
       ) : !hasGoal ? (
         <div className="rounded-2xl border border-white/[0.06] bg-[#101827] p-6 text-sm text-[#b3bccb]">
           Add a 100 m personal best and goal on the athlete&apos;s profile to generate a Path To Goal. AVA needs a

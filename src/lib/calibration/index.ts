@@ -22,9 +22,11 @@
  * predictor.
  */
 
-import type { OverlayFrame, OverlayPoint } from "@/lib/video/overlay";
-import { detectStepMarks, type StepMark } from "@/lib/video/steps";
-import { stepFrequencyFromContacts } from "@/lib/video/cadence";
+// Keep this scientific utility runnable in the standalone worker/test build,
+// which intentionally has no Next.js path-alias resolver.
+import type { OverlayFrame, OverlayPoint } from "../video/overlay";
+import { detectStepMarks, type StepMark } from "../video/steps";
+import { stepFrequencyFromContacts } from "../video/cadence";
 
 export type Confidence = "high" | "medium" | "low";
 

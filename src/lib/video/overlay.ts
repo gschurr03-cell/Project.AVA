@@ -17,8 +17,30 @@ export type OverlayFrame = {
   };
   backend?: string;
   trackingConfidence?: number;
+  /**
+   * Tracker-owned athlete extent in source-normalized coordinates. This is
+   * presentation evidence only: Auto Follow may use it as a steadier framing
+   * anchor, but it is never an input to measurement or event logic.
+   */
+  athleteBoundingBoxSource?: { x0: number; y0: number; x1: number; y1: number };
   comparisonBackend?: string;
   comparisonLandmarks?: Record<string, OverlayPoint>;
+  /** Day 96 audit — the athlete-box tracker's provenance for this source
+   *  frame. "predicted"/"invalid" means the crop was guided by extrapolation,
+   *  not verified tracking/detection evidence — contact/crossing detection
+   *  must never treat such a frame's landmarks as verified pose evidence,
+   *  however plausible-looking they are. Absent on frames/artifacts produced
+   *  before this field existed (legacy — treated as unknown, not "predicted").
+   *  "frozen_suspect" (Phase 4.2/4.2B) joins the same withheld category — see
+   *  measurements.ts's frame-stripping gate. */
+  boxOrigin?: "detected" | "tracked" | "predicted" | "reacquired" | "invalid" | "frozen_suspect";
+  trackState?: "acquiring" | "verified" | "tracking" | "reacquiring" | "lost" | "terminated";
+  identityContinuityScore?: number;
+  /** Phase 4.2K — bounded, retroactive, bidirectional-trajectory
+   *  independent localization verification state. `independent_corroborated`
+   *  is the ONLY value measurements.ts's strip gate treats as an exception
+   *  to a `frozen_suspect` origin — see that file's own comment. */
+  independentLocalizationState?: "independent_corroborated" | "independent_disagrees" | "independent_unavailable";
 };
 
 /**
@@ -40,6 +62,11 @@ type RawPoseFrame = {
   trackingConfidence?: number;
   comparisonBackend?: string;
   comparisonLandmarks?: RawLandmark[];
+  athleteBoundingBoxSource?: OverlayFrame["athleteBoundingBoxSource"];
+  boxOrigin?: OverlayFrame["boxOrigin"];
+  trackState?: OverlayFrame["trackState"];
+  identityContinuityScore?: number;
+  independentLocalizationState?: OverlayFrame["independentLocalizationState"];
 };
 
 const names = [
@@ -152,6 +179,11 @@ export function buildOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
       landmarks,
       backend: poseFrame.backend ?? sequence.backend,
       trackingConfidence: poseFrame.trackingConfidence,
+      athleteBoundingBoxSource: poseFrame.athleteBoundingBoxSource,
+      boxOrigin: poseFrame.boxOrigin,
+      trackState: poseFrame.trackState,
+      identityContinuityScore: poseFrame.identityContinuityScore,
+      independentLocalizationState: poseFrame.independentLocalizationState,
       comparisonBackend: poseFrame.comparisonBackend,
       comparisonLandmarks: Object.keys(comparisonLandmarks).length ? comparisonLandmarks : undefined,
       angles: {

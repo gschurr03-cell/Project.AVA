@@ -1,5 +1,17 @@
 import { z } from "zod";
 
+// Historical identifier only — the "60" does NOT select or enforce a 60 FPS
+// analysis rate. It names the "validated production" pipeline family, as
+// opposed to the experimental-30 family (`EXPERIMENTAL_30_PIPELINE_VERSION`).
+// A native high-speed/general-native source (75, 90, 120, 144, 240 FPS, ...)
+// runs through this SAME pipeline version at its own real rate; the actual
+// FPS-band enforcement lives entirely in `complete_analysis_job` (which checks
+// `provenance.analysisFps`/`sourceFpsClassification`, not this string) and in
+// the worker's own classification logic (`src/lib/video/analysisFps.ts`).
+// Kept unrenamed deliberately: renaming would touch a live DB CHECK
+// constraint, two RPC functions, and every historical `analyses` row's stored
+// value, for a label change with no behavior difference — see the FPS runtime
+// audit report for the full reasoning.
 export const ANALYSIS_PIPELINE_VERSION = "ava-sprint-60-v1";
 export const EXPERIMENTAL_30_PIPELINE_VERSION = "ava-sprint-30-experimental-v1";
 export const METRIC_SCHEMA_VERSION = "ava-metrics-v1";
@@ -57,6 +69,12 @@ export const provenanceSchema = z.object({
   sourceFpsClassification: z.enum([
     "experimental_30_fps_class",
     "validated_60_fps_class",
+    // General capability-based class: any accepted rate outside the two
+    // precise named windows (24-29, 30.5-59, 60.5-300 — e.g. 45, 75, 144).
+    "native_source_class",
+    // Historical values only — rows completed before this policy existed may
+    // still carry them. Neither is produced by current worker code.
+    "validated_high_speed_native_class",
     "high_speed_source_normalized_to_60",
   ]),
   sourceFpsMetadata: z.object({
@@ -68,7 +86,12 @@ export const provenanceSchema = z.object({
   }),
   sourceFpsTierReason: z.string().optional(),
   sourceFpsTierPolicyVersion: z.string().optional(),
-  analysisFps: z.union([z.literal(30), z.literal(60)]),
+  // 30/60 for the validated tiers; a native high-speed source (e.g. 119.88,
+  // 239.76) carries its own real rate here instead of being forced to 60.
+  analysisFps: z.number().positive().max(300),
+  sourceFpsBand: z.enum(["low", "standard", "high", "ultra_high", "unsupported"]).optional(),
+  sourceFpsDisplay: z.number().positive().optional(),
+  wasResampled: z.boolean().optional(),
   experimental: z.boolean().default(false),
   experimentVersion: z.string().nullable().default(null),
   validationStatus: z.enum(["validated", "experimental", "unvalidated"]).default("validated"),

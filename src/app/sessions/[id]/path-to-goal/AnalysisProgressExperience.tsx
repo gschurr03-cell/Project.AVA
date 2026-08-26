@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isLegalTransition, type AnalysisJobStatus } from "@/lib/analysisProgress";
 import {
   computeAnalysisProgress,
   type AnalysisProgress,
@@ -19,14 +20,18 @@ const TERMINAL = new Set(["completed", "failed", "dead_lettered", "cancelled"]);
 export default function AnalysisProgressExperience({
   analysisId,
   initialStatus,
+  initialUpdatedAt,
   startedAtMs,
 }: {
   analysisId: string;
   initialStatus: string;
+  initialUpdatedAt: string | null;
   startedAtMs: number;
 }) {
   const router = useRouter();
   const [status, setStatus] = useState(initialStatus);
+  const acceptedRef = useRef({ status: initialStatus, updatedAtMs: initialUpdatedAt ? Date.parse(initialUpdatedAt) : 0 });
+  const completionRefreshRef = useRef(false);
   // Hydration-safe: seed from the server-provided `startedAtMs` snapshot (identical on
   // server and client) rather than each side's own `Date.now()`, which differ by
   // however long hydration took and flip the rendered percent/text between the server
@@ -43,22 +48,38 @@ export default function AnalysisProgressExperience({
 
   useEffect(() => {
     if (TERMINAL.has(status)) {
-      if (status === "completed") router.refresh();
+      if (status === "completed" && !completionRefreshRef.current) {
+        completionRefreshRef.current = true;
+        router.refresh();
+      }
       return;
     }
     const supabase = createClient();
     let stopped = false;
+    let pollInFlight = false;
     const timer = window.setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
       const { data } = await supabase.rpc("get_analysis_job_status", { p_analysis_id: analysisId });
+      pollInFlight = false;
       const row = data?.[0];
       if (stopped || !row) return;
+      const nextUpdatedAtMs = row.updated_at ? Date.parse(row.updated_at) : 0;
+      const accepted = acceptedRef.current;
+      if (nextUpdatedAtMs < accepted.updatedAtMs) return;
+      if (nextUpdatedAtMs === accepted.updatedAtMs && row.status !== accepted.status) return;
+      if (!isLegalTransition(accepted.status as AnalysisJobStatus, row.status as AnalysisJobStatus)) return;
+      acceptedRef.current = { status: row.status, updatedAtMs: nextUpdatedAtMs };
       // `status` from the queue IS the fine-grained worker stage (downloading,
       // validating, completing, …) — the real signal, never faked.
       setStatus(row.status);
       if (TERMINAL.has(row.status)) {
         stopped = true;
         window.clearInterval(timer);
-        if (row.status === "completed") router.refresh();
+        if (row.status === "completed" && !completionRefreshRef.current) {
+          completionRefreshRef.current = true;
+          router.refresh();
+        }
       }
     }, 1500);
     return () => {

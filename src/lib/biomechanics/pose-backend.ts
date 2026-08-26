@@ -41,6 +41,22 @@ export interface ManualRepairInput {
   version: number;
 }
 
+/**
+ * Day 104 (Part 8): one real, measured progress snapshot from the pose
+ * inference subprocess — frame counts + a wall-clock capture time, nothing
+ * derived or estimated. `analysisProgress/model.ts` turns a SEQUENCE of
+ * these (via the worker's heartbeat) into a real frame-throughput ETA.
+ */
+export interface AnalysisProgressSnapshot {
+  stage: "pass1" | "pass2";
+  framesCompleted: number;
+  totalFrames: number;
+  sourceFps: number;
+  width: number;
+  height: number;
+  capturedAtMs: number;
+}
+
 export interface PoseEstimateOptions {
   /** Target analysis rate. Production callers must use the validated 60 FPS clock. */
   fps?: number;
@@ -48,6 +64,30 @@ export interface PoseEstimateOptions {
   maxFrames?: number;
   /** Accepted Phase 2 repairs to apply on top of the automatic camera path. */
   manualRepairs?: ManualRepairInput[];
+  /** Coach-configured sprint travel direction (Day 95 audit), when known —
+   *  feeds the stationary athlete tracker's acquisition (expected entry side)
+   *  and identity-continuity (direction-consistency) checks. `"auto"`/absent
+   *  when no calibration direction has been set yet; the tracker degrades to
+   *  scale/continuity-only checks without a direction preference. */
+  travelDirection?: "left_to_right" | "right_to_left" | "auto";
+  /** Day 103 audit: calibrated start-gate position (normalized source-frame
+   *  coordinates — the same space `gateMidpoint()` produces), when known —
+   *  feeds the stationary athlete tracker's pre-zone acquisition corridor
+   *  (bounded region around the coach's actual gate, not the raw frame
+   *  edge). Absent when no calibrated gate exists yet; the tracker falls
+   *  back to the frame-edge acquisition band unchanged. */
+  entryGate?: { x: number; y: number };
+  /** Day 96 audit (Part 9): per-job override for the inference subprocess's
+   *  hard timeout, scaled by the caller from this specific session's known
+   *  duration/fps/resolution — the backend's own configured timeout is sized
+   *  for a typical clip, not necessarily this one. Ignored by backends that
+   *  don't shell out to a subprocess. */
+  timeoutMs?: number;
+  /** Day 104 (Part 8): invoked with each real progress snapshot the
+   *  subprocess reports, as it arrives (not just at completion). Backends
+   *  that don't stream progress (mock, future non-subprocess backends)
+   *  simply never call it — always optional, never required for a valid run. */
+  onProgress?: (snapshot: AnalysisProgressSnapshot) => void;
 }
 
 export interface PoseBackend {

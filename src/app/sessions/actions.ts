@@ -46,6 +46,15 @@ import { landmarkPointPairSchema } from "@/lib/video/cameraPathSchema";
 import { loadOverlayFrames } from "@/lib/video/loadOverlayFrames";
 import { ANALYSIS_TYPE_CONFIG, isAnalysisType } from "@/lib/analysisTypes";
 import {
+  accelerationCalibrationGatesSchema,
+  accelerationMarkerDistanceSchema,
+  accelerationTravelDirectionSchema,
+  validateAccelerationCalibration,
+  ACCELERATION_CALIBRATION_SCHEMA_VERSION,
+  hasCompletedAccelerationCalibration,
+  type AccelerationMarker,
+} from "@/lib/acceleration/calibration";
+import {
   ANALYSIS_PIPELINE_VERSION,
   EXPLAINABILITY_SCHEMA_VERSION,
   METRIC_SCHEMA_VERSION,
@@ -258,12 +267,20 @@ export async function queueAnalysis(formData: FormData) {
       `/sessions/${id}?error=${encodeURIComponent("Select an analysis type before running analysis.")}`,
     );
   }
-  if (
-    session.analysis_type === "acceleration" &&
-    ![10, 20, 30].includes(session.calibration_known_distance_m ?? session.distance_m ?? 0)
-  ) {
+  // Multi-marker calibration (`calibration_gates`) is authoritative on its own
+  // (own validation enforced at save time via `validateAccelerationCalibration`)
+  // and bypasses the legacy single-finish-gate distance restriction — it
+  // supports 5 m too. The legacy path requires the SAME two facts the worker
+  // itself requires (`calibration_point_bx` AND a known distance), not just a
+  // chosen finish distance: picking "20m" from the quick-setup buttons alone
+  // sets `distance_m` but never places the finish marker, so
+  // `calibration_point_bx` stays null; queuing used to be allowed anyway, and
+  // the job would only discover the missing calibration after being claimed,
+  // failing at "validating" with a confusing error instead of being caught
+  // here before the coach ever leaves this page.
+  if (session.analysis_type === "acceleration" && !hasCompletedAccelerationCalibration(session)) {
     redirect(
-      `/sessions/${id}?error=${encodeURIComponent("Set finish distance before running acceleration analysis.")}`,
+      `/sessions/${id}?error=${encodeURIComponent("Complete calibration — place the finish marker on the video — before running acceleration analysis.")}`,
     );
   }
 
@@ -285,10 +302,27 @@ export async function queueAnalysis(formData: FormData) {
       redirect(`/sessions/${id}?error=${encodeURIComponent(`The beta limit of ${BETA_LIMITS.maxDailyAnalysisSubmissionsPerUser} analyses in 24 hours has been reached. Try again later or contact support if this looks incorrect.`)}`);
   }
   const capturedAt = new Date().toISOString();
-  const requestedAnalysisFps = session.fps_classification === "experimental_30_fps_class" ? 30 : 60;
+  // This is only an initial placeholder — the worker's own detection at analysis
+  // time is authoritative and the completion RPC validates against ITS result,
+  // not this guess. A prior run's stored classification lets any general native
+  // source (45, 75, 90, 144, 165, ...) request its own real rate instead of
+  // always 60; unknown/never-analyzed sessions fall back to the validated-60
+  // placeholder.
+  const requestedAnalysisFps =
+    session.fps_classification === "experimental_30_fps_class"
+      ? 30
+      : (session.fps_classification === "native_source_class" ||
+            session.fps_classification === "validated_high_speed_native_class") &&
+          session.fps
+        ? Math.round(session.fps * 1000) / 1000
+        : 60;
+  // The fly zone-timing trust profile only distinguishes validated-60 from
+  // experimental-30 (it has no native high-speed profile of its own yet) — feed
+  // it that narrower 30|60 concept, not the true native rate above.
+  const timingZoneFps: 30 | 60 = session.fps_classification === "experimental_30_fps_class" ? 30 : 60;
   const parsedTimingSetup = timingSetupSchema.safeParse(session.timing_setup);
   const timingCompatibilityGroup = parsedTimingSetup.success
-    ? timingTrust(parsedTimingSetup.data, requestedAnalysisFps).compatibilityGroup
+    ? timingTrust(parsedTimingSetup.data, timingZoneFps).compatibilityGroup
     : "legacy-unspecified";
   const inputSnapshot = inputSnapshotSchema.parse({
     capturedAt,
@@ -1398,6 +1432,225 @@ export async function removeCalibration(formData: FormData) {
 
   if (error) {
     redirect(`/sessions/${id}?error=${encodeURIComponent(error.message)}`);
+  }
+
+  await queueAnalysis(formData);
+}
+
+// ---------------------------------------------------------------------------
+// Acceleration Analysis MVP — stationary-camera multi-marker calibration
+// (Part 4) and manual start-event override (Part 5). Persisted in the SAME
+// `sessions.calibration_gates` jsonb column fly's two-gate calibration uses —
+// no DB migration — validated by `accelerationCalibrationGatesSchema`
+// (a sibling shape to `calibrationGatesSchema`, not nested inside it, since a
+// marker list has no natural two-gate-bar representation). Optimistic
+// concurrency reuses the SAME `timing_zone_version` compare-and-set column
+// `saveGateCalibration` uses (Part 1 §3) — one CAS mechanism, two calibration
+// shapes.
+// ---------------------------------------------------------------------------
+
+const accelerationMarkerInputSchema = z.object({
+  // Part 2.5: arbitrary calibrated distances, not a fixed preset list.
+  distanceM: accelerationMarkerDistanceSchema,
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  frameIndex: z.number().int().nonnegative().nullable().optional(),
+});
+
+const ACCELERATION_CALIBRATION_ERROR_LABEL: Record<string, string> = {
+  insufficient_markers: "Place at least two distance markers to define a zone.",
+  duplicate_distance: "Two markers cannot share the same distance.",
+  reversed_or_unordered_markers: "Markers must be placed in increasing distance order along the track.",
+  markers_not_collinear: "One or more markers are too far off the zone's entry→exit line — re-check placement.",
+};
+
+/**
+ * Save the coach's calibrated distance markers (Part 4). Server-side validation
+ * is authoritative — the client's live validation is only a preview.
+ */
+export async function saveAccelerationCalibration(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  let rawMarkers: unknown;
+  try {
+    rawMarkers = JSON.parse(String(formData.get("markers") ?? "[]"));
+  } catch {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Calibration save failed: marker data was invalid.")}`);
+  }
+  const parsedInput = z.array(accelerationMarkerInputSchema).safeParse(rawMarkers);
+  if (!parsedInput.success) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Calibration save failed: marker data was invalid.")}`);
+  }
+  const travelDirection = accelerationTravelDirectionSchema.safeParse(formData.get("travel_direction"));
+  if (!travelDirection.success) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Select a travel direction.")}`);
+  }
+  const sourceFrameWidth = numField(formData, "source_frame_width");
+  const sourceFrameHeight = numField(formData, "source_frame_height");
+  if (!Number.isFinite(sourceFrameWidth) || sourceFrameWidth <= 0 || !Number.isFinite(sourceFrameHeight) || sourceFrameHeight <= 0) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Source video dimensions are unavailable. Wait for the video to finish loading and try again.")}`);
+  }
+
+  const markers: AccelerationMarker[] = parsedInput.data.map((m) => ({
+    id: `m-${m.distanceM}`,
+    distanceM: m.distanceM,
+    point: { x: m.x, y: m.y },
+    frameIndex: m.frameIndex ?? null,
+  }));
+  const validation = validateAccelerationCalibration(markers);
+  if (!validation.valid) {
+    const reason = validation.reasons[0];
+    const message = ACCELERATION_CALIBRATION_ERROR_LABEL[reason] ?? "Calibration is invalid.";
+    redirect(`/sessions/${id}?error=${encodeURIComponent(message)}`);
+  }
+
+  const supabase = await createClient();
+  const { data: currentSession } = await supabase
+    .from("sessions")
+    .select("analysis_type,calibration_gates,timing_zone_version")
+    .eq("id", id)
+    .single();
+  if (!currentSession) redirect("/dashboard");
+  if (currentSession.analysis_type !== "acceleration") {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Marker calibration only applies to Acceleration sessions.")}`);
+  }
+  const existing = accelerationCalibrationGatesSchema.safeParse(currentSession.calibration_gates);
+  const version = (currentSession.timing_zone_version ?? 0) + 1;
+  const now = new Date().toISOString();
+
+  const calibration = {
+    schemaVersion: ACCELERATION_CALIBRATION_SCHEMA_VERSION,
+    markers,
+    travelDirection: travelDirection.data,
+    // Preserve a previously confirmed manual start override across a
+    // calibration-only re-save (Part 8: repairs/edits never silently discard
+    // an unrelated accepted decision).
+    manualStartOverride: existing.success ? (existing.data.manualStartOverride ?? null) : null,
+    calibrationSource: "manual_confirmed" as const,
+    confirmedAt: now,
+    updatedAt: now,
+    revision: version,
+    authoritySchemaVersion: "ava-calibration-authority-v1" as const,
+    sourceFrameWidth,
+    sourceFrameHeight,
+  };
+  const parsed = accelerationCalibrationGatesSchema.safeParse(calibration);
+  if (!parsed.success) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid calibration.")}`);
+  }
+
+  // Zone entry/exit = lowest/highest calibrated distance — NOT necessarily 0m
+  // (a 10-20m zone calibrates only "10m"/"20m", with no 0m marker at all).
+  const sortedForLegacySync = [...markers].sort((a, b) => a.distanceM - b.distanceM);
+  const startMarker = sortedForLegacySync[0]!;
+  const lastMarker = sortedForLegacySync.at(-1)!;
+
+  const expectedRevision = numField(formData, "expected_revision");
+  const enforceCas = Number.isFinite(expectedRevision) && expectedRevision > 0;
+  let writeQuery = supabase
+    .from("sessions")
+    .update({
+      calibration_gates: parsed.data,
+      timing_zone_version: version,
+      // Legacy flat columns kept in sync so the single-finish-gate engine
+      // (`computeAccelerationMetrics`) can still run as the guaranteed-valid
+      // fallback the worker always computes alongside the new marker-based
+      // analysis (Part 11: never let the richer engine silently replace the
+      // proven one — it only adds detail).
+      calibration_point_ax: startMarker.point.x,
+      calibration_point_ay: startMarker.point.y,
+      calibration_point_bx: lastMarker.point.x,
+      calibration_point_by: lastMarker.point.y,
+      // The legacy engine has no zone-entry concept — it measures distance
+      // from ITS OWN whole-clip movement detection to the finish point, so it
+      // must be given the zone SPAN, not the exit marker's absolute distance
+      // (a 10-20m zone is a 10m run for that engine, not a 20m one).
+      calibration_known_distance_m: lastMarker.distanceM - startMarker.distanceM,
+      width: sourceFrameWidth,
+      height: sourceFrameHeight,
+    })
+    .eq("id", id);
+  if (enforceCas) writeQuery = writeQuery.eq("timing_zone_version", expectedRevision);
+  const { data: writtenRows, error: writeError } = await writeQuery.select("id");
+
+  if (writeError) redirect(`/sessions/${id}?error=${encodeURIComponent(writeError.message)}`);
+  if (enforceCas && (!writtenRows || writtenRows.length === 0)) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("This calibration was updated elsewhere. Reload to see the latest version.")}`);
+  }
+
+  await queueAnalysis(formData);
+}
+
+/**
+ * Confirm (or replace) the authoritative start frame (Part 5). The manually
+ * confirmed frame is always authoritative over AVA's automatic suggestion.
+ * Requires distance markers to already be calibrated.
+ */
+export async function saveAccelerationStartOverride(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) redirect("/dashboard");
+
+  const zoneStartFrame = numField(formData, "start_frame_index");
+  if (!Number.isFinite(zoneStartFrame) || zoneStartFrame < 0) {
+    redirect(`/sessions/${id}/timing?error=${encodeURIComponent("Select a valid Zone Start Event frame.")}`);
+  }
+
+  const supabase = await createClient();
+  const { data: currentSession } = await supabase
+    .from("sessions")
+    .select("analysis_type,calibration_gates,timing_zone_version")
+    .eq("id", id)
+    .single();
+  if (!currentSession) redirect("/dashboard");
+  if (currentSession.analysis_type !== "acceleration") {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Start-event override only applies to Acceleration sessions.")}`);
+  }
+  const existing = accelerationCalibrationGatesSchema.safeParse(currentSession.calibration_gates);
+  if (!existing.success) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("Calibrate distance markers before confirming the start frame.")}`);
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const version = (currentSession.timing_zone_version ?? 0) + 1;
+  const now = new Date().toISOString();
+
+  const updated = {
+    ...existing.data,
+    // Part 3 — Zone Start Event: stores exactly zoneStartFrame, provenance,
+    // confidence (always 1 for a manual confirmation), plus enough context to
+    // show what AVA's automatic suggestion was at the time of confirmation.
+    manualStartOverride: {
+      zoneStartFrame,
+      provenance: "manual" as const,
+      confidence: 1 as const,
+      confirmedBy: user?.id ?? "unknown",
+      confirmedAt: now,
+      suggestedFrameIndex: numField(formData, "suggested_frame_index") || null,
+      suggestedConfidence: numField(formData, "suggested_confidence") || null,
+    },
+    updatedAt: now,
+    revision: version,
+  };
+  const parsed = accelerationCalibrationGatesSchema.safeParse(updated);
+  if (!parsed.success) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid start override.")}`);
+  }
+
+  const expectedRevision = numField(formData, "expected_revision");
+  const enforceCas = Number.isFinite(expectedRevision) && expectedRevision > 0;
+  let writeQuery = supabase
+    .from("sessions")
+    .update({ calibration_gates: parsed.data, timing_zone_version: version })
+    .eq("id", id);
+  if (enforceCas) writeQuery = writeQuery.eq("timing_zone_version", expectedRevision);
+  const { data: writtenRows, error: writeError } = await writeQuery.select("id");
+
+  if (writeError) redirect(`/sessions/${id}?error=${encodeURIComponent(writeError.message)}`);
+  if (enforceCas && (!writtenRows || writtenRows.length === 0)) {
+    redirect(`/sessions/${id}?error=${encodeURIComponent("This calibration was updated elsewhere. Reload to see the latest version.")}`);
   }
 
   await queueAnalysis(formData);

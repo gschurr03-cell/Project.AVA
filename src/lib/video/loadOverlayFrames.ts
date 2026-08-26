@@ -83,6 +83,13 @@ function toOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
       trackingConfidence: frame.trackingConfidence,
       comparisonBackend: frame.comparisonBackend,
       comparisonLandmarks,
+      // Day 96 audit — athlete-box tracker provenance, so downstream contact/
+      // crossing detection can refuse to treat a "predicted"/"invalid" origin
+      // frame's landmarks as verified pose evidence.
+      boxOrigin: frame.boxOrigin,
+      trackState: frame.trackState,
+      identityContinuityScore: frame.identityContinuityScore,
+      independentLocalizationState: frame.independentLocalizationState,
     };
   });
 
@@ -92,6 +99,8 @@ function toOverlayFrames(sequence: PoseSequence): OverlayFrame[] {
 /** Overlay frames plus the source metadata the artifact carries (fps + pixel dims). */
 export interface OverlayLoadResult {
   frames: OverlayFrame[];
+  status: "available" | "missing_pointer" | "missing_object" | "corrupt_json" | "schema_incompatible" | "access_error";
+  reason: string | null;
   /** Detected source metadata from the pose artifact; null when unavailable. */
   meta: {
     fps: number;
@@ -107,7 +116,7 @@ export async function loadOverlayFrames(
   supabase: ServerClient,
   keypointsPath: string | null | undefined,
 ): Promise<OverlayLoadResult> {
-  if (!keypointsPath) return { frames: [], meta: null };
+  if (!keypointsPath) return { frames: [], meta: null, status: "missing_pointer", reason: "This analysis has no pose-artifact pointer." };
   const cached = overlayCache.get(keypointsPath);
   if (cached && cached.expiresAt > Date.now()) return cached.result;
   if (cached) overlayCache.delete(keypointsPath);
@@ -119,13 +128,28 @@ export async function loadOverlayFrames(
 
     if (error || !data) {
       console.warn(`[overlay] keypoints artifact unavailable: ${error?.message ?? "no data"}`);
-      return { frames: [], meta: null };
+      const missing = /not found|does not exist|404/i.test(error?.message ?? "");
+      return {
+        frames: [], meta: null,
+        status: missing ? "missing_object" : "access_error",
+        reason: missing
+          ? "The pose artifact referenced by this analysis is missing from storage."
+          : "The pose artifact could not be downloaded with the current storage authorization.",
+      };
     }
-
-    const parsed = poseSequenceSchema.safeParse(JSON.parse(await data.text()));
+    let json: unknown;
+    try {
+      json = JSON.parse(await data.text());
+    } catch {
+      return { frames: [], meta: null, status: "corrupt_json", reason: "The stored pose artifact is not valid JSON." };
+    }
+    const parsed = poseSequenceSchema.safeParse(json);
     if (!parsed.success) {
       console.warn("[overlay] keypoints artifact did not match the pose-sequence schema");
-      return { frames: [], meta: null };
+      return {
+        frames: [], meta: null, status: "schema_incompatible",
+        reason: `The pose artifact uses an unsupported schema (${parsed.error.issues[0]?.path.join(".") || "root"}).`,
+      };
     }
 
     const sequence = parsed.data as PoseSequence;
@@ -134,6 +158,8 @@ export async function loadOverlayFrames(
     // them here as the detected-metadata fallback for calibration + timing.
     const result: OverlayLoadResult = {
       frames: toOverlayFrames(sequence),
+      status: "available",
+      reason: null,
       meta: {
         fps: sequence.fps,
         width: sequence.width,
@@ -154,6 +180,6 @@ export async function loadOverlayFrames(
     console.warn(
       `[overlay] failed to build overlay frames: ${err instanceof Error ? err.message : "unknown error"}`,
     );
-    return { frames: [], meta: null };
+    return { frames: [], meta: null, status: "access_error", reason: "The pose artifact could not be read safely." };
   }
 }

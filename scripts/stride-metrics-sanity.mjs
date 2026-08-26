@@ -76,14 +76,25 @@ try {
   const m = {
     calibrated: true,
     stepLengthConfidence: "high",
+    // Day 98: buildTrustedMetrics now delegates to evaluateMetricEvidence,
+    // which requires >= 2 real step intervals as evidence before trusting a
+    // summary figure (the same minimum computePeakStrideLengthM already
+    // enforced internally) — the summary fields below (avgIndividualStepLengthM
+    // etc.) are still what supplies the actual VALUE; this array only supplies
+    // the evidence-count the new gate checks.
+    individualStepLengthsM: [2.1, 2.19, 2.14, 2.21],
     avgIndividualStepLengthM: 2.16,
     avgZoneStepLengthM: 2.22,
     peakStrideLengthM: 2.31,
+    strideVelocityWindows: [{ startContactIndex: 0, endContactIndex: 2, distanceM: 4.3, rawDurationS: 0.4, reportedDurationS: 0.4, rawVelocityMps: 10.78, reportedVelocityMps: 10.78 }],
     maxVelocityMps: 10.78,
+    velocitySpreadPct: 5,
     zoneVelocityMps: 10.42,
     combinedStepFrequencyHz: 4.85,
     zone: { distanceM: 20 },
     zoneTimeS: 1.92,
+    timingProvenance: { verified: true, timingAvailabilityReason: null, timingStatus: "verified" },
+    validContacts: 5,
   };
   const t = buildTrustedMetrics(m);
   check("trusted.strideLengthM prefers PEAK (2.31)", near(t.strideLengthM, 2.31));

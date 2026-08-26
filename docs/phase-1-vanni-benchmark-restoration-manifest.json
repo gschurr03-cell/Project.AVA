@@ -1,0 +1,74 @@
+{
+  "generatedAt": "2026-08-04T21:29:10.004Z",
+  "restorationOf": [
+    {
+      "benchmarkKey": "vanni_fly_240",
+      "sessionId": "31fe352b-f00f-4a80-b20a-17c2ab08ec5a",
+      "analysisId": "a7679326-e193-4489-bf50-735fe402ec60",
+      "jobId": "e1a0a55c-4cc4-4b00-a05c-20239be2eeaf",
+      "sources": {
+        "sessionCoreFields": "validation/stationary-validation-registry.json (live-verified Phase 0)",
+        "calibrationGeometry": "pose artifact gateLockDebug.referenceGates (MD5-verified byte-identical to original, prefix 5df6454c-950f-4162-b756-42c353cb28ab/31fe352b-f00f-4a80-b20a-17c2ab08ec5a/a7679326-e193-4489-bf50-735fe402ec60.pose.json)",
+        "recordingAssessment": "pose artifact top-level recordingAssessment object (same MD5-verified artifact)",
+        "storageTimestamps": "storage.objects created_at for 5df6454c-950f-4162-b756-42c353cb28ab/31fe352b-f00f-4a80-b20a-17c2ab08ec5a.mov and 5df6454c-950f-4162-b756-42c353cb28ab/31fe352b-f00f-4a80-b20a-17c2ab08ec5a/a7679326-e193-4489-bf50-735fe402ec60.pose.json (fetched live this turn)"
+      },
+      "notRestored": [
+        "metrics",
+        "provenance",
+        "input_snapshot",
+        "result_payload",
+        "raw_timing_metrics",
+        "reported_timing_metrics",
+        "analysis_jobs.started_at"
+      ]
+    },
+    {
+      "benchmarkKey": "vanni_fly_120",
+      "sessionId": "160a86a2-c0db-4e7d-9fbe-82aedd6d3eff",
+      "analysisId": "6d9a6aba-d099-4a33-b8ea-2dd4962fe80c",
+      "jobId": "e3c69617-628c-41d7-af40-0624c6f302b2",
+      "sources": {
+        "sessionCoreFields": "validation/stationary-validation-registry.json (live-verified Phase 0)",
+        "calibrationGeometry": "pose artifact gateLockDebug.referenceGates (MD5-verified byte-identical to original, prefix 5df6454c-950f-4162-b756-42c353cb28ab/160a86a2-c0db-4e7d-9fbe-82aedd6d3eff/6d9a6aba-d099-4a33-b8ea-2dd4962fe80c.pose.json)",
+        "recordingAssessment": "pose artifact top-level recordingAssessment object (same MD5-verified artifact)",
+        "storageTimestamps": "storage.objects created_at for 5df6454c-950f-4162-b756-42c353cb28ab/160a86a2-c0db-4e7d-9fbe-82aedd6d3eff.mov and 5df6454c-950f-4162-b756-42c353cb28ab/160a86a2-c0db-4e7d-9fbe-82aedd6d3eff/6d9a6aba-d099-4a33-b8ea-2dd4962fe80c.pose.json (fetched live this turn)"
+      },
+      "notRestored": [
+        "metrics",
+        "provenance",
+        "input_snapshot",
+        "result_payload",
+        "raw_timing_metrics",
+        "reported_timing_metrics",
+        "analysis_jobs.started_at"
+      ]
+    },
+    {
+      "benchmarkKey": "vanni_fly_60",
+      "sessionId": "3d6ba4b6-a3b4-450a-b9f0-ef36a1311b8d",
+      "analysisId": "8f55936c-cf07-4c20-ba73-b662e8d24325",
+      "jobId": "fee8f2dc-71d4-40c3-8c6a-652dde0e6360",
+      "sources": {
+        "sessionCoreFields": "validation/stationary-validation-registry.json (live-verified Phase 0)",
+        "calibrationGeometry": "pose artifact gateLockDebug.referenceGates (MD5-verified byte-identical to original, prefix 5df6454c-950f-4162-b756-42c353cb28ab/3d6ba4b6-a3b4-450a-b9f0-ef36a1311b8d/8f55936c-cf07-4c20-ba73-b662e8d24325.pose.json)",
+        "recordingAssessment": "pose artifact top-level recordingAssessment object (same MD5-verified artifact)",
+        "storageTimestamps": "storage.objects created_at for 5df6454c-950f-4162-b756-42c353cb28ab/3d6ba4b6-a3b4-450a-b9f0-ef36a1311b8d.mov and 5df6454c-950f-4162-b756-42c353cb28ab/3d6ba4b6-a3b4-450a-b9f0-ef36a1311b8d/8f55936c-cf07-4c20-ba73-b662e8d24325.pose.json (fetched live this turn)"
+      },
+      "notRestored": [
+        "metrics",
+        "provenance",
+        "input_snapshot",
+        "result_payload",
+        "raw_timing_metrics",
+        "reported_timing_metrics",
+        "analysis_jobs.started_at"
+      ]
+    }
+  ],
+  "fieldProvenanceNotes": [
+    "Every field below is sourced from one of: (a) validation/stationary-validation-registry.json (live-verified in Phase 0, 2026-08-04), (b) the surviving pose artifact in Supabase Storage (byte-identical to the original per MD5==registry etag, verified this turn), (c) live storage object created_at timestamps (fetched this turn), or (d) a deterministic formula (midpoint, atan2 orientation) applied to (b)'s real gate coordinates, verified to exactly reproduce the same formula's output on the still-live, unmodified Gav row.",
+    "The following are explicitly NOT restored (left NULL) because no surviving source contains their exact original values, and they are not fabricated: analyses.metrics, analyses.provenance, analyses.input_snapshot, analyses.result_payload, analyses.raw_timing_metrics, analyses.reported_timing_metrics, analysis_jobs.started_at.",
+    "The following are inferred defaults disclosed as such (not independently recovered, but logically forced by the fact that this exact configuration produced a completed production analysis): calibration_gates/timing_workspace confirmation booleans (selectedByUser, userConfirmed, accepted, locked) = true; analysis_jobs.attempt_count = 1 (no evidence of retries; job reached 'completed').",
+    "The following schema/version-constant strings are mirrored from the only other live, unmodified row on this system (Gav, same analysisPipelineVersion='ava-sprint-60-v1'), disclosed as inferred-from-identical-pipeline rather than independently recovered per-Vanni-analysis: metric_schema_version, explainability_schema_version, timing_policy_version, timing_compatibility_group, timing_zone_schema_version, timing_zone_version, calibration_gates schema/version fields."
+  ]
+}

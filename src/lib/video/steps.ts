@@ -112,6 +112,37 @@ export interface StepDistanceScale {
   frameHeight: number;
 }
 
+/**
+ * Phase R1C — the single, shared frame-eligibility gate every contact
+ * consumer (scientific `measurements.ts` and the render-side overlay) must
+ * apply identically before calling {@link detectStepMarks}. Previously each
+ * side had its own inline copy; `measurements.ts` stripped
+ * predicted/invalid/frozen_suspect landmarks first (Phase 4.2/4.2B, with the
+ * Phase 4.2K `independent_corroborated` exception) while the overlay called
+ * `detectStepMarks` on completely unstripped frames — a real divergence in
+ * WHICH contacts get detected, not merely a numbering difference (see
+ * docs/phase-r1c-authoritative-contact-render-alignment.md). Extracted here
+ * so both call sites share one implementation and cannot drift again.
+ *
+ * A "predicted"/"invalid" boxOrigin means the crop that frame's landmarks
+ * came from was guided by extrapolation, not verified box tracking/detection.
+ * "frozen_suspect" means a later identity-verified detection proved the box
+ * had settled onto near-static structure instead of the real, moving
+ * athlete. Frames without a boxOrigin at all (legacy artifacts) are
+ * unaffected. The one exception: a "frozen_suspect" frame whose real box
+ * position independently agrees with trusted evidence both before and after
+ * the uncertain run (`independentLocalizationState ===
+ * "independent_corroborated"`) is not stripped.
+ */
+export function stripUnstableLandmarks(frames: OverlayFrame[]): OverlayFrame[] {
+  return frames.map((f) => {
+    const unstable = f.boxOrigin === "predicted" || f.boxOrigin === "invalid" || f.boxOrigin === "frozen_suspect";
+    const independentlyCorroborated =
+      f.boxOrigin === "frozen_suspect" && f.independentLocalizationState === "independent_corroborated";
+    return unstable && !independentlyCorroborated ? { ...f, landmarks: {} } : f;
+  });
+}
+
 /** Mean position + mean visibility of the usable foot keypoints in a frame, or null. */
 function footSample(
   frame: OverlayFrame,
@@ -146,6 +177,30 @@ interface RawContact {
   vis: number;
 }
 
+/** Read-only stage evidence for offline contact diagnostics. */
+export interface StepDetectionTraceContact {
+  side: StepSide;
+  frame: number;
+  sourceFrameIndex: number;
+  time: number;
+  x: number;
+  y: number;
+  prominence: number;
+  visibility: number;
+}
+
+/**
+ * Read-only explanation of the existing detector's decision chain. This is
+ * deliberately separate from `StepMark`: it is for validation artifacts and
+ * never changes acceptance, confidence, or production event output.
+ */
+export interface StepDetectionTrace {
+  candidates: StepDetectionTraceContact[];
+  acceptedPerSide: StepDetectionTraceContact[];
+  afterGlobalDedup: StepDetectionTraceContact[];
+  afterRecovery: StepDetectionTraceContact[];
+}
+
 /**
  * Contact strength, used to decide which of two near-simultaneous marks is the
  * real ground contact: a lower foot (deeper y) wins, with tracking confidence as
@@ -170,14 +225,19 @@ function contactScore(c: RawContact): number {
  * doesn't support. Downstream spacing + duplicate suppression still reject noise, so
  * this never invents a contact where a stronger, closer one exists.
  */
-function boundaryAwareMaxima(values: number[]): number[] {
+function boundaryAwareMaxima(values: number[], observedValues: number[]): number[] {
   const peaks = new Set(findLocalMaxima(values));
-  const first = values.findIndex((v) => Number.isFinite(v));
+  // Smoothing intentionally bridges a one-frame NaN edge with its finite
+  // neighbour. That is useful for an interior trajectory but must not move the
+  // *start-of-observation* event onto an unobserved frame: a boundary candidate
+  // needs an actual usable foot sample at its own frame.
+  const first = observedValues.findIndex((v) => Number.isFinite(v));
   if (
     first >= 0 &&
     first + 1 < values.length &&
-    Number.isFinite(values[first + 1]) &&
-    values[first] > values[first + 1]
+    Number.isFinite(observedValues[first + 1]) &&
+    Number.isFinite(values[first]) &&
+    observedValues[first] > observedValues[first + 1]
   ) {
     peaks.add(first);
   }
@@ -188,47 +248,26 @@ function detectSide(
   frames: OverlayFrame[],
   side: StepSide,
   cfg: StepDetectionConfig,
-): RawContact[] {
+): { accepted: RawContact[]; candidates: RawContact[] } {
   const joints = SIDE_FOOT_JOINTS[side];
   const samples = frames.map((f) => footSample(f, joints, cfg.minVisibility));
   const ys = samples.map((s) => (s ? s.y : NaN));
-  if (ys.filter(Number.isFinite).length < MIN_VALID_FRAMES) return [];
+  if (ys.filter(Number.isFinite).length < MIN_VALID_FRAMES) return { accepted: [], candidates: [] };
 
   const smoothed = smoothSeries(ys, cfg.smoothingWindowFrames);
   const finite = smoothed.filter((v): v is number => Number.isFinite(v));
-  if (finite.length < MIN_VALID_FRAMES) return [];
+  if (finite.length < MIN_VALID_FRAMES) return { accepted: [], candidates: [] };
   const amplitude = Math.max(...finite) - Math.min(...finite);
-  if (amplitude < cfg.minAmplitude) return [];
+  if (amplitude < cfg.minAmplitude) return { accepted: [], candidates: [] };
 
   const contacts: RawContact[] = [];
+  const candidates: RawContact[] = [];
   let lastMs = -Infinity;
-  for (const idx of boundaryAwareMaxima(smoothed)) {
+  for (const idx of boundaryAwareMaxima(smoothed, ys)) {
     const time = frames[idx].time;
-    // One foot cannot re-strike within a stride: enforce a generous per-foot gap,
-    // keeping the deeper contact if a closer maximum appears.
-    if (time * 1000 - lastMs < cfg.minSameSideSpacingMs) {
-      const pos = samples[idx];
-      const last = contacts[contacts.length - 1];
-      if (pos && last && smoothed[idx] > last.prominence) {
-        contacts[contacts.length - 1] = {
-          side,
-          frame: frames[idx].frame,
-          time,
-          x: pos.x,
-          y: pos.y,
-          prominence: smoothed[idx],
-          vis: pos.vis,
-        };
-        lastMs = time * 1000;
-      }
-      continue;
-    }
-    // Position the mark from the actual keypoints at contact (fall back to any
-    // visible foot point regardless of confidence so the mark isn't dropped).
     const pos = samples[idx] ?? footSample(frames[idx], joints, 0);
     if (!pos) continue;
-    lastMs = time * 1000;
-    contacts.push({
+    const candidate: RawContact = {
       side,
       frame: frames[idx].frame,
       time,
@@ -236,9 +275,22 @@ function detectSide(
       y: pos.y,
       prominence: smoothed[idx],
       vis: pos.vis,
-    });
+    };
+    candidates.push(candidate);
+    // One foot cannot re-strike within a stride: enforce a generous per-foot gap,
+    // keeping the deeper contact if a closer maximum appears.
+    if (time * 1000 - lastMs < cfg.minSameSideSpacingMs) {
+      const last = contacts[contacts.length - 1];
+      if (last && smoothed[idx] > last.prominence) {
+        contacts[contacts.length - 1] = candidate;
+        lastMs = time * 1000;
+      }
+      continue;
+    }
+    lastMs = time * 1000;
+    contacts.push(candidate);
   }
-  return contacts;
+  return { accepted: contacts, candidates };
 }
 
 /**
@@ -271,6 +323,46 @@ function suppressDuplicates(raw: RawContact[], cfg: StepDetectionConfig): RawCon
 }
 
 /**
+ * A per-side candidate that is later removed by cross-foot de-duplication must
+ * not continue to own that side's cooldown. When the final merged sequence has
+ * two consecutive contacts on the same foot, re-check the already-generated
+ * opposite-foot maxima between them. The last candidate satisfying the existing
+ * global spacing guard on BOTH sides is the only candidate whose temporal
+ * ownership belongs to the interval immediately preceding the trailing strike;
+ * earlier maxima can still be echoes of the leading strike.
+ *
+ * This does not create pose evidence, relax either spacing value, or recover a
+ * localization-withheld frame: only candidates already generated from eligible
+ * landmarks participate.
+ */
+function recoverSuppressedOppositeContacts(
+  marks: RawContact[],
+  candidates: RawContact[],
+  cfg: StepDetectionConfig,
+): RawContact[] {
+  const recovered = [...marks].sort((a, b) => a.time - b.time || a.side.localeCompare(b.side));
+  for (let i = 0; i + 1 < recovered.length; i++) {
+    const before = recovered[i];
+    const after = recovered[i + 1];
+    if (before.side !== after.side) continue;
+    const opposite: StepSide = before.side === "left" ? "right" : "left";
+    const eligible = candidates.filter(
+      (candidate) =>
+        candidate.side === opposite &&
+        candidate.time > before.time &&
+        candidate.time < after.time &&
+        (candidate.time - before.time) * 1000 >= cfg.minStepSpacingMs &&
+        (after.time - candidate.time) * 1000 >= cfg.minStepSpacingMs,
+    );
+    const candidate = eligible[eligible.length - 1];
+    if (!candidate) continue;
+    recovered.splice(i + 1, 0, candidate);
+    i += 1;
+  }
+  return recovered;
+}
+
+/**
  * Detect ordered step marks across an overlay sequence. Both feet are merged,
  * de-duplicated (one mark per true contact, biased toward L/R alternation), and
  * numbered chronologically; each mark carries the uncalibrated normalized
@@ -284,8 +376,16 @@ export function detectStepMarks(
 ): StepMark[] {
   if (!frames || frames.length < MIN_VALID_FRAMES) return [];
 
-  const merged = [...detectSide(frames, "left", config), ...detectSide(frames, "right", config)];
-  const deduped = suppressDuplicates(merged, config);
+  const left = detectSide(frames, "left", config);
+  const right = detectSide(frames, "right", config);
+  const merged = [...left.accepted, ...right.accepted];
+  const deduped = recoverSuppressedOppositeContacts(
+    suppressDuplicates(merged, config),
+    [...left.candidates, ...right.candidates].sort(
+      (a, b) => a.time - b.time || a.side.localeCompare(b.side),
+    ),
+    config,
+  );
 
   return deduped.map((mark, i) => ({
     side: mark.side,
@@ -299,6 +399,45 @@ export function detectStepMarks(
       i > 0 ? Math.hypot(mark.x - deduped[i - 1].x, mark.y - deduped[i - 1].y) : null,
     distanceMetersFromPrev: null,
   }));
+}
+
+/**
+ * Expose the exact existing candidate → per-side spacing → global dedup →
+ * recovery stages for offline diagnostics. Production callers continue to use
+ * `detectStepMarks`; this helper is intentionally read-only.
+ */
+export function traceStepDetection(
+  frames: OverlayFrame[],
+  config: StepDetectionConfig = DEFAULT_STEP_CONFIG,
+): StepDetectionTrace {
+  if (!frames || frames.length < MIN_VALID_FRAMES) {
+    return { candidates: [], acceptedPerSide: [], afterGlobalDedup: [], afterRecovery: [] };
+  }
+  const left = detectSide(frames, "left", config);
+  const right = detectSide(frames, "right", config);
+  const acceptedPerSide = [...left.accepted, ...right.accepted];
+  const afterGlobalDedup = suppressDuplicates(acceptedPerSide, config);
+  const afterRecovery = recoverSuppressedOppositeContacts(
+    afterGlobalDedup,
+    [...left.candidates, ...right.candidates].sort((a, b) => a.time - b.time || a.side.localeCompare(b.side)),
+    config,
+  );
+  const expose = (mark: RawContact): StepDetectionTraceContact => ({
+    side: mark.side,
+    frame: mark.frame,
+    sourceFrameIndex: frames[mark.frame]?.sourceFrameIndex ?? mark.frame,
+    time: mark.time,
+    x: mark.x,
+    y: mark.y,
+    prominence: mark.prominence,
+    visibility: mark.vis,
+  });
+  return {
+    candidates: [...left.candidates, ...right.candidates].sort((a, b) => a.time - b.time || a.side.localeCompare(b.side)).map(expose),
+    acceptedPerSide: acceptedPerSide.sort((a, b) => a.time - b.time || a.side.localeCompare(b.side)).map(expose),
+    afterGlobalDedup: afterGlobalDedup.map(expose),
+    afterRecovery: afterRecovery.map(expose),
+  };
 }
 
 /**

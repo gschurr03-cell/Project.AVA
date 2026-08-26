@@ -4,6 +4,7 @@ import {
   MobileAPIError, analysisCreateSchema, authenticateMobile, mobileResponse, withMobileRoute,
 } from "@/lib/mobile/api";
 import { validatedAnalysisContract } from "@/lib/analysis/analysisContract";
+import { classifySourceFpsTier } from "@/lib/video/analysisFps";
 
 export async function POST(request: NextRequest) {
   return withMobileRoute(request, async ({ requestId }) => {
@@ -23,11 +24,21 @@ export async function POST(request: NextRequest) {
     if (upload.status !== "complete") throw new MobileAPIError(409, "UPLOAD_INCOMPLETE", "Complete the upload first.");
 
     const metadata = upload.recording_metadata as Record<string, unknown>;
+    const measuredFps =
+      typeof metadata.measuredFps === "number" ? metadata.measuredFps
+      : typeof metadata.nominalFps === "number" ? metadata.nominalFps
+      : null;
+    // The mobile client may already have measured the real capture rate
+    // on-device — use it instead of always requesting a 60 FPS placeholder
+    // (the worker's own detection at analysis time is still authoritative and
+    // overwrites this on completion either way).
+    const fpsDecision = measuredFps != null ? classifySourceFpsTier({ detectedFps: measuredFps }) : null;
+    const requestedAnalysisFps = fpsDecision?.analysisFps ?? 60;
     const { data: session, error: sessionError } = await service.from("sessions").insert({
       athlete_id: athlete.id, created_by: user.id, video_path: upload.object_path,
       original_filename: upload.original_filename, file_size_bytes: upload.actual_bytes,
-      fps: metadata.measuredFps ?? metadata.nominalFps, width: metadata.width,
-      height: metadata.height, duration_s: metadata.durationSeconds,
+      fps: measuredFps, fps_classification: fpsDecision?.classification ?? null,
+      width: metadata.width, height: metadata.height, duration_s: metadata.durationSeconds,
       status: "uploaded", analysis_type: parsed.data.analysisType,
     }).select("id").single();
     if (sessionError || !session) throw new MobileAPIError(409, "RESOURCE_CONFLICT", "Analysis session could not be created.");
@@ -36,13 +47,13 @@ export async function POST(request: NextRequest) {
       capturedAt: new Date().toISOString(), athlete: { id: athlete.id },
       session: {
         analysisType: parsed.data.analysisType, recordingMode: "uploaded_video",
-        requestedOptions: { analysisFps: 60, poseEngine: "mediapipe" },
+        requestedOptions: { analysisFps: requestedAnalysisFps, poseEngine: "mediapipe" },
       },
       mobile: { uploadId: upload.id, inputChecksum: upload.client_sha256, requestId },
     };
     const { data: analysis, error: analysisError } = await service.from("analyses").insert({
       id: analysisId, session_id: session.id, model_version: "pending-mediapipe",
-      status: "queued", input_snapshot: inputSnapshot, analysis_fps: 60,
+      status: "queued", input_snapshot: inputSnapshot, analysis_fps: requestedAnalysisFps,
       analysis_pipeline_version: "ava-sprint-60-v1", metric_schema_version: "ava-metrics-v1",
       explainability_schema_version: "ava-explainability-v1", analysis_kind: "working",
       // Never hand-assemble the experimental/validation contract — one source of truth.

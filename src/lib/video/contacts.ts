@@ -21,6 +21,7 @@
  */
 
 import { smoothSeries } from "@/lib/biomechanics/events/FootContactDetector";
+import { MAX_PLAUSIBLE_STEP_DURATION_S } from "./stepIntegrity";
 import type { OverlayFrame } from "./overlay";
 import type { StepMark, StepSide } from "./steps";
 
@@ -185,12 +186,31 @@ export interface ContactFlightSummary {
   rightContacts: number;
 }
 
+// Day 103 established this same signal for step length (stepIntegrity.ts,
+// evaluateStepInterval): a same-foot adjacency, or a gap wide enough to
+// plausibly contain an intact intermediate step, means a real intermediate
+// ground contact went undetected — the span between the two SUPPLIED phases
+// is not a single genuine airborne phase. This function never received that
+// guard (disclosed Phase 3, 2026-08-05: a real same-foot pair on
+// `vanni_fly_120` produced an implausible `flightLeftMs: 20ms`; re-proven
+// this phase on `vanni_fly_240`/`vanni_fly_120`/`vanni_fly_60`'s real,
+// current production data, where the same defect INFLATES flight by
+// 40-75% via same-foot pairs contributed by a missing opposite-foot
+// contact — see docs/phase-5-0d-multiframe-contact-evidence.md Section 11).
+// Reuses stepIntegrity's own duration constant rather than inventing a new
+// one; does not change the touchdown/toe-off subtraction itself.
+const MISSING_INTERMEDIATE_CONTACT_DURATION_S = MAX_PLAUSIBLE_STEP_DURATION_S * 2;
+
 /**
  * Summarise per-foot contact + flight from an ORDERED, time-consecutive set of
  * contact phases (already restricted to the measurement zone by the caller).
  * Flight after a contact = the next contact's touchdown − this contact's toe-off,
  * computed only BETWEEN the supplied phases — so a zone-restricted list yields
- * purely through-zone flight (nothing past the finish gate).
+ * purely through-zone flight (nothing past the finish gate). A flight is
+ * withheld (not fabricated as a giant merged interval) when the two phases are
+ * on the SAME foot or span more than a plausible single step's duration — both
+ * are real signatures that an intermediate contact exists but was not
+ * measurable, never a genuine single airborne phase.
  */
 export function summariseContactFlight(phases: ContactPhase[]): ContactFlightSummary {
   const ordered = [...phases].sort((a, b) => a.contactTimeS - b.contactTimeS);
@@ -206,8 +226,11 @@ export function summariseContactFlight(phases: ContactPhase[]): ContactFlightSum
     (ph.side === "left" ? cL : cR).push(ph.contactMs);
     (ph.side === "left" ? framesL : framesR).push(ph.contactFrames);
     if (i + 1 < ordered.length) {
-      const flightMs = (ordered[i + 1].touchdownTimeS - ph.toeOffTimeS) * 1000;
-      if (flightMs >= 0) (ph.side === "left" ? fL : fR).push(flightMs);
+      const next = ordered[i + 1];
+      const sameFoot = next.side === ph.side;
+      const flightMs = (next.touchdownTimeS - ph.toeOffTimeS) * 1000;
+      const spansMissingContact = flightMs / 1000 > MISSING_INTERMEDIATE_CONTACT_DURATION_S;
+      if (flightMs >= 0 && !sameFoot && !spansMissingContact) (ph.side === "left" ? fL : fR).push(flightMs);
     }
   }
 

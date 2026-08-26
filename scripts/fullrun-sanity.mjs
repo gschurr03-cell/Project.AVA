@@ -78,6 +78,16 @@ try {
   // peaks at frames 0, 20, 40 → 3 contacts.
   check("full run finds all three planted contacts (0/20/40)", peak.totalContacts === 3);
 
+  // A quality gate may withhold early landmarks, then reveal a planted foot on
+  // the first usable frame. Smoothing must not leak that sample backward into
+  // the unavailable frame and thereby suppress boundary recovery.
+  const delayedPose = mkFrames([0.62, 0.60, 0.58, 0.56, 0.54]).map((frame, i) =>
+    i === 0 ? { ...frame, landmarks: {} } : frame,
+  );
+  const delayed = buildFullRunEvents(delayedPose);
+  check("first actually observed planted foot is recovered after an unavailable frame", delayed.contacts.some((c) => c.frame === 1));
+  check("unavailable leading frame never becomes a virtual contact", !delayed.contacts.some((c) => c.frame === 0));
+
   const trough = buildFullRunEvents(mkFrames(troughSeries));
   check("mid-swing first frame is NOT marked a contact (no frame 0)", !trough.contacts.some((c) => c.frame === 0));
   check("mid-swing run still finds its interior contacts", trough.totalContacts >= 1);
